@@ -27,7 +27,7 @@ export class SalesController {
 
   @Post()
   @TenantProtected()
-  @ApiOperation({ summary: 'Create a new sale' })
+  @ApiOperation({ summary: 'Criar nova venda' })
   @ApiResponse({ status: 201 })
   create(@CurrentCompany() companyId: string, @Body() dto: CreateSaleDto) {
     return this.salesService.create(companyId, dto);
@@ -35,7 +35,7 @@ export class SalesController {
 
   @Get()
   @TenantProtected()
-  @ApiOperation({ summary: 'List sales' })
+  @ApiOperation({ summary: 'Listar vendas' })
   @ApiResponse({ status: 200 })
   findAll(@CurrentCompany() companyId: string, @Query() filter: FilterSaleDto) {
     return this.salesService.findAll(companyId, filter);
@@ -43,7 +43,7 @@ export class SalesController {
 
   @Get(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Get a sale by ID' })
+  @ApiOperation({ summary: 'Buscar venda por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.salesService.findOne(id, companyId);
@@ -51,7 +51,7 @@ export class SalesController {
 
   @Patch(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Update a DRAFT sale' })
+  @ApiOperation({ summary: 'Atualizar venda em RASCUNHO' })
   @ApiResponse({ status: 200 })
   update(
     @Param('id') id: string,
@@ -63,7 +63,7 @@ export class SalesController {
 
   @Post(':id/confirm')
   @TenantProtected()
-  @ApiOperation({ summary: 'Confirm a sale and deduct stock' })
+  @ApiOperation({ summary: 'Confirmar venda e baixar estoque' })
   @ApiResponse({ status: 200 })
   confirm(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.salesService.confirm(id, companyId);
@@ -71,7 +71,7 @@ export class SalesController {
 
   @Post(':id/cancel')
   @TenantProtected(MembershipRole.ADMIN, MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Cancel a sale' })
+  @ApiOperation({ summary: 'Cancelar venda' })
   @ApiResponse({ status: 200 })
   cancel(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.salesService.cancel(id, companyId);
@@ -80,7 +80,7 @@ export class SalesController {
   @Delete(':id')
   @TenantProtected(MembershipRole.ADMIN, MembershipRole.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft-delete a DRAFT or CANCELLED sale' })
+  @ApiOperation({ summary: 'Excluir venda em RASCUNHO ou CANCELADA' })
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.salesService.remove(id, companyId);

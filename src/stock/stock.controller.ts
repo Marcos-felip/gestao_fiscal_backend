@@ -14,7 +14,7 @@ export class StockController {
 
   @Post('movements')
   @TenantProtected()
-  @ApiOperation({ summary: 'Create a stock movement' })
+  @ApiOperation({ summary: 'Registrar movimentação de estoque' })
   @ApiResponse({ status: 201 })
   createMovement(
     @CurrentCompany() companyId: string,
@@ -25,7 +25,7 @@ export class StockController {
 
   @Get('movements')
   @TenantProtected()
-  @ApiOperation({ summary: 'List stock movements' })
+  @ApiOperation({ summary: 'Listar movimentações de estoque' })
   @ApiResponse({ status: 200 })
   findAll(
     @CurrentCompany() companyId: string,

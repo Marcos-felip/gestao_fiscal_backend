@@ -19,7 +19,7 @@ export class MembershipsService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found with this email');
+      throw new NotFoundException('Usuário não encontrado com este e-mail');
     }
 
     const existing = await this.prisma.membership.findFirst({
@@ -27,7 +27,7 @@ export class MembershipsService {
     });
 
     if (existing) {
-      throw new ConflictException('User is already a member of this company');
+      throw new ConflictException('Usuário já é membro desta empresa');
     }
 
     return this.prisma.membership.create({
@@ -61,11 +61,11 @@ export class MembershipsService {
     });
 
     if (!membership) {
-      throw new NotFoundException('Membership not found');
+      throw new NotFoundException('Associação não encontrada');
     }
 
     if (membership.role === MembershipRole.OWNER) {
-      throw new BadRequestException('Cannot change the role of an OWNER');
+      throw new BadRequestException('Não é possível alterar o papel de um OWNER');
     }
 
     return this.prisma.membership.update({
@@ -85,11 +85,11 @@ export class MembershipsService {
     });
 
     if (!membership) {
-      throw new NotFoundException('Membership not found');
+      throw new NotFoundException('Associação não encontrada');
     }
 
     if (membership.role === MembershipRole.OWNER) {
-      throw new BadRequestException('Cannot remove the OWNER from the company');
+      throw new BadRequestException('Não é possível remover o OWNER da empresa');
     }
 
     await this.prisma.membership.update({

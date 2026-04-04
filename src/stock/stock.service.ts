@@ -18,7 +18,7 @@ export class StockService {
       });
 
       if (!product) {
-        throw new NotFoundException('Product not found');
+        throw new NotFoundException('Produto não encontrado');
       }
 
       const currentStock = Number(product.currentStock);
@@ -31,7 +31,7 @@ export class StockService {
         case StockMovementType.SAIDA:
           newStock = currentStock - dto.quantity;
           if (newStock < 0) {
-            throw new BadRequestException('Insufficient stock');
+            throw new BadRequestException('Estoque insuficiente');
           }
           break;
         case StockMovementType.AJUSTE:

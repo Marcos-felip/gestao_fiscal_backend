@@ -25,7 +25,7 @@ export class PartnersController {
 
   @Get()
   @TenantProtected()
-  @ApiOperation({ summary: 'List all partners for the current company' })
+  @ApiOperation({ summary: 'Listar parceiros da empresa ativa' })
   @ApiResponse({ status: 200 })
   findAll(
     @CurrentCompany() companyId: string,
@@ -36,7 +36,7 @@ export class PartnersController {
 
   @Post()
   @TenantProtected()
-  @ApiOperation({ summary: 'Create a new partner' })
+  @ApiOperation({ summary: 'Criar novo parceiro' })
   @ApiResponse({ status: 201 })
   create(
     @CurrentCompany() companyId: string,
@@ -47,7 +47,7 @@ export class PartnersController {
 
   @Get(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Get a partner by ID' })
+  @ApiOperation({ summary: 'Buscar parceiro por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.partnersService.findOne(id, companyId);
@@ -55,7 +55,7 @@ export class PartnersController {
 
   @Patch(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Update a partner' })
+  @ApiOperation({ summary: 'Atualizar parceiro' })
   @ApiResponse({ status: 200 })
   update(
     @Param('id') id: string,
@@ -68,7 +68,7 @@ export class PartnersController {
   @Delete(':id')
   @TenantProtected()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft-delete a partner' })
+  @ApiOperation({ summary: 'Excluir parceiro (soft delete)' })
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.partnersService.remove(id, companyId);

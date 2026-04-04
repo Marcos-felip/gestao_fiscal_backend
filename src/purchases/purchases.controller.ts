@@ -27,7 +27,7 @@ export class PurchasesController {
 
   @Post()
   @TenantProtected()
-  @ApiOperation({ summary: 'Create a new purchase' })
+  @ApiOperation({ summary: 'Criar nova compra' })
   @ApiResponse({ status: 201 })
   create(
     @CurrentCompany() companyId: string,
@@ -38,7 +38,7 @@ export class PurchasesController {
 
   @Get()
   @TenantProtected()
-  @ApiOperation({ summary: 'List purchases' })
+  @ApiOperation({ summary: 'Listar compras' })
   @ApiResponse({ status: 200 })
   findAll(
     @CurrentCompany() companyId: string,
@@ -49,7 +49,7 @@ export class PurchasesController {
 
   @Get(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Get a purchase by ID' })
+  @ApiOperation({ summary: 'Buscar compra por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.purchasesService.findOne(id, companyId);
@@ -57,7 +57,7 @@ export class PurchasesController {
 
   @Patch(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Update a DRAFT purchase' })
+  @ApiOperation({ summary: 'Atualizar compra em RASCUNHO' })
   @ApiResponse({ status: 200 })
   update(
     @Param('id') id: string,
@@ -69,7 +69,7 @@ export class PurchasesController {
 
   @Post(':id/confirm')
   @TenantProtected()
-  @ApiOperation({ summary: 'Confirm a purchase and add stock' })
+  @ApiOperation({ summary: 'Confirmar compra e dar entrada no estoque' })
   @ApiResponse({ status: 200 })
   confirm(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.purchasesService.confirm(id, companyId);
@@ -77,7 +77,7 @@ export class PurchasesController {
 
   @Post(':id/cancel')
   @TenantProtected(MembershipRole.ADMIN, MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Cancel a purchase' })
+  @ApiOperation({ summary: 'Cancelar compra' })
   @ApiResponse({ status: 200 })
   cancel(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.purchasesService.cancel(id, companyId);
@@ -86,7 +86,7 @@ export class PurchasesController {
   @Delete(':id')
   @TenantProtected(MembershipRole.ADMIN, MembershipRole.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft-delete a DRAFT or CANCELLED purchase' })
+  @ApiOperation({ summary: 'Excluir compra em RASCUNHO ou CANCELADA' })
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.purchasesService.remove(id, companyId);

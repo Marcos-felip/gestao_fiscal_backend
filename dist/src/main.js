@@ -22,8 +22,8 @@ async function bootstrap() {
     }));
     app.useGlobalFilters(new prisma_exception_filter_1.PrismaExceptionFilter());
     const config = new swagger_1.DocumentBuilder()
-        .setTitle('Gestao Fiscal API')
-        .setDescription('API para sistema de gestao fiscal multi-tenant')
+        .setTitle('Gestão Fiscal API')
+        .setDescription('API do sistema SaaS de gestão fiscal multi-tenant para empresas brasileiras')
         .setVersion('1.0')
         .addBearerAuth()
         .build();

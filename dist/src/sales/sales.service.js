@@ -29,7 +29,7 @@ let SalesService = class SalesService {
                 where: { id: dto.establishmentId, companyId, deletedAt: null },
             });
             if (!establishment) {
-                throw new common_1.NotFoundException('Establishment not found');
+                throw new common_1.NotFoundException('Estabelecimento não encontrado');
             }
             const itemsData = [];
             let itemsTotal = 0;
@@ -38,7 +38,7 @@ let SalesService = class SalesService {
                     where: { id: item.productId, companyId, deletedAt: null },
                 });
                 if (!product) {
-                    throw new common_1.NotFoundException(`Product not found: ${item.productId}`);
+                    throw new common_1.NotFoundException(`Produto não encontrado: ${item.productId}`);
                 }
                 const itemDiscount = item.discount ?? 0;
                 const total = item.quantity * item.unitPrice - itemDiscount;
@@ -117,13 +117,13 @@ let SalesService = class SalesService {
             },
         });
         if (!sale)
-            throw new common_1.NotFoundException('Sale not found');
+            throw new common_1.NotFoundException('Venda não encontrada');
         return sale;
     }
     async update(id, companyId, dto) {
         const sale = await this.findOne(id, companyId);
         if (sale.status !== client_1.SaleStatus.DRAFT) {
-            throw new common_1.BadRequestException('Only DRAFT sales can be updated');
+            throw new common_1.BadRequestException('Apenas vendas em RASCUNHO podem ser editadas');
         }
         return this.prisma.sale.update({
             where: { id },
@@ -143,9 +143,9 @@ let SalesService = class SalesService {
                 include: { items: true },
             });
             if (!sale)
-                throw new common_1.NotFoundException('Sale not found');
+                throw new common_1.NotFoundException('Venda não encontrada');
             if (sale.status !== client_1.SaleStatus.DRAFT) {
-                throw new common_1.BadRequestException('Only DRAFT sales can be confirmed');
+                throw new common_1.BadRequestException('Apenas vendas em RASCUNHO podem ser confirmadas');
             }
             for (const item of sale.items) {
                 const product = await tx.product.findFirst({
@@ -157,7 +157,7 @@ let SalesService = class SalesService {
                 const currentStock = Number(product.currentStock);
                 const qty = Number(item.quantity);
                 if (currentStock < qty) {
-                    throw new common_1.BadRequestException(`Insufficient stock for product ${product.name}`);
+                    throw new common_1.BadRequestException(`Estoque insuficiente para o produto ${product.name}`);
                 }
                 await tx.stockMovement.create({
                     data: {
@@ -188,10 +188,10 @@ let SalesService = class SalesService {
                 include: { items: true },
             });
             if (!sale)
-                throw new common_1.NotFoundException('Sale not found');
+                throw new common_1.NotFoundException('Venda não encontrada');
             if (sale.status !== client_1.SaleStatus.DRAFT &&
                 sale.status !== client_1.SaleStatus.CONFIRMED) {
-                throw new common_1.BadRequestException('Sale cannot be cancelled');
+                throw new common_1.BadRequestException('Esta venda não pode ser cancelada');
             }
             if (sale.status === client_1.SaleStatus.CONFIRMED) {
                 for (const item of sale.items) {
@@ -228,7 +228,7 @@ let SalesService = class SalesService {
         const sale = await this.findOne(id, companyId);
         if (sale.status !== client_1.SaleStatus.DRAFT &&
             sale.status !== client_1.SaleStatus.CANCELLED) {
-            throw new common_1.BadRequestException('Only DRAFT or CANCELLED sales can be deleted');
+            throw new common_1.BadRequestException('Apenas vendas em RASCUNHO ou CANCELADAS podem ser excluídas');
         }
         await this.prisma.sale.update({
             where: { id },

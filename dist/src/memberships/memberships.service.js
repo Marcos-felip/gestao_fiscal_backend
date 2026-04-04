@@ -23,13 +23,13 @@ let MembershipsService = class MembershipsService {
             where: { email: dto.email, deletedAt: null },
         });
         if (!user) {
-            throw new common_1.NotFoundException('User not found with this email');
+            throw new common_1.NotFoundException('Usuário não encontrado com este e-mail');
         }
         const existing = await this.prisma.membership.findFirst({
             where: { userId: user.id, companyId, deletedAt: null },
         });
         if (existing) {
-            throw new common_1.ConflictException('User is already a member of this company');
+            throw new common_1.ConflictException('Usuário já é membro desta empresa');
         }
         return this.prisma.membership.create({
             data: {
@@ -59,10 +59,10 @@ let MembershipsService = class MembershipsService {
             where: { id, companyId, deletedAt: null },
         });
         if (!membership) {
-            throw new common_1.NotFoundException('Membership not found');
+            throw new common_1.NotFoundException('Associação não encontrada');
         }
         if (membership.role === client_1.MembershipRole.OWNER) {
-            throw new common_1.BadRequestException('Cannot change the role of an OWNER');
+            throw new common_1.BadRequestException('Não é possível alterar o papel de um OWNER');
         }
         return this.prisma.membership.update({
             where: { id },
@@ -79,10 +79,10 @@ let MembershipsService = class MembershipsService {
             where: { id, companyId, deletedAt: null },
         });
         if (!membership) {
-            throw new common_1.NotFoundException('Membership not found');
+            throw new common_1.NotFoundException('Associação não encontrada');
         }
         if (membership.role === client_1.MembershipRole.OWNER) {
-            throw new common_1.BadRequestException('Cannot remove the OWNER from the company');
+            throw new common_1.BadRequestException('Não é possível remover o OWNER da empresa');
         }
         await this.prisma.membership.update({
             where: { id },

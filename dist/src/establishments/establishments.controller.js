@@ -46,7 +46,7 @@ exports.EstablishmentsController = EstablishmentsController;
 __decorate([
     (0, common_1.Get)(),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'List all establishments for the current company' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Listar estabelecimentos da empresa ativa' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __metadata("design:type", Function),
@@ -56,7 +56,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)(),
     (0, tenant_protected_decorator_1.TenantProtected)(client_1.MembershipRole.OWNER, client_1.MembershipRole.ADMIN),
-    (0, swagger_1.ApiOperation)({ summary: 'Create a new establishment' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Criar novo estabelecimento' }),
     (0, swagger_1.ApiResponse)({ status: 201 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __param(1, (0, common_1.Body)()),
@@ -67,7 +67,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Get an establishment by ID' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Buscar estabelecimento por ID' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -78,7 +78,7 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(client_1.MembershipRole.OWNER, client_1.MembershipRole.ADMIN),
-    (0, swagger_1.ApiOperation)({ summary: 'Update an establishment' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Atualizar estabelecimento' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -90,7 +90,7 @@ __decorate([
 __decorate([
     (0, common_1.Delete)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(client_1.MembershipRole.OWNER),
-    (0, swagger_1.ApiOperation)({ summary: 'Soft-delete an establishment (cannot delete MATRIZ)' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Excluir estabelecimento (não é possível excluir MATRIZ)' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),

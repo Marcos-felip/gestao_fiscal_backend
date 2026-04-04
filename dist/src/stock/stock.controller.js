@@ -36,7 +36,7 @@ exports.StockController = StockController;
 __decorate([
     (0, common_1.Post)('movements'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Create a stock movement' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Registrar movimentação de estoque' }),
     (0, swagger_1.ApiResponse)({ status: 201 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __param(1, (0, common_1.Body)()),
@@ -47,7 +47,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('movements'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'List stock movements' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Listar movimentações de estoque' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __param(1, (0, common_1.Query)()),

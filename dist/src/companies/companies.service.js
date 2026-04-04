@@ -62,13 +62,13 @@ let CompaniesService = class CompaniesService {
     }
     async findOne(id, companyId) {
         if (id !== companyId) {
-            throw new common_1.ForbiddenException('Access denied to this company');
+            throw new common_1.ForbiddenException('Acesso negado a esta empresa');
         }
         const company = await this.prisma.company.findFirst({
             where: { id, deletedAt: null },
         });
         if (!company) {
-            throw new common_1.NotFoundException('Company not found');
+            throw new common_1.NotFoundException('Empresa não encontrada');
         }
         return company;
     }
@@ -77,10 +77,10 @@ let CompaniesService = class CompaniesService {
             where: { id: companyId, deletedAt: null },
         });
         if (!company) {
-            throw new common_1.NotFoundException('Company not found');
+            throw new common_1.NotFoundException('Empresa não encontrada');
         }
         if (company.isOnboarded) {
-            throw new common_1.BadRequestException('Company is already onboarded');
+            throw new common_1.BadRequestException('Empresa já foi configurada');
         }
         return this.prisma.$transaction(async (tx) => {
             const existingMatriz = await tx.establishment.findFirst({
@@ -91,7 +91,7 @@ let CompaniesService = class CompaniesService {
                 },
             });
             if (existingMatriz) {
-                throw new common_1.ConflictException('A MATRIZ establishment already exists for this company');
+                throw new common_1.ConflictException('Já existe um estabelecimento MATRIZ para esta empresa');
             }
             await tx.company.update({
                 where: { id: companyId },
@@ -128,7 +128,7 @@ let CompaniesService = class CompaniesService {
             where: { id: companyId, deletedAt: null },
         });
         if (!company) {
-            throw new common_1.NotFoundException('Company not found');
+            throw new common_1.NotFoundException('Empresa não encontrada');
         }
         return this.prisma.company.update({
             where: { id: companyId },

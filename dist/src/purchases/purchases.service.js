@@ -29,7 +29,7 @@ let PurchasesService = class PurchasesService {
                 where: { id: dto.establishmentId, companyId, deletedAt: null },
             });
             if (!establishment) {
-                throw new common_1.NotFoundException('Establishment not found');
+                throw new common_1.NotFoundException('Estabelecimento não encontrado');
             }
             const itemsData = [];
             let totalAmount = 0;
@@ -38,7 +38,7 @@ let PurchasesService = class PurchasesService {
                     where: { id: item.productId, companyId, deletedAt: null },
                 });
                 if (!product) {
-                    throw new common_1.NotFoundException(`Product not found: ${item.productId}`);
+                    throw new common_1.NotFoundException(`Produto não encontrado: ${item.productId}`);
                 }
                 const total = item.quantity * item.unitPrice;
                 totalAmount += total;
@@ -114,13 +114,13 @@ let PurchasesService = class PurchasesService {
             },
         });
         if (!purchase)
-            throw new common_1.NotFoundException('Purchase not found');
+            throw new common_1.NotFoundException('Compra não encontrada');
         return purchase;
     }
     async update(id, companyId, dto) {
         const purchase = await this.findOne(id, companyId);
         if (purchase.status !== client_1.PurchaseStatus.DRAFT) {
-            throw new common_1.BadRequestException('Only DRAFT purchases can be updated');
+            throw new common_1.BadRequestException('Apenas compras em RASCUNHO podem ser editadas');
         }
         return this.prisma.purchase.update({
             where: { id },
@@ -139,16 +139,16 @@ let PurchasesService = class PurchasesService {
                 include: { items: true },
             });
             if (!purchase)
-                throw new common_1.NotFoundException('Purchase not found');
+                throw new common_1.NotFoundException('Compra não encontrada');
             if (purchase.status !== client_1.PurchaseStatus.DRAFT) {
-                throw new common_1.BadRequestException('Only DRAFT purchases can be confirmed');
+                throw new common_1.BadRequestException('Apenas compras em RASCUNHO podem ser confirmadas');
             }
             for (const item of purchase.items) {
                 const product = await tx.product.findFirst({
                     where: { id: item.productId, companyId, deletedAt: null },
                 });
                 if (!product) {
-                    throw new common_1.NotFoundException(`Product not found: ${item.productId}`);
+                    throw new common_1.NotFoundException(`Produto não encontrado: ${item.productId}`);
                 }
                 const qty = Number(item.quantity);
                 await tx.stockMovement.create({
@@ -180,10 +180,10 @@ let PurchasesService = class PurchasesService {
                 include: { items: true },
             });
             if (!purchase)
-                throw new common_1.NotFoundException('Purchase not found');
+                throw new common_1.NotFoundException('Compra não encontrada');
             if (purchase.status !== client_1.PurchaseStatus.DRAFT &&
                 purchase.status !== client_1.PurchaseStatus.CONFIRMED) {
-                throw new common_1.BadRequestException('Purchase cannot be cancelled');
+                throw new common_1.BadRequestException('Esta compra não pode ser cancelada');
             }
             if (purchase.status === client_1.PurchaseStatus.CONFIRMED) {
                 for (const item of purchase.items) {
@@ -222,7 +222,7 @@ let PurchasesService = class PurchasesService {
         const purchase = await this.findOne(id, companyId);
         if (purchase.status !== client_1.PurchaseStatus.DRAFT &&
             purchase.status !== client_1.PurchaseStatus.CANCELLED) {
-            throw new common_1.BadRequestException('Only DRAFT or CANCELLED purchases can be deleted');
+            throw new common_1.BadRequestException('Apenas compras em RASCUNHO ou CANCELADAS podem ser excluídas');
         }
         await this.prisma.purchase.update({
             where: { id },

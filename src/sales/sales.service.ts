@@ -25,7 +25,7 @@ export class SalesService {
         where: { id: dto.establishmentId, companyId, deletedAt: null },
       });
       if (!establishment) {
-        throw new NotFoundException('Establishment not found');
+        throw new NotFoundException('Estabelecimento não encontrado');
       }
 
       const itemsData: {
@@ -43,7 +43,7 @@ export class SalesService {
         });
         if (!product) {
           throw new NotFoundException(
-            `Product not found: ${item.productId}`,
+            `Produto não encontrado: ${item.productId}`,
           );
         }
         const itemDiscount = item.discount ?? 0;
@@ -131,7 +131,7 @@ export class SalesService {
       },
     });
 
-    if (!sale) throw new NotFoundException('Sale not found');
+    if (!sale) throw new NotFoundException('Venda não encontrada');
     return sale;
   }
 
@@ -143,7 +143,7 @@ export class SalesService {
     const sale = await this.findOne(id, companyId);
 
     if (sale.status !== SaleStatus.DRAFT) {
-      throw new BadRequestException('Only DRAFT sales can be updated');
+      throw new BadRequestException('Apenas vendas em RASCUNHO podem ser editadas');
     }
 
     return this.prisma.sale.update({
@@ -165,9 +165,9 @@ export class SalesService {
         include: { items: true },
       });
 
-      if (!sale) throw new NotFoundException('Sale not found');
+      if (!sale) throw new NotFoundException('Venda não encontrada');
       if (sale.status !== SaleStatus.DRAFT) {
-        throw new BadRequestException('Only DRAFT sales can be confirmed');
+        throw new BadRequestException('Apenas vendas em RASCUNHO podem ser confirmadas');
       }
 
       for (const item of sale.items) {
@@ -184,7 +184,7 @@ export class SalesService {
 
         if (currentStock < qty) {
           throw new BadRequestException(
-            `Insufficient stock for product ${product.name}`,
+            `Estoque insuficiente para o produto ${product.name}`,
           );
         }
 
@@ -220,13 +220,13 @@ export class SalesService {
         include: { items: true },
       });
 
-      if (!sale) throw new NotFoundException('Sale not found');
+      if (!sale) throw new NotFoundException('Venda não encontrada');
 
       if (
         sale.status !== SaleStatus.DRAFT &&
         sale.status !== SaleStatus.CONFIRMED
       ) {
-        throw new BadRequestException('Sale cannot be cancelled');
+        throw new BadRequestException('Esta venda não pode ser cancelada');
       }
 
       if (sale.status === SaleStatus.CONFIRMED) {
@@ -272,7 +272,7 @@ export class SalesService {
       sale.status !== SaleStatus.CANCELLED
     ) {
       throw new BadRequestException(
-        'Only DRAFT or CANCELLED sales can be deleted',
+        'Apenas vendas em RASCUNHO ou CANCELADAS podem ser excluídas',
       );
     }
 

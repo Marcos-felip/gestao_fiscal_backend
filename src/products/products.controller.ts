@@ -25,7 +25,7 @@ export class ProductsController {
 
   @Get()
   @TenantProtected()
-  @ApiOperation({ summary: 'List all products for the current company' })
+  @ApiOperation({ summary: 'Listar produtos da empresa ativa' })
   @ApiResponse({ status: 200 })
   findAll(
     @CurrentCompany() companyId: string,
@@ -36,7 +36,7 @@ export class ProductsController {
 
   @Post()
   @TenantProtected()
-  @ApiOperation({ summary: 'Create a new product' })
+  @ApiOperation({ summary: 'Criar novo produto' })
   @ApiResponse({ status: 201 })
   create(
     @CurrentCompany() companyId: string,
@@ -47,7 +47,7 @@ export class ProductsController {
 
   @Get(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Get a product by ID' })
+  @ApiOperation({ summary: 'Buscar produto por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.productsService.findOne(id, companyId);
@@ -55,7 +55,7 @@ export class ProductsController {
 
   @Patch(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Update a product' })
+  @ApiOperation({ summary: 'Atualizar produto' })
   @ApiResponse({ status: 200 })
   update(
     @Param('id') id: string,
@@ -68,7 +68,7 @@ export class ProductsController {
   @Delete(':id')
   @TenantProtected()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft-delete a product' })
+  @ApiOperation({ summary: 'Excluir produto (soft delete)' })
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.productsService.remove(id, companyId);

@@ -44,7 +44,7 @@ export class PartnersService {
     });
 
     if (!partner) {
-      throw new NotFoundException('Partner not found');
+      throw new NotFoundException('Parceiro não encontrado');
     }
 
     return partner;

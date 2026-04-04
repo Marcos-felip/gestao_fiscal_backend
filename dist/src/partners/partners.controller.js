@@ -46,7 +46,7 @@ exports.PartnersController = PartnersController;
 __decorate([
     (0, common_1.Get)(),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'List all partners for the current company' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Listar parceiros da empresa ativa' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __param(1, (0, common_1.Query)()),
@@ -57,7 +57,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)(),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Create a new partner' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Criar novo parceiro' }),
     (0, swagger_1.ApiResponse)({ status: 201 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __param(1, (0, common_1.Body)()),
@@ -68,7 +68,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Get a partner by ID' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Buscar parceiro por ID' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -79,7 +79,7 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Update a partner' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Atualizar parceiro' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -92,7 +92,7 @@ __decorate([
     (0, common_1.Delete)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
-    (0, swagger_1.ApiOperation)({ summary: 'Soft-delete a partner' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Excluir parceiro (soft delete)' }),
     (0, swagger_1.ApiResponse)({ status: 204 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),

@@ -64,7 +64,7 @@ export class CompaniesService {
 
   async findOne(id: string, companyId: string) {
     if (id !== companyId) {
-      throw new ForbiddenException('Access denied to this company');
+      throw new ForbiddenException('Acesso negado a esta empresa');
     }
 
     const company = await this.prisma.company.findFirst({
@@ -72,7 +72,7 @@ export class CompaniesService {
     });
 
     if (!company) {
-      throw new NotFoundException('Company not found');
+      throw new NotFoundException('Empresa não encontrada');
     }
 
     return company;
@@ -84,11 +84,11 @@ export class CompaniesService {
     });
 
     if (!company) {
-      throw new NotFoundException('Company not found');
+      throw new NotFoundException('Empresa não encontrada');
     }
 
     if (company.isOnboarded) {
-      throw new BadRequestException('Company is already onboarded');
+      throw new BadRequestException('Empresa já foi configurada');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -101,7 +101,7 @@ export class CompaniesService {
       });
 
       if (existingMatriz) {
-        throw new ConflictException('A MATRIZ establishment already exists for this company');
+        throw new ConflictException('Já existe um estabelecimento MATRIZ para esta empresa');
       }
 
       await tx.company.update({
@@ -143,7 +143,7 @@ export class CompaniesService {
     });
 
     if (!company) {
-      throw new NotFoundException('Company not found');
+      throw new NotFoundException('Empresa não encontrada');
     }
 
     return this.prisma.company.update({

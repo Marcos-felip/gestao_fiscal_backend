@@ -31,7 +31,7 @@ export class CompaniesController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new company' })
+  @ApiOperation({ summary: 'Criar nova empresa' })
   @ApiResponse({ status: 201 })
   create(
     @CurrentUser() user: { id: string; email: string },
@@ -43,7 +43,7 @@ export class CompaniesController {
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'List all companies for the current user' })
+  @ApiOperation({ summary: 'Listar empresas do usuário autenticado' })
   @ApiResponse({ status: 200 })
   findAll(@CurrentUser() user: { id: string; email: string }) {
     return this.companiesService.findAllForUser(user.id);
@@ -51,7 +51,7 @@ export class CompaniesController {
 
   @Get(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Get a company by ID' })
+  @ApiOperation({ summary: 'Buscar empresa por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.companiesService.findOne(id, companyId);
@@ -59,7 +59,7 @@ export class CompaniesController {
 
   @Post('onboarding')
   @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Onboard company with CNPJ, tax regime and MATRIZ establishment' })
+  @ApiOperation({ summary: 'Configurar empresa com CNPJ, regime tributário e estabelecimento MATRIZ' })
   @ApiResponse({ status: 200 })
   onboard(
     @CurrentCompany() companyId: string,
@@ -70,7 +70,7 @@ export class CompaniesController {
 
   @Patch(':id')
   @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Update a company (OWNER only)' })
+  @ApiOperation({ summary: 'Atualizar empresa (apenas OWNER)' })
   @ApiResponse({ status: 200 })
   update(
     @Param('id') id: string,

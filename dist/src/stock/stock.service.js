@@ -24,7 +24,7 @@ let StockService = class StockService {
                 where: { id: dto.productId, companyId, deletedAt: null },
             });
             if (!product) {
-                throw new common_1.NotFoundException('Product not found');
+                throw new common_1.NotFoundException('Produto não encontrado');
             }
             const currentStock = Number(product.currentStock);
             let newStock;
@@ -35,7 +35,7 @@ let StockService = class StockService {
                 case client_1.StockMovementType.SAIDA:
                     newStock = currentStock - dto.quantity;
                     if (newStock < 0) {
-                        throw new common_1.BadRequestException('Insufficient stock');
+                        throw new common_1.BadRequestException('Estoque insuficiente');
                     }
                     break;
                 case client_1.StockMovementType.AJUSTE:

@@ -34,7 +34,7 @@ let UsersService = class UsersService {
             },
         });
         if (!user) {
-            throw new common_1.NotFoundException('User not found');
+            throw new common_1.NotFoundException('Usuário não encontrado');
         }
         const { memberships, ...rest } = user;
         return { ...rest, membershipsCount: memberships.length };
@@ -62,7 +62,7 @@ let UsersService = class UsersService {
             },
         });
         if (!membership) {
-            throw new common_1.ForbiddenException('User is not a member of the target company');
+            throw new common_1.ForbiddenException('Usuário não é membro da empresa selecionada');
         }
         return this.prisma.user.update({
             where: { id: userId },

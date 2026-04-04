@@ -24,7 +24,7 @@ let EstablishmentsService = class EstablishmentsService {
                 where: { companyId, type: client_1.EstablishmentType.MATRIZ, deletedAt: null },
             });
             if (existingMatriz) {
-                throw new common_1.ConflictException('A MATRIZ establishment already exists for this company');
+                throw new common_1.ConflictException('Já existe um estabelecimento MATRIZ para esta empresa');
             }
         }
         return this.prisma.establishment.create({
@@ -55,7 +55,7 @@ let EstablishmentsService = class EstablishmentsService {
             where: { id, companyId, deletedAt: null },
         });
         if (!establishment) {
-            throw new common_1.NotFoundException('Establishment not found');
+            throw new common_1.NotFoundException('Estabelecimento não encontrado');
         }
         return establishment;
     }
@@ -69,7 +69,7 @@ let EstablishmentsService = class EstablishmentsService {
     async remove(id, companyId) {
         const establishment = await this.findOne(id, companyId);
         if (establishment.type === client_1.EstablishmentType.MATRIZ) {
-            throw new common_1.BadRequestException('Cannot delete the MATRIZ establishment');
+            throw new common_1.BadRequestException('Não é possível excluir o estabelecimento MATRIZ');
         }
         return this.prisma.establishment.update({
             where: { id },

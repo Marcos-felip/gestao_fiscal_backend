@@ -19,24 +19,24 @@ let PrismaExceptionFilter = class PrismaExceptionFilter {
             case 'P2002': {
                 status = common_1.HttpStatus.CONFLICT;
                 const fields = exception.meta?.target || [];
-                message = `Unique constraint violation on field(s): ${fields.join(', ')}`;
+                message = `Violação de unicidade no(s) campo(s): ${fields.join(', ')}`;
                 break;
             }
             case 'P2025':
                 status = common_1.HttpStatus.NOT_FOUND;
-                message = 'Record not found';
+                message = 'Registro não encontrado';
                 break;
             case 'P2003':
                 status = common_1.HttpStatus.BAD_REQUEST;
-                message = 'Foreign key constraint violation';
+                message = 'Violação de chave estrangeira';
                 break;
             case 'P2014':
                 status = common_1.HttpStatus.BAD_REQUEST;
-                message = 'Required relation violation';
+                message = 'Violação de relação obrigatória';
                 break;
             default:
                 status = common_1.HttpStatus.INTERNAL_SERVER_ERROR;
-                message = 'An unexpected database error occurred';
+                message = 'Erro inesperado no banco de dados';
         }
         response.status(status).json({
             statusCode: status,

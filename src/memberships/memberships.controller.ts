@@ -24,7 +24,7 @@ export class MembershipsController {
 
   @Post('invite')
   @TenantProtected(MembershipRole.OWNER, MembershipRole.ADMIN)
-  @ApiOperation({ summary: 'Invite a user to the company (OWNER or ADMIN)' })
+  @ApiOperation({ summary: 'Convidar usuário para a empresa (OWNER ou ADMIN)' })
   @ApiResponse({ status: 201 })
   invite(
     @CurrentCompany() companyId: string,
@@ -35,7 +35,7 @@ export class MembershipsController {
 
   @Get()
   @TenantProtected()
-  @ApiOperation({ summary: 'List all memberships for current company' })
+  @ApiOperation({ summary: 'Listar membros da empresa ativa' })
   @ApiResponse({ status: 200 })
   findAll(@CurrentCompany() companyId: string) {
     return this.membershipsService.findAll(companyId);
@@ -43,7 +43,7 @@ export class MembershipsController {
 
   @Patch(':id/role')
   @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Update a membership role (OWNER only)' })
+  @ApiOperation({ summary: 'Alterar papel de um membro (apenas OWNER)' })
   @ApiResponse({ status: 200 })
   updateRole(
     @Param('id') id: string,
@@ -56,7 +56,7 @@ export class MembershipsController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Remove a member from the company (OWNER only)' })
+  @ApiOperation({ summary: 'Remover membro da empresa (apenas OWNER)' })
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.membershipsService.remove(id, companyId);

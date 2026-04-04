@@ -28,7 +28,7 @@ export class EstablishmentsController {
 
   @Get()
   @TenantProtected()
-  @ApiOperation({ summary: 'List all establishments for the current company' })
+  @ApiOperation({ summary: 'Listar estabelecimentos da empresa ativa' })
   @ApiResponse({ status: 200 })
   findAll(@CurrentCompany() companyId: string) {
     return this.establishmentsService.findAll(companyId);
@@ -36,7 +36,7 @@ export class EstablishmentsController {
 
   @Post()
   @TenantProtected(MembershipRole.OWNER, MembershipRole.ADMIN)
-  @ApiOperation({ summary: 'Create a new establishment' })
+  @ApiOperation({ summary: 'Criar novo estabelecimento' })
   @ApiResponse({ status: 201 })
   create(
     @CurrentCompany() companyId: string,
@@ -47,7 +47,7 @@ export class EstablishmentsController {
 
   @Get(':id')
   @TenantProtected()
-  @ApiOperation({ summary: 'Get an establishment by ID' })
+  @ApiOperation({ summary: 'Buscar estabelecimento por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.establishmentsService.findOne(id, companyId);
@@ -55,7 +55,7 @@ export class EstablishmentsController {
 
   @Patch(':id')
   @TenantProtected(MembershipRole.OWNER, MembershipRole.ADMIN)
-  @ApiOperation({ summary: 'Update an establishment' })
+  @ApiOperation({ summary: 'Atualizar estabelecimento' })
   @ApiResponse({ status: 200 })
   update(
     @Param('id') id: string,
@@ -67,7 +67,7 @@ export class EstablishmentsController {
 
   @Delete(':id')
   @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Soft-delete an establishment (cannot delete MATRIZ)' })
+  @ApiOperation({ summary: 'Excluir estabelecimento (não é possível excluir MATRIZ)' })
   @ApiResponse({ status: 200 })
   remove(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.establishmentsService.remove(id, companyId);

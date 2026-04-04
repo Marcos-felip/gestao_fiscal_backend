@@ -38,7 +38,7 @@ let UsersController = class UsersController {
 exports.UsersController = UsersController;
 __decorate([
     (0, common_1.Get)('profile'),
-    (0, swagger_1.ApiOperation)({ summary: 'Get current user profile' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Obter perfil do usuário autenticado' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
@@ -47,7 +47,7 @@ __decorate([
 ], UsersController.prototype, "getProfile", null);
 __decorate([
     (0, common_1.Patch)('profile'),
-    (0, swagger_1.ApiOperation)({ summary: 'Update current user profile' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Atualizar perfil do usuário' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __param(1, (0, common_1.Body)()),
@@ -57,7 +57,7 @@ __decorate([
 ], UsersController.prototype, "updateProfile", null);
 __decorate([
     (0, common_1.Patch)('active-company'),
-    (0, swagger_1.ApiOperation)({ summary: 'Set the active company for the current user' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Definir empresa ativa do usuário' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __param(1, (0, common_1.Body)()),

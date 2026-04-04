@@ -29,7 +29,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Usuário não encontrado');
     }
 
     const { memberships, ...rest } = user;
@@ -62,7 +62,7 @@ export class UsersService {
     });
 
     if (!membership) {
-      throw new ForbiddenException('User is not a member of the target company');
+      throw new ForbiddenException('Usuário não é membro da empresa selecionada');
     }
 
     return this.prisma.user.update({

@@ -19,14 +19,14 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('profile')
-  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiOperation({ summary: 'Obter perfil do usuário autenticado' })
   @ApiResponse({ status: 200 })
   getProfile(@CurrentUser() user: { id: string; email: string }) {
     return this.usersService.getProfile(user.id);
   }
 
   @Patch('profile')
-  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiOperation({ summary: 'Atualizar perfil do usuário' })
   @ApiResponse({ status: 200 })
   updateProfile(
     @CurrentUser() user: { id: string; email: string },
@@ -36,7 +36,7 @@ export class UsersController {
   }
 
   @Patch('active-company')
-  @ApiOperation({ summary: 'Set the active company for the current user' })
+  @ApiOperation({ summary: 'Definir empresa ativa do usuário' })
   @ApiResponse({ status: 200 })
   updateActiveCompany(
     @CurrentUser() user: { id: string; email: string },

@@ -43,7 +43,7 @@ exports.MembershipsController = MembershipsController;
 __decorate([
     (0, common_1.Post)('invite'),
     (0, tenant_protected_decorator_1.TenantProtected)(client_1.MembershipRole.OWNER, client_1.MembershipRole.ADMIN),
-    (0, swagger_1.ApiOperation)({ summary: 'Invite a user to the company (OWNER or ADMIN)' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Convidar usuário para a empresa (OWNER ou ADMIN)' }),
     (0, swagger_1.ApiResponse)({ status: 201 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __param(1, (0, common_1.Body)()),
@@ -54,7 +54,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'List all memberships for current company' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Listar membros da empresa ativa' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __metadata("design:type", Function),
@@ -64,7 +64,7 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id/role'),
     (0, tenant_protected_decorator_1.TenantProtected)(client_1.MembershipRole.OWNER),
-    (0, swagger_1.ApiOperation)({ summary: 'Update a membership role (OWNER only)' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Alterar papel de um membro (apenas OWNER)' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -77,7 +77,7 @@ __decorate([
     (0, common_1.Delete)(':id'),
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, tenant_protected_decorator_1.TenantProtected)(client_1.MembershipRole.OWNER),
-    (0, swagger_1.ApiOperation)({ summary: 'Remove a member from the company (OWNER only)' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Remover membro da empresa (apenas OWNER)' }),
     (0, swagger_1.ApiResponse)({ status: 204 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),

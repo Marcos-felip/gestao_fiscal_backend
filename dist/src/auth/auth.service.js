@@ -62,7 +62,7 @@ let AuthService = class AuthService {
             where: { email: dto.email, deletedAt: null },
         });
         if (existing) {
-            throw new common_1.ConflictException('Email already registered');
+            throw new common_1.ConflictException('E-mail já cadastrado');
         }
         const passwordHash = await bcrypt.hash(dto.password, 12);
         const user = await this.prisma.user.create({
@@ -79,11 +79,11 @@ let AuthService = class AuthService {
             where: { email: dto.email, deletedAt: null },
         });
         if (!user) {
-            throw new common_1.UnauthorizedException('Invalid credentials');
+            throw new common_1.UnauthorizedException('Credenciais inválidas');
         }
         const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
         if (!passwordValid) {
-            throw new common_1.UnauthorizedException('Invalid credentials');
+            throw new common_1.UnauthorizedException('Credenciais inválidas');
         }
         return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
     }
@@ -92,11 +92,11 @@ let AuthService = class AuthService {
             where: { id: userId, deletedAt: null },
         });
         if (!user || !user.refreshToken) {
-            throw new common_1.UnauthorizedException('Invalid refresh token');
+            throw new common_1.UnauthorizedException('Token de atualização inválido');
         }
         const tokenValid = await bcrypt.compare(refreshToken, user.refreshToken);
         if (!tokenValid) {
-            throw new common_1.UnauthorizedException('Invalid refresh token');
+            throw new common_1.UnauthorizedException('Token de atualização inválido');
         }
         return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
     }

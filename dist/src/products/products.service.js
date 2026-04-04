@@ -40,7 +40,7 @@ let ProductsService = class ProductsService {
             where: { id, companyId, deletedAt: null },
         });
         if (!product) {
-            throw new common_1.NotFoundException('Product not found');
+            throw new common_1.NotFoundException('Produto não encontrado');
         }
         return product;
     }

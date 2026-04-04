@@ -53,7 +53,7 @@ exports.SalesController = SalesController;
 __decorate([
     (0, common_1.Post)(),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Create a new sale' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Criar nova venda' }),
     (0, swagger_1.ApiResponse)({ status: 201 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __param(1, (0, common_1.Body)()),
@@ -64,7 +64,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'List sales' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Listar vendas' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, current_company_decorator_1.CurrentCompany)()),
     __param(1, (0, common_1.Query)()),
@@ -75,7 +75,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Get a sale by ID' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Buscar venda por ID' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -86,7 +86,7 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Update a DRAFT sale' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Atualizar venda em RASCUNHO' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -98,7 +98,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)(':id/confirm'),
     (0, tenant_protected_decorator_1.TenantProtected)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Confirm a sale and deduct stock' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Confirmar venda e baixar estoque' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -109,7 +109,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)(':id/cancel'),
     (0, tenant_protected_decorator_1.TenantProtected)(client_1.MembershipRole.ADMIN, client_1.MembershipRole.OWNER),
-    (0, swagger_1.ApiOperation)({ summary: 'Cancel a sale' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Cancelar venda' }),
     (0, swagger_1.ApiResponse)({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),
@@ -121,7 +121,7 @@ __decorate([
     (0, common_1.Delete)(':id'),
     (0, tenant_protected_decorator_1.TenantProtected)(client_1.MembershipRole.ADMIN, client_1.MembershipRole.OWNER),
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
-    (0, swagger_1.ApiOperation)({ summary: 'Soft-delete a DRAFT or CANCELLED sale' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Excluir venda em RASCUNHO ou CANCELADA' }),
     (0, swagger_1.ApiResponse)({ status: 204 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, current_company_decorator_1.CurrentCompany)()),

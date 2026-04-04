@@ -25,7 +25,7 @@ export class PurchasesService {
         where: { id: dto.establishmentId, companyId, deletedAt: null },
       });
       if (!establishment) {
-        throw new NotFoundException('Establishment not found');
+        throw new NotFoundException('Estabelecimento não encontrado');
       }
 
       const itemsData: {
@@ -41,7 +41,7 @@ export class PurchasesService {
           where: { id: item.productId, companyId, deletedAt: null },
         });
         if (!product) {
-          throw new NotFoundException(`Product not found: ${item.productId}`);
+          throw new NotFoundException(`Produto não encontrado: ${item.productId}`);
         }
         const total = item.quantity * item.unitPrice;
         totalAmount += total;
@@ -129,7 +129,7 @@ export class PurchasesService {
       },
     });
 
-    if (!purchase) throw new NotFoundException('Purchase not found');
+    if (!purchase) throw new NotFoundException('Compra não encontrada');
     return purchase;
   }
 
@@ -141,7 +141,7 @@ export class PurchasesService {
     const purchase = await this.findOne(id, companyId);
 
     if (purchase.status !== PurchaseStatus.DRAFT) {
-      throw new BadRequestException('Only DRAFT purchases can be updated');
+      throw new BadRequestException('Apenas compras em RASCUNHO podem ser editadas');
     }
 
     return this.prisma.purchase.update({
@@ -162,9 +162,9 @@ export class PurchasesService {
         include: { items: true },
       });
 
-      if (!purchase) throw new NotFoundException('Purchase not found');
+      if (!purchase) throw new NotFoundException('Compra não encontrada');
       if (purchase.status !== PurchaseStatus.DRAFT) {
-        throw new BadRequestException('Only DRAFT purchases can be confirmed');
+        throw new BadRequestException('Apenas compras em RASCUNHO podem ser confirmadas');
       }
 
       for (const item of purchase.items) {
@@ -173,7 +173,7 @@ export class PurchasesService {
         });
 
         if (!product) {
-          throw new NotFoundException(`Product not found: ${item.productId}`);
+          throw new NotFoundException(`Produto não encontrado: ${item.productId}`);
         }
 
         const qty = Number(item.quantity);
@@ -210,13 +210,13 @@ export class PurchasesService {
         include: { items: true },
       });
 
-      if (!purchase) throw new NotFoundException('Purchase not found');
+      if (!purchase) throw new NotFoundException('Compra não encontrada');
 
       if (
         purchase.status !== PurchaseStatus.DRAFT &&
         purchase.status !== PurchaseStatus.CONFIRMED
       ) {
-        throw new BadRequestException('Purchase cannot be cancelled');
+        throw new BadRequestException('Esta compra não pode ser cancelada');
       }
 
       if (purchase.status === PurchaseStatus.CONFIRMED) {
@@ -264,7 +264,7 @@ export class PurchasesService {
       purchase.status !== PurchaseStatus.CANCELLED
     ) {
       throw new BadRequestException(
-        'Only DRAFT or CANCELLED purchases can be deleted',
+        'Apenas compras em RASCUNHO ou CANCELADAS podem ser excluídas',
       );
     }
 

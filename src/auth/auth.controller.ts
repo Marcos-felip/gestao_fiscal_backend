@@ -26,7 +26,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Register a new user' })
+  @ApiOperation({ summary: 'Registrar novo usuário' })
   @ApiResponse({ status: 201, type: AuthResponseDto })
   register(@Body() dto: RegisterDto): Promise<AuthResponseDto> {
     return this.authService.register(dto);
@@ -34,7 +34,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with email and password' })
+  @ApiOperation({ summary: 'Autenticar com e-mail e senha' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
   login(@Body() dto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(dto);
@@ -42,7 +42,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh access token' })
+  @ApiOperation({ summary: 'Renovar token de acesso' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
   async refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
     // Decode without verification to get userId, then verify with stored hash
@@ -54,7 +54,7 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Logout and invalidate refresh token' })
+  @ApiOperation({ summary: 'Encerrar sessão e invalidar token' })
   @ApiResponse({ status: 204 })
   logout(@CurrentUser() user: { id: string; email: string }): Promise<void> {
     return this.authService.logout(user.id);

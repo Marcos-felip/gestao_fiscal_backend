@@ -25,7 +25,7 @@ export class AuthService {
     });
 
     if (existing) {
-      throw new ConflictException('Email already registered');
+      throw new ConflictException('E-mail já cadastrado');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -47,12 +47,12 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Credenciais inválidas');
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Credenciais inválidas');
     }
 
     return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
@@ -67,12 +67,12 @@ export class AuthService {
     });
 
     if (!user || !user.refreshToken) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException('Token de atualização inválido');
     }
 
     const tokenValid = await bcrypt.compare(refreshToken, user.refreshToken);
     if (!tokenValid) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException('Token de atualização inválido');
     }
 
     return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);

@@ -42,7 +42,7 @@ let PartnersService = class PartnersService {
             where: { id, companyId, deletedAt: null },
         });
         if (!partner) {
-            throw new common_1.NotFoundException('Partner not found');
+            throw new common_1.NotFoundException('Parceiro não encontrado');
         }
         return partner;
     }
