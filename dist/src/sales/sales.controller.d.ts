@@ -1,0 +1,90 @@
+import { SalesService } from './sales.service';
+import { CreateSaleDto } from './dto/create-sale.dto';
+import { UpdateSaleDto } from './dto/update-sale.dto';
+import { FilterSaleDto } from './dto/filter-sale.dto';
+export declare class SalesController {
+    private readonly salesService;
+    constructor(salesService: SalesService);
+    create(companyId: string, dto: CreateSaleDto): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        companyId: string;
+        discount: import("@prisma/client-runtime-utils").Decimal;
+        establishmentId: string;
+        clientId: string | null;
+        notes: string | null;
+        saleDate: Date;
+        status: import("@prisma/client").$Enums.SaleStatus;
+        saleNumber: number;
+        totalAmount: import("@prisma/client-runtime-utils").Decimal;
+    }>;
+    findAll(companyId: string, filter: FilterSaleDto): Promise<{
+        data: import("@prisma/client").Sale[];
+        total: number;
+        page: number;
+        limit: number;
+    }>;
+    findOne(id: string, companyId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        companyId: string;
+        discount: import("@prisma/client-runtime-utils").Decimal;
+        establishmentId: string;
+        clientId: string | null;
+        notes: string | null;
+        saleDate: Date;
+        status: import("@prisma/client").$Enums.SaleStatus;
+        saleNumber: number;
+        totalAmount: import("@prisma/client-runtime-utils").Decimal;
+    }>;
+    update(id: string, companyId: string, dto: UpdateSaleDto): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        companyId: string;
+        discount: import("@prisma/client-runtime-utils").Decimal;
+        establishmentId: string;
+        clientId: string | null;
+        notes: string | null;
+        saleDate: Date;
+        status: import("@prisma/client").$Enums.SaleStatus;
+        saleNumber: number;
+        totalAmount: import("@prisma/client-runtime-utils").Decimal;
+    }>;
+    confirm(id: string, companyId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        companyId: string;
+        discount: import("@prisma/client-runtime-utils").Decimal;
+        establishmentId: string;
+        clientId: string | null;
+        notes: string | null;
+        saleDate: Date;
+        status: import("@prisma/client").$Enums.SaleStatus;
+        saleNumber: number;
+        totalAmount: import("@prisma/client-runtime-utils").Decimal;
+    }>;
+    cancel(id: string, companyId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        companyId: string;
+        discount: import("@prisma/client-runtime-utils").Decimal;
+        establishmentId: string;
+        clientId: string | null;
+        notes: string | null;
+        saleDate: Date;
+        status: import("@prisma/client").$Enums.SaleStatus;
+        saleNumber: number;
+        totalAmount: import("@prisma/client-runtime-utils").Decimal;
+    }>;
+    remove(id: string, companyId: string): Promise<void>;
+}
