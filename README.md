@@ -4,14 +4,14 @@ API backend do sistema SaaS de gestão fiscal e operacional para empresas brasil
 
 ## Tecnologias
 
-| Tecnologia | Versão | Uso |
-|-----------|--------|-----|
-| Node.js | 20+ | Runtime |
-| NestJS | 10 | Framework backend |
-| Prisma | 7 | ORM |
-| PostgreSQL | 16 | Banco de dados |
-| Passport / JWT | — | Autenticação |
-| Docker | — | Ambiente de desenvolvimento |
+| Tecnologia     | Versão | Uso                         |
+| -------------- | ------ | --------------------------- |
+| Node.js        | 20+    | Runtime                     |
+| NestJS         | 10     | Framework backend           |
+| Prisma         | 7      | ORM                         |
+| PostgreSQL     | 16     | Banco de dados              |
+| Passport / JWT | —      | Autenticação                |
+| Docker         | —      | Ambiente de desenvolvimento |
 
 ## Pré-requisitos
 
@@ -42,7 +42,12 @@ Edite o arquivo `.env` com os valores corretos (veja a tabela abaixo).
 docker compose up -d
 ```
 
-Isso sobe o PostgreSQL na porta `5432` e o pgAdmin na porta `5050`.
+As portas são configuráveis pelo `.env`:
+
+- `POSTGRES_HOST_PORT` (padrão sugerido: `5433`)
+- `PGADMIN_HOST_PORT` (padrão: `5050`)
+
+Se você já usa PostgreSQL local em `5432`, mantenha `POSTGRES_HOST_PORT=5433` para evitar conflito.
 
 ### 4. Instalar dependências
 
@@ -67,14 +72,16 @@ A documentação Swagger estará em `http://localhost:3000/api/v1/docs`.
 
 ## Variáveis de ambiente
 
-| Variável | Obrigatória | Descrição | Exemplo |
-|----------|-------------|-----------|---------|
-| `DATABASE_URL` | Sim | URL de conexão com o PostgreSQL | `postgresql://user:pass@localhost:5432/db` |
-| `JWT_SECRET` | Sim | Segredo para assinar os access tokens | `meu-segredo-super-secreto` |
-| `JWT_REFRESH_SECRET` | Sim | Segredo para assinar os refresh tokens | `outro-segredo-refresh` |
-| `JWT_ACCESS_EXPIRATION` | Sim | Expiração do access token | `15m` |
-| `JWT_REFRESH_EXPIRATION` | Sim | Expiração do refresh token | `7d` |
-| `PORT` | Não | Porta do servidor (padrão: 3000) | `3000` |
+| Variável                 | Obrigatória | Descrição                                                         | Exemplo                                    |
+| ------------------------ | ----------- | ----------------------------------------------------------------- | ------------------------------------------ |
+| `POSTGRES_HOST_PORT`     | Não         | Porta no host para publicar o Postgres do Docker                  | `5433`                                     |
+| `PGADMIN_HOST_PORT`      | Não         | Porta no host para publicar o pgAdmin                             | `5050`                                     |
+| `DATABASE_URL`           | Sim         | URL de conexão com o PostgreSQL (preferir `127.0.0.1` no Windows) | `postgresql://user:pass@127.0.0.1:5433/db` |
+| `JWT_SECRET`             | Sim         | Segredo para assinar os access tokens                             | `meu-segredo-super-secreto`                |
+| `JWT_REFRESH_SECRET`     | Sim         | Segredo para assinar os refresh tokens                            | `outro-segredo-refresh`                    |
+| `JWT_ACCESS_EXPIRATION`  | Sim         | Expiração do access token                                         | `15m`                                      |
+| `JWT_REFRESH_EXPIRATION` | Sim         | Expiração do refresh token                                        | `7d`                                       |
+| `PORT`                   | Não         | Porta do servidor (padrão: 3000)                                  | `3000`                                     |
 
 ## Como rodar os testes
 
@@ -91,18 +98,18 @@ npm run test:e2e
 
 ## Scripts disponíveis
 
-| Script | Descrição |
-|--------|-----------|
-| `npm run start:dev` | Inicia em modo desenvolvimento com hot-reload |
-| `npm run build` | Compila o projeto TypeScript |
-| `npm run start:prod` | Inicia a versão compilada em produção |
-| `npm test` | Executa os testes unitários com Jest |
-| `npm run test:cov` | Testes unitários com relatório de cobertura |
-| `npm run test:e2e` | Executa os testes de integração |
-| `npx prisma migrate dev` | Cria e aplica novas migrations |
-| `npx prisma generate` | Regenera o Prisma Client |
-| `npx prisma studio` | Abre o Prisma Studio (interface visual do banco) |
-| `docker compose up -d` | Sobe PostgreSQL e pgAdmin via Docker |
+| Script                   | Descrição                                        |
+| ------------------------ | ------------------------------------------------ |
+| `npm run start:dev`      | Inicia em modo desenvolvimento com hot-reload    |
+| `npm run build`          | Compila o projeto TypeScript                     |
+| `npm run start:prod`     | Inicia a versão compilada em produção            |
+| `npm test`               | Executa os testes unitários com Jest             |
+| `npm run test:cov`       | Testes unitários com relatório de cobertura      |
+| `npm run test:e2e`       | Executa os testes de integração                  |
+| `npx prisma migrate dev` | Cria e aplica novas migrations                   |
+| `npx prisma generate`    | Regenera o Prisma Client                         |
+| `npx prisma studio`      | Abre o Prisma Studio (interface visual do banco) |
+| `docker compose up -d`   | Sobe PostgreSQL e pgAdmin via Docker             |
 
 ## Estrutura de pastas
 
@@ -140,5 +147,6 @@ Consulte o arquivo [BANCO_DE_DADOS.md](./BANCO_DE_DADOS.md) para a documentaçã
 ## pgAdmin
 
 Acesse o pgAdmin em `http://localhost:5050` com:
+
 - **E-mail:** admin@admin.com
 - **Senha:** admin
