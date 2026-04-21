@@ -82,6 +82,7 @@ A documentação Swagger estará em `http://localhost:3000/api/v1/docs`.
 | `JWT_ACCESS_EXPIRATION`  | Sim         | Expiração do access token                                         | `15m`                                      |
 | `JWT_REFRESH_EXPIRATION` | Sim         | Expiração do refresh token                                        | `7d`                                       |
 | `PORT`                   | Não         | Porta do servidor (padrão: 3000)                                  | `3000`                                     |
+| `FRONTEND_COPILOT_INSTRUCTIONS_PATH` | Sim (para sync) | Caminho do `.github/copilot-instructions.md` do frontend para sincronização automática | `/home/.../gestao_fiscal_frontend/.github/copilot-instructions.md` |
 
 ## Como rodar os testes
 
@@ -106,10 +107,21 @@ npm run test:e2e
 | `npm test`               | Executa os testes unitários com Jest             |
 | `npm run test:cov`       | Testes unitários com relatório de cobertura      |
 | `npm run test:e2e`       | Executa os testes de integração                  |
+| `npm run sync:copilot-instructions` | Sincroniza a linha `Frontend:` em `.github/copilot-instructions.md` com o valor do `.env` |
 | `npx prisma migrate dev` | Cria e aplica novas migrations                   |
 | `npx prisma generate`    | Regenera o Prisma Client                         |
 | `npx prisma studio`      | Abre o Prisma Studio (interface visual do banco) |
 | `docker compose up -d`   | Sobe PostgreSQL e pgAdmin via Docker             |
+
+### Sincronizar referência do frontend no Copilot
+
+Defina `FRONTEND_COPILOT_INSTRUCTIONS_PATH` no `.env` e execute:
+
+```bash
+npm run sync:copilot-instructions
+```
+
+Esse comando atualiza apenas a linha `Frontend:` em `.github/copilot-instructions.md`.
 
 ## Estrutura de pastas
 

@@ -1,0 +1,42 @@
+name: Contract Sync Check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-sync-check:
+    name: Validate API contract sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check API.md sync for controller/dto changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          CHANGED_FILES="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+
+          echo "Arquivos alterados na PR:"
+          echo "$CHANGED_FILES"
+
+          if echo "$CHANGED_FILES" | grep -Eq '^src/.+\.controller\.ts$|^src/.+/dto/.+\.ts$'; then
+            if ! echo "$CHANGED_FILES" | grep -q '^API\.md$'; then
+              echo "::error::Foram detectadas alterações em controllers/DTOs sem atualização do API.md. Sincronize o contrato da API para o frontend antes de fazer merge desta PR."
+              exit 1
+            fi
+
+            echo "API.md foi atualizado junto com alterações em controllers/DTOs."
+          else
+            echo "Nenhuma alteração em controllers/DTOs detectada."
+          fi
