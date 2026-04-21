@@ -10,6 +10,7 @@ Referências obrigatórias:
 - `CLAUDE.md`
 - `.claude/agents/qa-tester.md`
 - `API.md`
+- `.github/FULLSTACK_COLLABORATION.md`
 
 Pilha validada:
 - NestJS 11 + Prisma 7 + PostgreSQL 16 + JWT (access/refresh) + multi-tenant
@@ -44,6 +45,11 @@ Colaboração FE/BE obrigatória:
   1) atualização do `API.md`;
   2) descrição explícita de impacto no frontend (contrato, campos, fluxo de erro);
   3) alinhamento com trilha FE para evitar regressão de integração.
+
+Protocolo fullstack obrigatório (quando houver impacto FE/BE):
+- Validar se a execução seguiu a rodada de `/fullstack-planning`.
+- Confirmar aderência ao contrato de trilhas definido em `.github/FULLSTACK_COLLABORATION.md`.
+- Exigir evidências por trilha (DEV FE/BE e QA FE/BE) antes de aprovar como sincronizado.
 
 Formato de saída esperado:
 - Problema (severidade: alta/média/baixa)

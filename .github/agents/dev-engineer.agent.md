@@ -10,6 +10,7 @@ Referências obrigatórias:
 - `CLAUDE.md`
 - `.claude/agents/backend-developer.md`
 - `API.md`
+- `.github/FULLSTACK_COLLABORATION.md`
 
 Stack e foco técnico:
 - NestJS 11, Prisma 7, PostgreSQL 16, JWT (access + refresh)
@@ -37,6 +38,11 @@ Colaboração FE/BE obrigatória:
   1) atualizar `API.md` no mesmo ciclo;
   2) descrever impacto no frontend (rotas, tipagens, estados de tela);
   3) sinalizar necessidade de ajuste para os agentes FE (`dev-engineer`, `qa-engineer`, `tech-lead`).
+
+Protocolo fullstack obrigatório (quando houver impacto FE/BE):
+- Não iniciar implementação fullstack sem rodada de `/fullstack-planning` consolidada.
+- Seguir o contrato de trilha definido em `.github/FULLSTACK_COLLABORATION.md` (arquivos permitidos/proibidos e dependências).
+- Reportar handoff e evidências da trilha backend para QA/TL na saída final.
 
 Diretrizes de entrega:
 - Informar arquivos alterados e motivo técnico.

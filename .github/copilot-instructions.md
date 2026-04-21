@@ -119,15 +119,19 @@ npm run start:dev
 - `/async-multi-agent`: orquestra DEV + QA em paralelo com consolidação técnica.
 - `/prisma-multi-tenant-check`: audita queries Prisma para isolamento tenant, soft delete e integridade.
 - `/fullstack-contract-sync`: coordena sincronização de contrato entre backend e frontend.
+- `/fullstack-planning`: conduz reunião técnica FE/BE e consolida plano único com contrato de trilhas.
 
 ### Fluxo recomendado em tarefas grandes
-1. `tech-lead` define plano e divide trilhas.
-2. `dev-engineer` implementa com foco em contrato + domínio.
-3. `qa-engineer` valida testes, permissões, multi-tenancy e regressão.
-4. `tech-lead` consolida resultado final.
+1. Se houver impacto FE/BE, iniciar com `/fullstack-planning` (rito de reunião + plano final obrigatório).
+2. `tech-lead` define plano e divide trilhas no `/fleet`.
+3. `dev-engineer` implementa com foco em contrato + domínio.
+4. `qa-engineer` valida testes, permissões, multi-tenancy e regressão.
+5. `tech-lead` consolida resultado final.
 
 ## 8) Protocolo de Trabalho Conjunto FE/BE
 
+- O protocolo oficial de colaboração fullstack está em `.github/FULLSTACK_COLLABORATION.md`.
+- Para tarefas com impacto FE/BE, aplicar `/fullstack-planning` antes de qualquer implementação.
 - `API.md` é a **fonte de verdade compartilhada** entre frontend e backend.
 - Qualquer alteração em controller, DTO, enum, status code, paginação ou regra de workflow **deve** atualizar `API.md` na mesma entrega.
 - Mudança que impacta frontend deve incluir checklist de impacto:
@@ -139,10 +143,12 @@ npm run start:dev
 - Para mudanças breaking, comunicar explicitamente estratégia de migração (compatibilidade temporária, feature flag ou rollout coordenado).
 - Frontend deve consumir apenas contratos documentados; backend não deve introduzir divergência silenciosa entre implementação e documentação.
 - Antes de merge, validar fluxo ponta a ponta de autenticação, tenant ativo, permissões e impactos em telas de venda/compra/estoque.
+- Preservar compatibilidade com `sync:copilot-instructions`: manter a linha `Frontend:` no formato atual e usar `FRONTEND_COPILOT_INSTRUCTIONS_PATH` no `.env`.
 
 ## Documentação Relacionada
 
 - `CLAUDE.md`
 - `REGRAS_DE_NEGOCIO.md`
 - `API.md`
+- `.github/FULLSTACK_COLLABORATION.md`
 - Frontend: `/home/marcos/Projetos/gestao_fiscal_frontend/.github/copilot-instructions.md`
