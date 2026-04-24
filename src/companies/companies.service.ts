@@ -21,6 +21,7 @@ export class CompaniesService {
         data: {
           name: dto.name,
           type: dto.type,
+          businessSegment: dto.businessSegment,
           phone: dto.phone,
         },
       });

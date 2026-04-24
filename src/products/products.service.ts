@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Product } from '@prisma/client';
+import { Prisma, Product } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -63,6 +63,7 @@ export class ProductsService {
         cest: dto.cest,
         cfop: dto.cfop,
         origin: dto.origin,
+        technicalAttributes: dto.technicalAttributes as Prisma.InputJsonValue | undefined,
       },
     });
   }
@@ -89,6 +90,7 @@ export class ProductsService {
         cest: dto.cest,
         cfop: dto.cfop,
         origin: dto.origin,
+        technicalAttributes: dto.technicalAttributes as Prisma.InputJsonValue | undefined,
         isActive: dto.isActive,
       },
     });

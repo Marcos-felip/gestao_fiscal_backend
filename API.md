@@ -139,6 +139,7 @@
 {
   "name": "string (min 2, obrigatório)",
   "type": "MEI | ME | EPP | LTDA | SA | EIRELI | SLU (opcional)",
+  "businessSegment": "ALUMINIO_PORTAS | SUPERMERCADO | PAPELARIA | MERCEARIA | LANCHONETE | GENERICO (opcional)",
   "phone": "string (opcional)"
 }
 ```
@@ -149,6 +150,7 @@
   "id": "uuid",
   "name": "string",
   "type": "string | null",
+  "businessSegment": "string | null",
   "phone": "string | null",
   "isOnboarded": false,
   "createdAt": "ISO8601"
@@ -163,7 +165,7 @@
 
 > Requer apenas JWT
 
-**Resposta 200:** array de empresas onde o usuário tem membership
+**Resposta 200:** array de empresas onde o usuário tem membership (inclui `businessSegment`)
 
 ---
 
@@ -350,7 +352,8 @@
   "ncm": "string (opcional)",
   "cest": "string (opcional)",
   "cfop": "string (opcional)",
-  "origin": "number 0-8 (opcional)"
+  "origin": "number 0-8 (opcional)",
+  "technicalAttributes": "{ ... } objeto JSON com atributos técnicos (opcional)"
 }
 ```
 
@@ -364,7 +367,7 @@
 
 ### PATCH /products/:id — Atualizar produto
 
-**Body:** mesmo campos do POST, mais `isActive: boolean`
+**Body:** mesmo campos do POST (incluindo `technicalAttributes`), mais `isActive: boolean`
 
 ---
 
@@ -637,6 +640,7 @@ Todos os endpoints de listagem suportam paginação:
 | Enum | Valores aceitos |
 |------|----------------|
 | `CompanyType` | `MEI`, `ME`, `EPP`, `LTDA`, `SA`, `EIRELI`, `SLU` |
+| `BusinessSegment` | `ALUMINIO_PORTAS`, `SUPERMERCADO`, `PAPELARIA`, `MERCEARIA`, `LANCHONETE`, `GENERICO` |
 | `TaxRegime` | `SIMPLES_NACIONAL`, `LUCRO_PRESUMIDO`, `LUCRO_REAL`, `MEI` |
 | `EstablishmentType` | `MATRIZ`, `FILIAL` |
 | `MembershipRole` | `OWNER`, `ADMIN`, `MEMBER` |
