@@ -181,9 +181,48 @@
 
 ### PATCH /companies/:id — Atualizar empresa (apenas OWNER)
 
-**Body:** mesmo campos do POST, todos opcionais
+> Requer empresa ativa. Permite atualizar dados da empresa: nome, tipo, CNPJ, inscrição estadual, telefone e regime tributário.
 
-**Resposta 200:** empresa atualizada
+**Body:** (todos os campos são opcionais)
+```json
+{
+  "name": "string (min 2 chars)",
+  "type": "MEI | ME | EPP | LTDA | SA | EIRELI | SLU",
+  "cnpj": "string (formato: XX.XXX.XXX/XXXX-XX)",
+  "stateRegistration": "string (Inscrição Estadual, min 11 dígitos)",
+  "phone": "string (formato: (XX) XXXXX-XXXX)",
+  "taxRegime": "SIMPLES_NACIONAL | LUCRO_PRESUMIDO | LUCRO_REAL | MEI"
+}
+```
+
+**Validações:**
+- `name`: mínimo 2 caracteres
+- `type`: enum válido (MEI, ME, EPP, LTDA, SA, EIRELI, SLU)
+- `cnpj`: formato brasileiro XX.XXX.XXX/XXXX-XX (validação de dígitos)
+- `stateRegistration`: mínimo 11 dígitos (padrão estadual brasileiro)
+- `phone`: formato (XX) XXXXX-XXXX ou variações
+- `taxRegime`: enum válido (SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL, MEI)
+
+**Resposta 200:**
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "type": "string",
+  "cnpj": "string",
+  "taxRegime": "string",
+  "phone": "string",
+  "isOnboarded": "boolean",
+  "createdAt": "ISO8601",
+  "updatedAt": "ISO8601"
+}
+```
+
+**Erros:**
+- `400` Validação inválida (CNPJ, IE, telefone, nome)
+- `403` Acesso negado (não é OWNER)
+- `404` Empresa não encontrada
+- `409` CNPJ já cadastrado em outra empresa
 
 ---
 

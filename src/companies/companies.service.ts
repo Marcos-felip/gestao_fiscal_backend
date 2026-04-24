@@ -147,9 +147,64 @@ export class CompaniesService {
       throw new NotFoundException('Empresa não encontrada');
     }
 
+    // Validações adicionais de negócio
+    if (dto.cnpj !== undefined && dto.cnpj !== company.cnpj) {
+      // Verificar se CNPJ já existe (excluindo a empresa atual)
+      const existingWithCnpj = await this.prisma.company.findFirst({
+        where: {
+          cnpj: dto.cnpj,
+          id: { not: companyId },
+          deletedAt: null,
+        },
+      });
+
+      if (existingWithCnpj) {
+        throw new ConflictException('CNPJ já cadastrado em outra empresa');
+      }
+    }
+
+    // Preparar dados para atualizar na Company
+    const updateData: Partial<Record<string, unknown>> = {};
+
+    if (dto.name !== undefined) updateData.name = dto.name;
+    if (dto.type !== undefined) updateData.type = dto.type;
+    if (dto.cnpj !== undefined) updateData.cnpj = dto.cnpj;
+    if (dto.phone !== undefined) updateData.phone = dto.phone;
+    if (dto.taxRegime !== undefined) updateData.taxRegime = dto.taxRegime;
+
+    // Atualizar stateRegistration (inscricaoEstadual) no Establishment MATRIZ se fornecido
+    if (dto.stateRegistration !== undefined) {
+      return this.prisma.$transaction(async (tx) => {
+        // Atualizar Company
+        const updatedCompany = await tx.company.update({
+          where: { id: companyId },
+          data: updateData,
+        });
+
+        // Atualizar Establishment MATRIZ se existir
+        const matriz = await tx.establishment.findFirst({
+          where: {
+            companyId,
+            type: EstablishmentType.MATRIZ,
+            deletedAt: null,
+          },
+        });
+
+        if (matriz) {
+          await tx.establishment.update({
+            where: { id: matriz.id },
+            data: { inscricaoEstadual: dto.stateRegistration },
+          });
+        }
+
+        return updatedCompany;
+      });
+    }
+
+    // Atualizar apenas Company se stateRegistration não foi fornecido
     return this.prisma.company.update({
       where: { id: companyId },
-      data: dto,
+      data: updateData,
     });
   }
 }

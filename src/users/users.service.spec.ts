@@ -1,15 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const mockPrismaService = {
   user: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     update: jest.fn(),
+    create: jest.fn(),
   },
   membership: {
     findFirst: jest.fn(),
+  },
+  company: {
+    findUnique: jest.fn(),
   },
 };
 
@@ -124,6 +129,151 @@ describe('UsersService', () => {
         }),
       );
       expect(result.companyActiveId).toBe('company-1');
+    });
+  });
+
+  describe('createUser', () => {
+    it('should throw NotFoundException if company not found', async () => {
+      mockPrismaService.company.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.createUser({
+          email: 'newuser@example.com',
+          role: 'MEMBER',
+          companyId: 'invalid-company',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ConflictException if email already exists', async () => {
+      mockPrismaService.company.findUnique.mockResolvedValue({
+        id: 'company-1',
+        name: 'Test Company',
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'existing@example.com',
+      });
+
+      await expect(
+        service.createUser({
+          email: 'existing@example.com',
+          role: 'MEMBER',
+          companyId: 'company-1',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should create user with MEMBER role successfully', async () => {
+      const newUserId = 'new-user-123';
+      const newEmail = 'newuser@example.com';
+
+      mockPrismaService.company.findUnique.mockResolvedValue({
+        id: 'company-1',
+        name: 'Test Company',
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockResolvedValue({
+        id: newUserId,
+        email: newEmail,
+        createdAt: new Date(),
+        memberships: [
+          {
+            role: 'MEMBER',
+            companyId: 'company-1',
+          },
+        ],
+      });
+
+      const result = await service.createUser({
+        email: newEmail,
+        role: 'MEMBER',
+        companyId: 'company-1',
+      });
+
+      expect(result.id).toBe(newUserId);
+      expect(result.email).toBe(newEmail);
+      expect(result.role).toBe('MEMBER');
+      expect(result.companyId).toBe('company-1');
+      expect(result.temporaryPassword).toBeDefined();
+    });
+
+    it('should create user with ADMIN role successfully', async () => {
+      const newUserId = 'new-user-456';
+      const newEmail = 'admin@example.com';
+
+      mockPrismaService.company.findUnique.mockResolvedValue({
+        id: 'company-1',
+        name: 'Test Company',
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockResolvedValue({
+        id: newUserId,
+        email: newEmail,
+        createdAt: new Date(),
+        memberships: [
+          {
+            role: 'ADMIN',
+            companyId: 'company-1',
+          },
+        ],
+      });
+
+      const result = await service.createUser({
+        email: newEmail,
+        role: 'ADMIN',
+        companyId: 'company-1',
+      });
+
+      expect(result.id).toBe(newUserId);
+      expect(result.email).toBe(newEmail);
+      expect(result.role).toBe('ADMIN');
+    });
+
+    it('should call user.create with correct structure', async () => {
+      const newEmail = 'test@example.com';
+
+      mockPrismaService.company.findUnique.mockResolvedValue({
+        id: 'company-1',
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockResolvedValue({
+        id: 'new-user',
+        email: newEmail,
+        createdAt: new Date(),
+        memberships: [{ role: 'MEMBER', companyId: 'company-1' }],
+      });
+
+      await service.createUser({
+        email: newEmail,
+        role: 'MEMBER',
+        companyId: 'company-1',
+      });
+
+      expect(mockPrismaService.user.create).toHaveBeenCalledWith({
+        data: {
+          name: 'test',
+          email: newEmail,
+          passwordHash: expect.any(String),
+          memberships: {
+            create: {
+              companyId: 'company-1',
+              role: 'MEMBER',
+            },
+          },
+        },
+        select: {
+          id: true,
+          email: true,
+          createdAt: true,
+          memberships: {
+            select: {
+              role: true,
+              companyId: true,
+            },
+          },
+        },
+      });
     });
   });
 });

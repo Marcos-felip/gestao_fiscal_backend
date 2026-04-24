@@ -355,3 +355,24 @@ model PurchaseItem {
   @@index([purchaseId])
   @@map("purchase_items")
 }
+
+// ─── PERMISSION ─────────────────────────────────────
+
+model Permission {
+  code        String @id
+  description String
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role           MembershipRole @map("role")
+  permissionCode String         @map("permission_code")
+
+  permission Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
+
+  @@id([role, permissionCode])
+  @@map("role_permissions")
+}

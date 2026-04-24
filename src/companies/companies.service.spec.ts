@@ -1,14 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { MembershipRole, TaxRegime, EstablishmentType } from '@prisma/client';
 import { CompaniesService } from './companies.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const mockTx = {
-  company: { create: jest.fn(), update: jest.fn() },
+  company: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
   membership: { create: jest.fn() },
   user: { update: jest.fn() },
-  establishment: { findFirst: jest.fn(), create: jest.fn() },
+  establishment: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
 };
 
 const mockPrismaService = {
@@ -166,6 +166,172 @@ describe('CompaniesService', () => {
       mockPrismaService.company.findFirst.mockResolvedValue(null);
 
       await expect(service.onboard('nonexistent', onboardingDto as any)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('update', () => {
+    const baseCompany = {
+      id: 'company-1',
+      name: 'Original Name',
+      type: 'MEI',
+      cnpj: null,
+      taxRegime: null,
+      phone: null,
+      deletedAt: null,
+    };
+
+    it('should update company name successfully', async () => {
+      const updatedCompany = { ...baseCompany, name: 'Updated Name' };
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+      mockPrismaService.company.update.mockResolvedValue(updatedCompany);
+
+      const result = await service.update('company-1', { name: 'Updated Name' });
+
+      expect(mockPrismaService.company.update).toHaveBeenCalledWith({
+        where: { id: 'company-1' },
+        data: { name: 'Updated Name' },
+      });
+      expect(result).toEqual(updatedCompany);
+    });
+
+    it('should update company type successfully', async () => {
+      const updatedCompany = { ...baseCompany, type: 'LTDA' };
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+      mockPrismaService.company.update.mockResolvedValue(updatedCompany);
+
+      const result = await service.update('company-1', { type: 'LTDA' as any });
+
+      expect(mockPrismaService.company.update).toHaveBeenCalledWith({
+        where: { id: 'company-1' },
+        data: { type: 'LTDA' },
+      });
+      expect(result).toEqual(updatedCompany);
+    });
+
+    it('should update company CNPJ successfully', async () => {
+      const updatedCompany = { ...baseCompany, cnpj: '12.345.678/0001-95' };
+      mockPrismaService.company.findFirst
+        .mockResolvedValueOnce(baseCompany)
+        .mockResolvedValueOnce(null); // No other company with same CNPJ
+      mockPrismaService.company.update.mockResolvedValue(updatedCompany);
+
+      const result = await service.update('company-1', { cnpj: '12.345.678/0001-95' });
+
+      expect(mockPrismaService.company.update).toHaveBeenCalledWith({
+        where: { id: 'company-1' },
+        data: { cnpj: '12.345.678/0001-95' },
+      });
+      expect(result).toEqual(updatedCompany);
+    });
+
+    it('should update company phone successfully', async () => {
+      const updatedCompany = { ...baseCompany, phone: '(11) 9999-9999' };
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+      mockPrismaService.company.update.mockResolvedValue(updatedCompany);
+
+      const result = await service.update('company-1', { phone: '(11) 9999-9999' });
+
+      expect(mockPrismaService.company.update).toHaveBeenCalledWith({
+        where: { id: 'company-1' },
+        data: { phone: '(11) 9999-9999' },
+      });
+      expect(result).toEqual(updatedCompany);
+    });
+
+    it('should update company taxRegime successfully', async () => {
+      const updatedCompany = { ...baseCompany, taxRegime: TaxRegime.LUCRO_REAL };
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+      mockPrismaService.company.update.mockResolvedValue(updatedCompany);
+
+      const result = await service.update('company-1', { taxRegime: TaxRegime.LUCRO_REAL });
+
+      expect(mockPrismaService.company.update).toHaveBeenCalledWith({
+        where: { id: 'company-1' },
+        data: { taxRegime: TaxRegime.LUCRO_REAL },
+      });
+      expect(result).toEqual(updatedCompany);
+    });
+
+    it('should update company stateRegistration in MATRIZ establishment', async () => {
+      const updatedCompany = { ...baseCompany };
+      const matrizEstablishment = {
+        id: 'est-1',
+        companyId: 'company-1',
+        type: EstablishmentType.MATRIZ,
+        inscricaoEstadual: null,
+        deletedAt: null,
+      };
+      const updatedMatriz = { ...matrizEstablishment, inscricaoEstadual: '123456789012' };
+
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+      mockPrismaService.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => {
+        mockTx.company.update.mockResolvedValue(updatedCompany);
+        mockTx.establishment.findFirst.mockResolvedValue(matrizEstablishment);
+        mockTx.establishment.update.mockResolvedValue(updatedMatriz);
+        return cb(mockTx);
+      });
+
+      const result = await service.update('company-1', { stateRegistration: '123456789012' });
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalled();
+      expect(result).toEqual(updatedCompany);
+    });
+
+    it('should update multiple fields in a single request', async () => {
+      const updateDto = {
+        name: 'New Name',
+        type: 'LTDA' as any,
+        phone: '(11) 9999-9999',
+        taxRegime: TaxRegime.SIMPLES_NACIONAL,
+      };
+      const updatedCompany = { ...baseCompany, ...updateDto };
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+      mockPrismaService.company.update.mockResolvedValue(updatedCompany);
+
+      const result = await service.update('company-1', updateDto);
+
+      expect(mockPrismaService.company.update).toHaveBeenCalledWith({
+        where: { id: 'company-1' },
+        data: {
+          name: 'New Name',
+          type: 'LTDA',
+          phone: '(11) 9999-9999',
+          taxRegime: TaxRegime.SIMPLES_NACIONAL,
+        },
+      });
+      expect(result).toEqual(updatedCompany);
+    });
+
+    it('should throw NotFoundException if company does not exist', async () => {
+      mockPrismaService.company.findFirst.mockResolvedValue(null);
+
+      await expect(service.update('nonexistent', { name: 'New Name' })).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ConflictException if CNPJ already exists in another company', async () => {
+      const otherCompany = { ...baseCompany, id: 'company-2' };
+      mockPrismaService.company.findFirst
+        .mockResolvedValueOnce(baseCompany)
+        .mockResolvedValueOnce(otherCompany);
+
+      await expect(
+        service.update('company-1', { cnpj: '12.345.678/0001-95' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should allow updating same CNPJ on the same company', async () => {
+      const companyWithCnpj = { ...baseCompany, cnpj: '12.345.678/0001-95' };
+      const updatedCompany = { ...companyWithCnpj };
+      mockPrismaService.company.findFirst
+        .mockResolvedValueOnce(companyWithCnpj)
+        .mockResolvedValueOnce(null); // No other company with same CNPJ
+      mockPrismaService.company.update.mockResolvedValue(updatedCompany);
+
+      const result = await service.update('company-1', { cnpj: '12.345.678/0001-95' });
+
+      // Should not throw and should update successfully
+      expect(mockPrismaService.company.update).toHaveBeenCalled();
+      expect(result).toEqual(updatedCompany);
     });
   });
 });
