@@ -27,7 +27,7 @@ export class UsersService {
         updatedAt: true,
         memberships: {
           where: { deletedAt: null },
-          select: { id: true },
+          select: { id: true, companyId: true, role: true },
         },
       },
     });
@@ -36,8 +36,23 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const { memberships, ...rest } = user;
-    return { ...rest, membershipsCount: memberships.length };
+    const { memberships, companyActiveId, ...rest } = user;
+    
+    // Encontrar o role do membership da empresa ativa
+    let role: string | null = null;
+    if (companyActiveId) {
+      const activeCompanyMembership = memberships.find(
+        (m) => m.companyId === companyActiveId,
+      );
+      role = activeCompanyMembership?.role ?? null;
+    }
+
+    return {
+      ...rest,
+      companyActiveId,
+      role,
+      membershipsCount: memberships.length,
+    };
   }
 
   async updateProfile(userId: string, dto: UpdateUserDto) {

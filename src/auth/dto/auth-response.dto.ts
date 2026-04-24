@@ -12,6 +12,9 @@ export class AuthUserDto {
 
   @ApiProperty({ nullable: true })
   companyActiveId: string | null;
+
+  @ApiProperty({ type: 'string', nullable: true, example: 'OWNER' })
+  role?: string | null;
 }
 
 export class AuthResponseDto {

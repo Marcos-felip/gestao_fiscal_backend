@@ -111,6 +111,20 @@ export class AuthService {
       data: { refreshToken: hashedRefreshToken },
     });
 
+    // Buscar o role do membership ativo
+    let role: string | null = null;
+    if (companyActiveId) {
+      const membership = await this.prisma.membership.findFirst({
+        where: {
+          userId,
+          companyId: companyActiveId,
+          deletedAt: null,
+        },
+        select: { role: true },
+      });
+      role = membership?.role ?? null;
+    }
+
     return {
       accessToken,
       refreshToken,
@@ -119,6 +133,7 @@ export class AuthService {
         name,
         email,
         companyActiveId,
+        role,
       },
     };
   }
