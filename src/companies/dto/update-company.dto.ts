@@ -6,8 +6,11 @@ import {
   IsString,
   Matches,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { IsCnpj } from '../../common/validators/is-cnpj.validator';
+import { CompanyEstablishmentDto } from './company-establishment.dto';
 
 export class UpdateCompanyDto {
   @ApiPropertyOptional({ example: 'Minha Empresa Ltda' })
@@ -54,4 +57,14 @@ export class UpdateCompanyDto {
     message: 'Regime tributário inválido. Valores válidos: SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL, MEI',
   })
   taxRegime?: TaxRegime;
+
+  @ApiPropertyOptional({
+    description: 'Dados do estabelecimento MATRIZ para atualizar (opcional)',
+    type: CompanyEstablishmentDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CompanyEstablishmentDto)
+  establishment?: CompanyEstablishmentDto;
 }
+

@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateActiveCompanyDto } from './dto/update-active-company.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { AddUserToCompanyMembershipDto } from './dto/add-membership.dto';
+import { MembershipRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 
@@ -156,5 +158,60 @@ export class UsersService {
       createdAt: newUser.createdAt,
       temporaryPassword, // Retornar a senha temporária para ser enviada ao usuário
     };
+  }
+
+  async addMembership(
+    userId: string,
+    companyId: string,
+    dto: AddUserToCompanyMembershipDto,
+  ) {
+    // Verificar se o usuário existe
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    // Verificar se a empresa existe
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+    });
+
+    if (!company) {
+      throw new NotFoundException('Empresa não encontrada');
+    }
+
+    // Verificar se já existe membership (unique constraint)
+    const existingMembership = await this.prisma.membership.findFirst({
+      where: {
+        userId,
+        companyId,
+        deletedAt: null,
+      },
+    });
+
+    if (existingMembership) {
+      throw new ConflictException('Usuário já é membro da empresa');
+    }
+
+    // Criar membership
+    const membership = await this.prisma.membership.create({
+      data: {
+        userId,
+        companyId,
+        role: dto.role,
+      },
+      select: {
+        id: true,
+        userId: true,
+        companyId: true,
+        role: true,
+        createdAt: true,
+      },
+    });
+
+    return membership;
   }
 }

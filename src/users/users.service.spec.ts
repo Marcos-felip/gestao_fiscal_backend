@@ -12,9 +12,11 @@ const mockPrismaService = {
   },
   membership: {
     findFirst: jest.fn(),
+    create: jest.fn(),
   },
   company: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
   },
 };
 
@@ -274,6 +276,114 @@ describe('UsersService', () => {
           },
         },
       });
+    });
+  });
+
+  describe('addMembership', () => {
+    it('should add existing user to company successfully', async () => {
+      const userId = 'user-1';
+      const companyId = 'company-1';
+
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: userId,
+        email: 'user@example.com',
+        name: 'Test User',
+      });
+
+      mockPrismaService.company.findFirst.mockResolvedValue({
+        id: companyId,
+        name: 'Test Company',
+      });
+
+      mockPrismaService.membership.findFirst.mockResolvedValue(null);
+
+      mockPrismaService.membership.create.mockResolvedValue({
+        id: 'membership-1',
+        userId,
+        companyId,
+        role: 'MEMBER',
+        createdAt: new Date(),
+      });
+
+      const result = await service.addMembership(userId, companyId, {
+        role: 'MEMBER',
+      });
+
+      expect(result.id).toBe('membership-1');
+      expect(result.userId).toBe(userId);
+      expect(result.companyId).toBe(companyId);
+      expect(result.role).toBe('MEMBER');
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.addMembership('unknown-user', 'company-1', { role: 'MEMBER' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException if company not found', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-1',
+        email: 'user@example.com',
+      });
+
+      mockPrismaService.company.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.addMembership('user-1', 'unknown-company', { role: 'MEMBER' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ConflictException if user already is member', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-1',
+        email: 'user@example.com',
+      });
+
+      mockPrismaService.company.findFirst.mockResolvedValue({
+        id: 'company-1',
+        name: 'Test Company',
+      });
+
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        id: 'membership-1',
+        userId: 'user-1',
+        companyId: 'company-1',
+        role: 'MEMBER',
+      });
+
+      await expect(
+        service.addMembership('user-1', 'company-1', { role: 'MEMBER' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should add user with ADMIN role', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-2',
+        email: 'admin@example.com',
+      });
+
+      mockPrismaService.company.findFirst.mockResolvedValue({
+        id: 'company-1',
+      });
+
+      mockPrismaService.membership.findFirst.mockResolvedValue(null);
+
+      mockPrismaService.membership.create.mockResolvedValue({
+        id: 'membership-2',
+        userId: 'user-2',
+        companyId: 'company-1',
+        role: 'ADMIN',
+        createdAt: new Date(),
+      });
+
+      const result = await service.addMembership('user-2', 'company-1', {
+        role: 'ADMIN',
+      });
+
+      expect(result.role).toBe('ADMIN');
     });
   });
 });

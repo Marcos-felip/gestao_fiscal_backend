@@ -2,6 +2,8 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { ChangePasswordFirstLoginDto } from './dto/change-password-first-login.dto';
 
 @Injectable()
 export class AuthService {
@@ -83,6 +86,67 @@ export class AuthService {
       where: { id: userId },
       data: { refreshToken: null },
     });
+  }
+
+  async changePasswordFirstLogin(
+    userId: string,
+    dto: ChangePasswordFirstLoginDto,
+  ) {
+    // Buscar usuário
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    // Validar senha atual
+    const passwordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!passwordValid) {
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    // Validar que newPassword e confirmPassword conferem
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new BadRequestException('As senhas não conferem');
+    }
+
+    // Validar que nova senha é diferente da atual
+    const samePassword = await bcrypt.compare(
+      dto.newPassword,
+      user.passwordHash,
+    );
+    if (samePassword) {
+      throw new BadRequestException(
+        'A nova senha não pode ser igual à senha atual',
+      );
+    }
+
+    // Hash da nova senha
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, 12);
+
+    // Atualizar usuário
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        forcePasswordChange: false,
+        passwordChangedAt: new Date(),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        forcePasswordChange: true,
+        passwordChangedAt: true,
+      },
+    });
+
+    return updatedUser;
   }
 
   private async generateTokens(

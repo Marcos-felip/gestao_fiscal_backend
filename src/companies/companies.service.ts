@@ -172,7 +172,88 @@ export class CompaniesService {
     if (dto.phone !== undefined) updateData.phone = dto.phone;
     if (dto.taxRegime !== undefined) updateData.taxRegime = dto.taxRegime;
 
-    // Atualizar stateRegistration (inscricaoEstadual) no Establishment MATRIZ se fornecido
+    // Se establishment foi fornecido, fazer operação em transação
+    if (dto.establishment !== undefined && dto.establishment !== null) {
+      const estabData = dto.establishment; // Extrair para variável local
+      return this.prisma.$transaction(async (tx) => {
+        // Atualizar Company
+        const updatedCompany = await tx.company.update({
+          where: { id: companyId },
+          data: updateData,
+        });
+
+        // Encontrar establishment MATRIZ
+        let establishment;
+        if (estabData.id) {
+          // Se ID foi fornecido, validar que é MATRIZ
+          establishment = await tx.establishment.findFirst({
+            where: {
+              id: estabData.id,
+              companyId,
+              type: EstablishmentType.MATRIZ,
+              deletedAt: null,
+            },
+          });
+
+          if (!establishment) {
+            throw new NotFoundException(
+              'Estabelecimento MATRIZ não encontrado ou não pertence a esta empresa',
+            );
+          }
+        } else {
+          // Se não fornecido ID, buscar o único MATRIZ existente
+          establishment = await tx.establishment.findFirst({
+            where: {
+              companyId,
+              type: EstablishmentType.MATRIZ,
+              deletedAt: null,
+            },
+          });
+        }
+
+        if (establishment) {
+          // Preparar dados do establishment
+          const establishmentUpdateData: Record<string, unknown> = {};
+          if (estabData.socialReason !== undefined) {
+            establishmentUpdateData.name = estabData.socialReason;
+          }
+          if (estabData.stateRegistration !== undefined) {
+            establishmentUpdateData.inscricaoEstadual =
+              estabData.stateRegistration;
+          }
+          if (estabData.address !== undefined) {
+            const addr = estabData.address;
+            if (addr.cep !== undefined) establishmentUpdateData.cep = addr.cep;
+            if (addr.street !== undefined)
+              establishmentUpdateData.street = addr.street;
+            if (addr.number !== undefined)
+              establishmentUpdateData.number = addr.number;
+            if (addr.complement !== undefined)
+              establishmentUpdateData.complement = addr.complement;
+            if (addr.neighborhood !== undefined)
+              establishmentUpdateData.neighborhood = addr.neighborhood;
+            if (addr.city !== undefined) establishmentUpdateData.city = addr.city;
+            if (addr.state !== undefined)
+              establishmentUpdateData.state = addr.state;
+          }
+
+          // Atualizar establishment se houver dados
+          if (Object.keys(establishmentUpdateData).length > 0) {
+            establishment = await tx.establishment.update({
+              where: { id: establishment.id },
+              data: establishmentUpdateData,
+            });
+          }
+        }
+
+        return {
+          company: updatedCompany,
+          establishment,
+        };
+      });
+    }
+
+    // Se stateRegistration foi fornecido, fazer operação em transação
     if (dto.stateRegistration !== undefined) {
       return this.prisma.$transaction(async (tx) => {
         // Atualizar Company
@@ -201,7 +282,7 @@ export class CompaniesService {
       });
     }
 
-    // Atualizar apenas Company se stateRegistration não foi fornecido
+    // Atualizar apenas Company se nenhum establishment foi fornecido
     return this.prisma.company.update({
       where: { id: companyId },
       data: updateData,

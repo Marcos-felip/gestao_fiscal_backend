@@ -88,15 +88,17 @@ enum UnitOfMeasure {
 // ─── USER ───────────────────────────────────────────────
 
 model User {
-  id              String    @id @default(uuid())
-  name            String
-  email           String    @unique
-  passwordHash    String    @map("password_hash")
-  refreshToken    String?   @map("refresh_token")
-  companyActiveId String?   @map("company_active_id")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id                    String    @id @default(uuid())
+  name                  String
+  email                 String    @unique
+  passwordHash          String    @map("password_hash")
+  refreshToken          String?   @map("refresh_token")
+  companyActiveId       String?   @map("company_active_id")
+  forcePasswordChange   Boolean   @default(false) @map("force_password_change")
+  passwordChangedAt     DateTime? @map("password_changed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
 
   companyActive Company?     @relation("ActiveCompany", fields: [companyActiveId], references: [id])
   memberships   Membership[]
