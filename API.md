@@ -30,7 +30,9 @@
     "id": "uuid",
     "name": "string",
     "email": "string",
-    "companyActiveId": "uuid | null"
+    "companyActiveId": "uuid | null",
+    "role": "string | null",
+    "forcePasswordChange": "boolean"
   }
 }
 ```

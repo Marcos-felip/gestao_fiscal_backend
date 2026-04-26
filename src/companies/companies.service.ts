@@ -70,6 +70,26 @@ export class CompaniesService {
 
     const company = await this.prisma.company.findFirst({
       where: { id, deletedAt: null },
+      include: {
+        establishments: {
+          where: { deletedAt: null },
+          select: {
+            id: true,
+            type: true,
+            name: true,
+            cnpj: true,
+            inscricaoEstadual: true,
+            inscricaoMunicipal: true,
+            cep: true,
+            street: true,
+            number: true,
+            complement: true,
+            neighborhood: true,
+            city: true,
+            state: true,
+          },
+        },
+      },
     });
 
     if (!company) {

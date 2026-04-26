@@ -41,7 +41,7 @@ export class AuthService {
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
+    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
@@ -58,7 +58,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
+    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
   }
 
   async refreshTokens(
@@ -78,7 +78,7 @@ export class AuthService {
       throw new UnauthorizedException('Token de atualização inválido');
     }
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
+    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
   }
 
   async logout(userId: string): Promise<void> {
@@ -154,6 +154,7 @@ export class AuthService {
     email: string,
     name: string,
     companyActiveId: string | null,
+    forcePasswordChange: boolean = false,
   ): Promise<AuthResponseDto> {
     const payload = { sub: userId, email };
 
@@ -198,6 +199,7 @@ export class AuthService {
         email,
         companyActiveId,
         role,
+        forcePasswordChange,
       },
     };
   }

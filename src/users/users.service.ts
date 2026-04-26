@@ -25,6 +25,7 @@ export class UsersService {
         name: true,
         email: true,
         companyActiveId: true,
+        forcePasswordChange: true,
         createdAt: true,
         updatedAt: true,
         memberships: {
@@ -38,7 +39,7 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const { memberships, companyActiveId, ...rest } = user;
+    const { memberships, companyActiveId, forcePasswordChange, ...rest } = user;
     
     // Encontrar o role do membership da empresa ativa
     let role: string | null = null;
@@ -53,6 +54,7 @@ export class UsersService {
       ...rest,
       companyActiveId,
       role,
+      forcePasswordChange,
       membershipsCount: memberships.length,
     };
   }
@@ -118,16 +120,27 @@ export class UsersService {
       throw new ConflictException('Email já cadastrado');
     }
 
-    // Criar senha temporária (12 caracteres aleatórios em base64)
-    const temporaryPassword = randomBytes(9).toString('base64').substring(0, 12);
-    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    const shouldForcePasswordChange = dto.forcePasswordChange ?? true;
 
-    // Criar usuário e membership em transação
+    let passwordHash: string;
+    let temporaryPassword: string | undefined;
+
+    if (dto.password) {
+      passwordHash = await bcrypt.hash(dto.password, 10);
+      temporaryPassword = undefined;
+    } else {
+      temporaryPassword = randomBytes(9).toString('base64').substring(0, 12);
+      passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    }
+
+    const userName = dto.name || dto.email.split('@')[0];
+
     const newUser = await this.prisma.user.create({
       data: {
-        name: dto.email.split('@')[0], // Nome padrão: parte antes do @
+        name: userName,
         email: dto.email,
         passwordHash,
+        forcePasswordChange: shouldForcePasswordChange,
         memberships: {
           create: {
             companyId: dto.companyId,
@@ -137,6 +150,7 @@ export class UsersService {
       },
       select: {
         id: true,
+        name: true,
         email: true,
         createdAt: true,
         memberships: {
@@ -150,14 +164,21 @@ export class UsersService {
 
     const membership = newUser.memberships[0];
 
-    return {
+    const result: Record<string, unknown> = {
       id: newUser.id,
+      name: newUser.name,
       email: newUser.email,
       role: membership.role,
       companyId: membership.companyId,
       createdAt: newUser.createdAt,
-      temporaryPassword, // Retornar a senha temporária para ser enviada ao usuário
+      forcePasswordChange: shouldForcePasswordChange,
     };
+
+    if (temporaryPassword) {
+      result['temporaryPassword'] = temporaryPassword;
+    }
+
+    return result;
   }
 
   async addMembership(

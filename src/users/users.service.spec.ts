@@ -257,6 +257,7 @@ describe('UsersService', () => {
           name: 'test',
           email: newEmail,
           passwordHash: expect.any(String),
+          forcePasswordChange: true,
           memberships: {
             create: {
               companyId: 'company-1',
@@ -266,6 +267,7 @@ describe('UsersService', () => {
         },
         select: {
           id: true,
+          name: true,
           email: true,
           createdAt: true,
           memberships: {
