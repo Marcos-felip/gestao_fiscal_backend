@@ -17,6 +17,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { ChangePasswordFirstLoginDto } from './dto/change-password-first-login.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -58,6 +59,19 @@ export class AuthController {
   @ApiResponse({ status: 204 })
   logout(@CurrentUser() user: { id: string; email: string }): Promise<void> {
     return this.authService.logout(user.id);
+  }
+
+  @Post('change-password-first-login')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Forçar troca de senha na primeira auteticação' })
+  @ApiResponse({ status: 200 })
+  changePasswordFirstLogin(
+    @CurrentUser() user: { id: string; email: string },
+    @Body() dto: ChangePasswordFirstLoginDto,
+  ) {
+    return this.authService.changePasswordFirstLogin(user.id, dto);
   }
 
   private decodeToken(token: string): { sub: string; email: string } {

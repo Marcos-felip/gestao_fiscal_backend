@@ -24,6 +24,15 @@ enum CompanyType {
   SLU
 }
 
+enum BusinessSegment {
+  ALUMINIO_PORTAS
+  SUPERMERCADO
+  PAPELARIA
+  MERCEARIA
+  LANCHONETE
+  GENERICO
+}
+
 enum TaxRegime {
   SIMPLES_NACIONAL
   LUCRO_PRESUMIDO
@@ -79,15 +88,17 @@ enum UnitOfMeasure {
 // ─── USER ───────────────────────────────────────────────
 
 model User {
-  id              String    @id @default(uuid())
-  name            String
-  email           String    @unique
-  passwordHash    String    @map("password_hash")
-  refreshToken    String?   @map("refresh_token")
-  companyActiveId String?   @map("company_active_id")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id                    String    @id @default(uuid())
+  name                  String
+  email                 String    @unique
+  passwordHash          String    @map("password_hash")
+  refreshToken          String?   @map("refresh_token")
+  companyActiveId       String?   @map("company_active_id")
+  forcePasswordChange   Boolean   @default(false) @map("force_password_change")
+  passwordChangedAt     DateTime? @map("password_changed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
 
   companyActive Company?     @relation("ActiveCompany", fields: [companyActiveId], references: [id])
   memberships   Membership[]
@@ -98,16 +109,17 @@ model User {
 // ─── COMPANY (TENANT) ───────────────────────────────────
 
 model Company {
-  id          String       @id @default(uuid())
-  name        String
-  type        CompanyType?
-  phone       String?
-  cnpj        String?      @unique
-  taxRegime   TaxRegime?   @map("tax_regime")
-  isOnboarded Boolean      @default(false) @map("is_onboarded")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  deletedAt   DateTime?    @map("deleted_at")
+  id              String           @id @default(uuid())
+  name            String
+  type            CompanyType?
+  businessSegment BusinessSegment? @map("business_segment")
+  phone           String?
+  cnpj            String?          @unique
+  taxRegime       TaxRegime?       @map("tax_regime")
+  isOnboarded     Boolean          @default(false) @map("is_onboarded")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  deletedAt       DateTime?        @map("deleted_at")
 
   activeUsers    User[]          @relation("ActiveCompany")
   memberships    Membership[]
@@ -173,25 +185,26 @@ model Establishment {
 // ─── PRODUCT ────────────────────────────────────────────
 
 model Product {
-  id           String        @id @default(uuid())
-  companyId    String        @map("company_id")
-  name         String
-  description  String?
-  sku          String?
-  barcode      String?
-  unit         UnitOfMeasure @default(UN)
-  costPrice    Decimal?      @map("cost_price") @db.Decimal(12, 4)
-  salePrice    Decimal?      @map("sale_price") @db.Decimal(12, 4)
-  currentStock Decimal       @default(0) @map("current_stock") @db.Decimal(12, 4)
-  minStock     Decimal?      @map("min_stock") @db.Decimal(12, 4)
-  isActive     Boolean       @default(true) @map("is_active")
-  ncm          String?
-  cest         String?
-  cfop         String?
-  origin       Int?          @db.SmallInt
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  deletedAt    DateTime?     @map("deleted_at")
+  id                  String        @id @default(uuid())
+  companyId           String        @map("company_id")
+  name                String
+  description         String?
+  sku                 String?
+  barcode             String?
+  unit                UnitOfMeasure @default(UN)
+  costPrice           Decimal?      @map("cost_price") @db.Decimal(12, 4)
+  salePrice           Decimal?      @map("sale_price") @db.Decimal(12, 4)
+  currentStock        Decimal       @default(0) @map("current_stock") @db.Decimal(12, 4)
+  minStock            Decimal?      @map("min_stock") @db.Decimal(12, 4)
+  isActive            Boolean       @default(true) @map("is_active")
+  ncm                 String?
+  cest                String?
+  cfop                String?
+  origin              Int?          @db.SmallInt
+  technicalAttributes Json?         @map("technical_attributes")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  deletedAt           DateTime?     @map("deleted_at")
 
   company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
@@ -343,4 +356,25 @@ model PurchaseItem {
 
   @@index([purchaseId])
   @@map("purchase_items")
+}
+
+// ─── PERMISSION ─────────────────────────────────────
+
+model Permission {
+  code        String @id
+  description String
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role           MembershipRole @map("role")
+  permissionCode String         @map("permission_code")
+
+  permission Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
+
+  @@id([role, permissionCode])
+  @@map("role_permissions")
 }

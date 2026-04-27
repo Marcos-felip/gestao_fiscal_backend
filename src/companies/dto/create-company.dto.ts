@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CompanyType } from '@prisma/client';
+import { BusinessSegment, CompanyType } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateCompanyDto {
@@ -12,6 +12,11 @@ export class CreateCompanyDto {
   @IsOptional()
   @IsEnum(CompanyType)
   type?: CompanyType;
+
+  @ApiPropertyOptional({ enum: BusinessSegment })
+  @IsOptional()
+  @IsEnum(BusinessSegment)
+  businessSegment?: BusinessSegment;
 
   @ApiPropertyOptional({ example: '(11) 9999-9999' })
   @IsOptional()

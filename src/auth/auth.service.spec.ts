@@ -1,5 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  UnauthorizedException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -191,6 +196,106 @@ describe('AuthService', () => {
         where: { id: 'user-1' },
         data: { refreshToken: null },
       });
+    });
+  });
+
+  describe('changePasswordFirstLogin', () => {
+    it('should successfully change password and set forcePasswordChange to false', async () => {
+      const currentPasswordHash = await bcrypt.hash('OldPassword123', 12);
+      const newPassword = 'NewPassword123';
+
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        passwordHash: currentPasswordHash,
+        forcePasswordChange: true,
+      });
+
+      mockPrismaService.user.update.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        name: 'Test User',
+        forcePasswordChange: false,
+        passwordChangedAt: new Date(),
+      });
+
+      const result = await service.changePasswordFirstLogin('user-1', {
+        currentPassword: 'OldPassword123',
+        newPassword,
+        confirmPassword: newPassword,
+      });
+
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledWith({
+        where: { id: 'user-1', deletedAt: null },
+      });
+      expect(result.forcePasswordChange).toBe(false);
+      expect(mockPrismaService.user.update).toHaveBeenCalled();
+      const updateCall = mockPrismaService.user.update.mock.calls[0][0];
+      expect(updateCall.data.forcePasswordChange).toBe(false);
+      expect(updateCall.data.passwordChangedAt).toBeDefined();
+    });
+
+    it('should reject if user not found', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.changePasswordFirstLogin('user-1', {
+          currentPassword: 'OldPassword123',
+          newPassword: 'NewPassword123',
+          confirmPassword: 'NewPassword123',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject if current password is incorrect', async () => {
+      const passwordHash = await bcrypt.hash('CorrectPassword123', 12);
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        passwordHash,
+      });
+
+      await expect(
+        service.changePasswordFirstLogin('user-1', {
+          currentPassword: 'WrongPassword123',
+          newPassword: 'NewPassword123',
+          confirmPassword: 'NewPassword123',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should reject if newPassword and confirmPassword do not match', async () => {
+      const passwordHash = await bcrypt.hash('OldPassword123', 12);
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        passwordHash,
+      });
+
+      await expect(
+        service.changePasswordFirstLogin('user-1', {
+          currentPassword: 'OldPassword123',
+          newPassword: 'NewPassword123',
+          confirmPassword: 'DifferentPassword123',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject if newPassword is same as currentPassword', async () => {
+      const passwordHash = await bcrypt.hash('SamePassword123', 12);
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        passwordHash,
+      });
+
+      await expect(
+        service.changePasswordFirstLogin('user-1', {
+          currentPassword: 'SamePassword123',
+          newPassword: 'SamePassword123',
+          confirmPassword: 'SamePassword123',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

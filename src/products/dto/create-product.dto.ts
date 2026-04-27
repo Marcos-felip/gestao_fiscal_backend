@@ -1,6 +1,7 @@
 import {
   IsEnum,
   IsNumber,
+  IsObject,
   IsOptional,
   IsPositive,
   IsString,
@@ -79,4 +80,18 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   origin?: number;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    example: {
+      material: 'alumínio',
+      larguraMm: 1200,
+      alturaMm: 2100,
+      acabamento: { cor: 'branco' },
+    },
+  })
+  @IsOptional()
+  @IsObject()
+  technicalAttributes?: Record<string, unknown>;
 }

@@ -2,6 +2,8 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { ChangePasswordFirstLoginDto } from './dto/change-password-first-login.dto';
 
 @Injectable()
 export class AuthService {
@@ -38,7 +41,7 @@ export class AuthService {
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
+    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
@@ -55,7 +58,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
+    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
   }
 
   async refreshTokens(
@@ -75,7 +78,7 @@ export class AuthService {
       throw new UnauthorizedException('Token de atualização inválido');
     }
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId);
+    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
   }
 
   async logout(userId: string): Promise<void> {
@@ -85,11 +88,73 @@ export class AuthService {
     });
   }
 
+  async changePasswordFirstLogin(
+    userId: string,
+    dto: ChangePasswordFirstLoginDto,
+  ) {
+    // Buscar usuário
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    // Validar senha atual
+    const passwordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!passwordValid) {
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    // Validar que newPassword e confirmPassword conferem
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new BadRequestException('As senhas não conferem');
+    }
+
+    // Validar que nova senha é diferente da atual
+    const samePassword = await bcrypt.compare(
+      dto.newPassword,
+      user.passwordHash,
+    );
+    if (samePassword) {
+      throw new BadRequestException(
+        'A nova senha não pode ser igual à senha atual',
+      );
+    }
+
+    // Hash da nova senha
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, 12);
+
+    // Atualizar usuário
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        forcePasswordChange: false,
+        passwordChangedAt: new Date(),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        forcePasswordChange: true,
+        passwordChangedAt: true,
+      },
+    });
+
+    return updatedUser;
+  }
+
   private async generateTokens(
     userId: string,
     email: string,
     name: string,
     companyActiveId: string | null,
+    forcePasswordChange: boolean = false,
   ): Promise<AuthResponseDto> {
     const payload = { sub: userId, email };
 
@@ -111,6 +176,20 @@ export class AuthService {
       data: { refreshToken: hashedRefreshToken },
     });
 
+    // Buscar o role do membership ativo
+    let role: string | null = null;
+    if (companyActiveId) {
+      const membership = await this.prisma.membership.findFirst({
+        where: {
+          userId,
+          companyId: companyActiveId,
+          deletedAt: null,
+        },
+        select: { role: true },
+      });
+      role = membership?.role ?? null;
+    }
+
     return {
       accessToken,
       refreshToken,
@@ -119,6 +198,8 @@ export class AuthService {
         name,
         email,
         companyActiveId,
+        role,
+        forcePasswordChange,
       },
     };
   }

@@ -8,23 +8,30 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { MembershipRole } from '@prisma/client';
 import { MembershipsService } from './memberships.service';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
+import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
 
 @ApiTags('memberships')
+@ApiBearerAuth()
 @Controller('memberships')
 export class MembershipsController {
   constructor(private readonly membershipsService: MembershipsService) {}
 
   @Post('invite')
-  @TenantProtected(MembershipRole.OWNER, MembershipRole.ADMIN)
-  @ApiOperation({ summary: 'Convidar usuário para a empresa (OWNER ou ADMIN)' })
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('users.create')
+  @ApiOperation({ summary: 'Convidar usuário para a empresa' })
   @ApiResponse({ status: 201 })
   invite(
     @CurrentCompany() companyId: string,
@@ -34,7 +41,8 @@ export class MembershipsController {
   }
 
   @Get()
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('users.list')
   @ApiOperation({ summary: 'Listar membros da empresa ativa' })
   @ApiResponse({ status: 200 })
   findAll(@CurrentCompany() companyId: string) {
