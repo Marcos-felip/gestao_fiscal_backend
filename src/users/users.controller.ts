@@ -5,7 +5,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { MembershipRole } from '@prisma/client';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateActiveCompanyDto } from './dto/update-active-company.dto';
@@ -17,7 +16,6 @@ import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
-import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -63,7 +61,8 @@ export class UsersController {
   }
 
   @Post(':id/memberships')
-  @TenantProtected(MembershipRole.OWNER, MembershipRole.ADMIN)
+  @UseGuards(CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('users.create')
   @ApiOperation({ summary: 'Adicionar usuário existente à empresa' })
   @ApiResponse({ status: 201 })
   addMembership(

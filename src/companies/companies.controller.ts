@@ -19,6 +19,9 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { OnboardingDto } from './dto/onboarding.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
+import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
@@ -50,7 +53,8 @@ export class CompaniesController {
   }
 
   @Get(':id')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('company.read')
   @ApiOperation({ summary: 'Buscar empresa por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
@@ -69,8 +73,9 @@ export class CompaniesController {
   }
 
   @Patch(':id')
-  @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Atualizar empresa (apenas OWNER)' })
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('company.edit')
+  @ApiOperation({ summary: 'Atualizar empresa' })
   @ApiResponse({ status: 200 })
   update(
     @Param('id') id: string,

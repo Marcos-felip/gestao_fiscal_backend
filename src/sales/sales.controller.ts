@@ -9,14 +9,17 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { MembershipRole } from '@prisma/client';
 import { SalesService } from './sales.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
 import { FilterSaleDto } from './dto/filter-sale.dto';
-import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
+import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
 
 @ApiTags('sales')
@@ -26,7 +29,8 @@ export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
   @Post()
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('sales.create')
   @ApiOperation({ summary: 'Criar nova venda' })
   @ApiResponse({ status: 201 })
   create(@CurrentCompany() companyId: string, @Body() dto: CreateSaleDto) {
@@ -34,7 +38,8 @@ export class SalesController {
   }
 
   @Get()
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('sales.list')
   @ApiOperation({ summary: 'Listar vendas' })
   @ApiResponse({ status: 200 })
   findAll(@CurrentCompany() companyId: string, @Query() filter: FilterSaleDto) {
@@ -42,7 +47,8 @@ export class SalesController {
   }
 
   @Get(':id')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('sales.read')
   @ApiOperation({ summary: 'Buscar venda por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
@@ -50,7 +56,8 @@ export class SalesController {
   }
 
   @Patch(':id')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('sales.edit')
   @ApiOperation({ summary: 'Atualizar venda em RASCUNHO' })
   @ApiResponse({ status: 200 })
   update(
@@ -62,7 +69,8 @@ export class SalesController {
   }
 
   @Post(':id/confirm')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('sales.confirm')
   @ApiOperation({ summary: 'Confirmar venda e baixar estoque' })
   @ApiResponse({ status: 200 })
   confirm(@Param('id') id: string, @CurrentCompany() companyId: string) {
@@ -70,7 +78,8 @@ export class SalesController {
   }
 
   @Post(':id/cancel')
-  @TenantProtected(MembershipRole.ADMIN, MembershipRole.OWNER)
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('sales.cancel')
   @ApiOperation({ summary: 'Cancelar venda' })
   @ApiResponse({ status: 200 })
   cancel(@Param('id') id: string, @CurrentCompany() companyId: string) {
@@ -78,7 +87,8 @@ export class SalesController {
   }
 
   @Delete(':id')
-  @TenantProtected(MembershipRole.ADMIN, MembershipRole.OWNER)
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('sales.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Excluir venda em RASCUNHO ou CANCELADA' })
   @ApiResponse({ status: 204 })

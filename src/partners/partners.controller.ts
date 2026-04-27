@@ -9,22 +9,28 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PartnersService } from './partners.service';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { UpdatePartnerDto } from './dto/update-partner.dto';
 import { FilterPartnerDto } from './dto/filter-partner.dto';
-import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
+import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
 
 @ApiTags('partners')
+@ApiBearerAuth()
 @Controller('partners')
 export class PartnersController {
   constructor(private readonly partnersService: PartnersService) {}
 
   @Get()
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('partners.list')
   @ApiOperation({ summary: 'Listar parceiros da empresa ativa' })
   @ApiResponse({ status: 200 })
   findAll(
@@ -35,7 +41,8 @@ export class PartnersController {
   }
 
   @Post()
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('partners.create')
   @ApiOperation({ summary: 'Criar novo parceiro' })
   @ApiResponse({ status: 201 })
   create(
@@ -46,7 +53,8 @@ export class PartnersController {
   }
 
   @Get(':id')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('partners.read')
   @ApiOperation({ summary: 'Buscar parceiro por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
@@ -54,7 +62,8 @@ export class PartnersController {
   }
 
   @Patch(':id')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('partners.edit')
   @ApiOperation({ summary: 'Atualizar parceiro' })
   @ApiResponse({ status: 200 })
   update(
@@ -66,7 +75,8 @@ export class PartnersController {
   }
 
   @Delete(':id')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('partners.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Excluir parceiro (soft delete)' })
   @ApiResponse({ status: 204 })

@@ -9,14 +9,17 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { MembershipRole } from '@prisma/client';
 import { PurchasesService } from './purchases.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { UpdatePurchaseDto } from './dto/update-purchase.dto';
 import { FilterPurchaseDto } from './dto/filter-purchase.dto';
-import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
+import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
 
 @ApiTags('purchases')
@@ -26,7 +29,8 @@ export class PurchasesController {
   constructor(private readonly purchasesService: PurchasesService) {}
 
   @Post()
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('purchases.create')
   @ApiOperation({ summary: 'Criar nova compra' })
   @ApiResponse({ status: 201 })
   create(
@@ -37,7 +41,8 @@ export class PurchasesController {
   }
 
   @Get()
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('purchases.list')
   @ApiOperation({ summary: 'Listar compras' })
   @ApiResponse({ status: 200 })
   findAll(
@@ -48,7 +53,8 @@ export class PurchasesController {
   }
 
   @Get(':id')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('purchases.read')
   @ApiOperation({ summary: 'Buscar compra por ID' })
   @ApiResponse({ status: 200 })
   findOne(@Param('id') id: string, @CurrentCompany() companyId: string) {
@@ -56,7 +62,8 @@ export class PurchasesController {
   }
 
   @Patch(':id')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('purchases.edit')
   @ApiOperation({ summary: 'Atualizar compra em RASCUNHO' })
   @ApiResponse({ status: 200 })
   update(
@@ -68,7 +75,8 @@ export class PurchasesController {
   }
 
   @Post(':id/confirm')
-  @TenantProtected()
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('purchases.confirm')
   @ApiOperation({ summary: 'Confirmar compra e dar entrada no estoque' })
   @ApiResponse({ status: 200 })
   confirm(@Param('id') id: string, @CurrentCompany() companyId: string) {
@@ -76,7 +84,8 @@ export class PurchasesController {
   }
 
   @Post(':id/cancel')
-  @TenantProtected(MembershipRole.ADMIN, MembershipRole.OWNER)
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('purchases.cancel')
   @ApiOperation({ summary: 'Cancelar compra' })
   @ApiResponse({ status: 200 })
   cancel(@Param('id') id: string, @CurrentCompany() companyId: string) {
@@ -84,7 +93,8 @@ export class PurchasesController {
   }
 
   @Delete(':id')
-  @TenantProtected(MembershipRole.ADMIN, MembershipRole.OWNER)
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('purchases.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Excluir compra em RASCUNHO ou CANCELADA' })
   @ApiResponse({ status: 204 })
