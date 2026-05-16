@@ -18,7 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { MembershipRole } from '@prisma/client';
 import { MembershipsService } from './memberships.service';
-import { InviteMemberDto } from './dto/invite-member.dto';
+import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
@@ -33,13 +33,16 @@ import { CurrentCompany } from '../common/decorators/current-company.decorator';
 export class MembershipsController {
   constructor(private readonly membershipsService: MembershipsService) {}
 
-  @Post('invite')
+  @Post()
   @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
   @RequirePermission('users.create')
-  @ApiOperation({ summary: 'Convidar usuário para a empresa' })
+  @ApiOperation({ summary: 'Criar membro na empresa' })
   @ApiResponse({ status: 201 })
-  invite(@CurrentCompany() companyId: string, @Body() dto: InviteMemberDto) {
-    return this.membershipsService.invite(companyId, dto);
+  createMember(
+    @CurrentCompany() companyId: string,
+    @Body() dto: CreateMemberDto,
+  ) {
+    return this.membershipsService.createMember(companyId, dto);
   }
 
   @Get()

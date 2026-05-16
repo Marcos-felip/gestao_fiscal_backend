@@ -261,19 +261,38 @@
 
 > Todos requerem empresa ativa
 
-### POST /memberships/invite — Convidar usuário (OWNER ou ADMIN)
+### POST /memberships — Criar membro na empresa
+
+> Requer permissão `users.create`. OWNER pode criar ADMIN ou MEMBER. ADMIN pode criar apenas MEMBER. MEMBER com permissão `users.create` pode criar apenas MEMBER.
 
 **Body:**
 ```json
 {
-  "email": "string (email do usuário existente)",
+  "name": "string (min 2, obrigatório)",
+  "email": "string (e-mail válido, obrigatório)",
   "role": "ADMIN | MEMBER (default: MEMBER)"
 }
 ```
 
-**Resposta 201:** membership criado
+**Resposta 201:**
+```json
+{
+  "id": "uuid",
+  "userId": "uuid",
+  "companyId": "uuid",
+  "role": "MEMBER",
+  "user": {
+    "id": "uuid",
+    "name": "string",
+    "email": "string"
+  }
+}
+```
 
-**Erros:** `404` Usuário não encontrado · `409` Usuário já é membro
+**Erros:**
+- `409` E-mail já cadastrado
+- `409` Usuário já é membro desta empresa
+- `403` Sem permissão (apenas OWNER/ADMIN/MEMBER com `users.create`)
 
 ---
 

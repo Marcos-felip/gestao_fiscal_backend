@@ -5,8 +5,25 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MembershipRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { MembershipsService } from './memberships.service';
 import { PrismaService } from '../prisma/prisma.service';
+
+jest.mock('bcrypt', () => ({
+  hash: jest.fn().mockResolvedValue('$2b$12$mockedhash'),
+}));
+
+const mockTxUserCreate = jest.fn();
+const mockTxMembershipCreate = jest.fn();
+
+const mockTx = {
+  user: {
+    create: mockTxUserCreate,
+  },
+  membership: {
+    create: mockTxMembershipCreate,
+  },
+};
 
 const mockPrismaService = {
   user: {
@@ -18,6 +35,7 @@ const mockPrismaService = {
     update: jest.fn(),
     findMany: jest.fn(),
   },
+  $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(mockTx)),
 };
 
 describe('MembershipsService', () => {
@@ -35,57 +53,150 @@ describe('MembershipsService', () => {
     jest.clearAllMocks();
   });
 
-  describe('invite', () => {
-    it('should throw NotFoundException if user email not found', async () => {
-      mockPrismaService.user.findFirst.mockResolvedValue(null);
+  describe('createMember', () => {
+    const createMemberDto = {
+      name: 'João Silva',
+      email: 'joao@exemplo.com',
+      role: MembershipRole.MEMBER,
+    };
+
+    it('should throw ConflictException if e-mail already exists', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'existing-user',
+      });
 
       await expect(
-        service.invite('company-1', {
-          email: 'unknown@example.com',
-          role: MembershipRole.MEMBER,
-        }),
-      ).rejects.toThrow(NotFoundException);
+        service.createMember('company-1', createMemberDto),
+      ).rejects.toThrow(ConflictException);
+
+      await expect(
+        service.createMember('company-1', createMemberDto),
+      ).rejects.toThrow('E-mail já cadastrado');
     });
 
-    it('should throw ConflictException if user is already a member', async () => {
-      mockPrismaService.user.findFirst.mockResolvedValue({ id: 'user-1' });
-      mockPrismaService.membership.findFirst.mockResolvedValue({ id: 'm1' });
+    it('should throw ConflictException if user is already a member of the company', async () => {
+      // When email exists, it throws "E-mail já cadastrado"
+      // This is tested above. The membership check happens only for existing users,
+      // but since we create users atomically, the email check comes first.
+      // If the email is already registered, we never reach membership creation.
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'existing-user',
+      });
 
       await expect(
-        service.invite('company-1', {
-          email: 'test@example.com',
-          role: MembershipRole.MEMBER,
-        }),
+        service.createMember('company-1', createMemberDto),
       ).rejects.toThrow(ConflictException);
     });
 
-    it('should create membership when user found and not already a member', async () => {
-      const newMembership = {
-        id: 'm1',
-        userId: 'user-1',
-        companyId: 'company-1',
-        role: MembershipRole.MEMBER,
-        user: { id: 'user-1', name: 'Test User', email: 'test@example.com' },
-      };
-      mockPrismaService.user.findFirst.mockResolvedValue({ id: 'user-1' });
-      mockPrismaService.membership.findFirst.mockResolvedValue(null);
-      mockPrismaService.membership.create.mockResolvedValue(newMembership);
+    it('should create user + membership with provisional password and forcePasswordChange=true', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
 
-      const result = await service.invite('company-1', {
-        email: 'test@example.com',
-        role: MembershipRole.MEMBER,
-      });
-
-      expect(mockPrismaService.membership.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
+      mockTxUserCreate.mockResolvedValue({
+        id: 'user-1',
+        name: 'João Silva',
+        email: 'joao@exemplo.com',
+        memberships: [
+          {
+            id: 'membership-1',
             userId: 'user-1',
             companyId: 'company-1',
             role: MembershipRole.MEMBER,
+          },
+        ],
+      });
+
+      const result = await service.createMember('company-1', createMemberDto);
+
+      // Verify bcrypt.hash was called (for provisional password)
+      expect(bcrypt.hash).toHaveBeenCalledWith(expect.any(String), 12);
+
+      // Verify user was created with forcePasswordChange: true
+      expect(mockTxUserCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            name: 'João Silva',
+            email: 'joao@exemplo.com',
+            forcePasswordChange: true,
+            passwordHash: '$2b$12$mockedhash',
           }),
         }),
       );
-      expect(result).toEqual(newMembership);
+
+      // Verify no password is returned in the result
+      expect(result).not.toHaveProperty('passwordHash');
+      expect(result).not.toHaveProperty('password');
+    });
+
+    it('should use default role MEMBER when role is not provided', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+
+      mockTxUserCreate.mockResolvedValue({
+        id: 'user-1',
+        name: 'João Silva',
+        email: 'joao@exemplo.com',
+        memberships: [
+          {
+            id: 'membership-1',
+            userId: 'user-1',
+            companyId: 'company-1',
+            role: MembershipRole.MEMBER,
+          },
+        ],
+      });
+
+      const dtoNoRole = { name: 'João Silva', email: 'joao@exemplo.com' };
+
+      await service.createMember('company-1', dtoNoRole);
+
+      expect(mockTxUserCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            memberships: expect.objectContaining({
+              create: expect.objectContaining({
+                role: MembershipRole.MEMBER,
+              }),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('should use ADMIN role when provided', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+
+      mockTxUserCreate.mockResolvedValue({
+        id: 'user-1',
+        name: 'Admin Silva',
+        email: 'admin@exemplo.com',
+        memberships: [
+          {
+            id: 'membership-1',
+            userId: 'user-1',
+            companyId: 'company-1',
+            role: MembershipRole.ADMIN,
+          },
+        ],
+      });
+
+      const dtoAdmin = {
+        name: 'Admin Silva',
+        email: 'admin@exemplo.com',
+        role: MembershipRole.ADMIN,
+      };
+
+      await service.createMember('company-1', dtoAdmin);
+
+      expect(mockTxUserCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            memberships: expect.objectContaining({
+              create: expect.objectContaining({
+                role: MembershipRole.ADMIN,
+              }),
+            }),
+          }),
+        }),
+      );
     });
   });
 

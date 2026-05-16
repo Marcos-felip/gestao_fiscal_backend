@@ -65,14 +65,14 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 
 ### OWNER
 - Controle total da empresa
-- Pode convidar e remover membros
+- Pode criar membros (ADMIN ou MEMBER) e remover membros
 - Pode alterar papéis de outros membros (exceto de outros OWNERs)
 - **Não pode ser removido da empresa**
 - **Não pode ter seu papel alterado**
 
 ### ADMIN
 - Acesso operacional completo
-- Pode convidar novos membros (com papel MEMBER)
+- Pode criar novos membros (apenas papel MEMBER)
 - Pode criar e gerenciar estabelecimentos
 - Pode confirmar e cancelar compras
 
@@ -80,15 +80,17 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 - Acesso básico de leitura e operação
 - Pode criar compras (status RASCUNHO)
 - Não pode cancelar operações confirmadas
-- Não pode gerenciar membros
+- Com permissão `users.create`, pode criar apenas MEMBER
 
 ### Tabela resumida
 
 | Ação | OWNER | ADMIN | MEMBER |
 |------|-------|-------|--------|
-| Convidar membros | ✅ | ✅ | ❌ |
+| Criar membros | ✅ | ✅ | ✅* |
 | Remover membros | ✅ | ❌ | ❌ |
 | Alterar papéis | ✅ | ❌ | ❌ |
+
+> *MEMBER com permissão `users.create` pode criar apenas membros com papel MEMBER. OWNER pode criar ADMIN ou MEMBER. ADMIN pode criar apenas MEMBER.
 | Configurar empresa (onboarding) | ✅ | ❌ | ❌ |
 | Criar/editar estabelecimentos | ✅ | ✅ | ❌ |
 | CRUD de produtos | ✅ | ✅ | ✅ |
