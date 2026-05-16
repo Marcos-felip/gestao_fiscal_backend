@@ -24,7 +24,6 @@ Regras obrigatorias de implementacao:
    - Exclusao logica: `deletedAt = new Date()` (sem hard delete em entidades de negocio).
 2. Transacoes criticas com `prisma.$transaction()`:
    - criacao de empresa e onboarding;
-   - confirmacao/cancelamento de vendas;
    - confirmacao/cancelamento de compras;
    - movimentacao manual de estoque.
 3. DTOs e validacao:

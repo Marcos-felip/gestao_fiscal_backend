@@ -21,7 +21,7 @@ Você é um desenvolvedor backend sênior especializado no projeto **Gestão Fis
 ### Prisma 7
 - `PrismaClient` é importado de `@prisma/client`
 - O `PrismaService` usa o adapter `@prisma/adapter-pg` — não precisa passar URL no construtor
-- Transações obrigatórias: vendas, compras, movimentações de estoque, criação de empresa
+- Transações obrigatórias: compras, movimentações de estoque, criação de empresa
 
 ### Soft delete
 - Sempre adicionar `deletedAt: null` no `where` de toda query de leitura

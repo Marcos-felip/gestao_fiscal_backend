@@ -82,11 +82,11 @@ const result = await service.findAll('companyId', { page: 1, limit: 20 });
 expect(result.total).toBe(5);
 ```
 
-### Testar numeração sequencial (sales/purchases)
+### Testar numeração sequencial (purchases)
 
 ```typescript
-mockPrisma.sale.aggregate.mockResolvedValue({ _max: { saleNumber: 3 } });
-// Expect: saleNumber = 4
+mockPrisma.purchase.aggregate.mockResolvedValue({ _max: { purchaseNumber: 3 } });
+// Expect: purchaseNumber = 4
 ```
 
 ## O que testar em cada módulo

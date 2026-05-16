@@ -25,45 +25,45 @@
 │   active_id │──────────────────────────┤                   │
 │ deleted_at  │                          └────────┬──────────┘
 └─────────────┘                                   │
-                                                   │1
-                         ┌─────────────────────────┤
-                         │                         │
-                   ┌─────┴──────────┐   ┌──────────┴──────────┐
-                   │establishments  │   │      products        │
-                   │────────────────│   │──────────────────────│
-                   │ id (PK)        │   │ id (PK)              │
-                   │ company_id(FK) │   │ company_id (FK)      │
-                   │ type (MATRIZ/  │   │ name, sku, barcode   │
-                   │   FILIAL)      │   │ unit, cost_price     │
-                   │ name, cnpj     │   │ sale_price           │
-                   │ endereco...    │   │ current_stock        │
-                   │ deleted_at     │   │ ncm, cest, cfop      │
-                   └────────┬───────┘   │ deleted_at           │
-                            │           └──────────┬───────────┘
-                            │                      │
-                    ┌───────┴──────┐     ┌─────────┴──────────┐
-                    │    sales     │     │  stock_movements   │
-                    │    (FK: estab│     │ (FK: product)      │
-                    │    FK: client│     └────────────────────┘
-                    └──────┬───────┘
-                           │
-                    ┌──────┴───────┐
-                    │  sale_items  │
-                    │ (FK: sale,   │
-                    │  FK: product)│
-                    └──────────────┘
+                                                  │1
+                        ┌─────────────────────────┤
+                        │                         │
+                  ┌─────┴──────────┐   ┌──────────┴──────────┐
+                  │establishments  │   │      products        │
+                  │────────────────│   │──────────────────────│
+                  │ id (PK)        │   │ id (PK)              │
+                  │ company_id(FK) │   │ company_id (FK)      │
+                  │ type (MATRIZ/  │   │ name, sku, barcode   │
+                  │   FILIAL)      │   │ unit, cost_price     │
+                  │ name, cnpj     │   │ sale_price           │
+                  │ endereco...    │   │ current_stock        │
+                  │ deleted_at     │   │ ncm, cest, cfop      │
+                  └────────┬───────┘   │ deleted_at           │
+                           │           └──────────┬───────────┘
+                           │                      │
+                   ┌───────┴──────┐     ┌─────────┴──────────┐
+                   │  purchases   │     │  stock_movements   │
+                   │ (FK: estab,  │     │ (FK: product)      │
+                   │  FK: supplier│     └────────────────────┘
+                   └──────┬───────┘
+                          │
+                   ┌──────┴──────────┐
+                   │ purchase_items  │
+                   │ (FK: purchase,  │
+                   │  FK: product)   │
+                   └─────────────────┘
 
-                   ┌───────────────┐
-                   │   partners    │
-                   │───────────────│
-                   │ id (PK)       │
-                   │ company_id(FK)│
-                   │ type          │
-                   │ person_type   │
-                   │ name, cpf_cnpj│
-                   │ endereco...   │
-                   │ deleted_at    │
-                   └───────────────┘
+                  ┌───────────────┐
+                  │   partners    │
+                  │───────────────│
+                  │ id (PK)       │
+                  │ company_id(FK)│
+                  │ type          │
+                  │ person_type   │
+                  │ name, cpf_cnpj│
+                  │ endereco...   │
+                  │ deleted_at    │
+                  └───────────────┘
 ```
 
 ## Modelos
@@ -184,42 +184,13 @@
 | `type` | ENUM | ✅ | ENTRADA, SAIDA ou AJUSTE |
 | `quantity` | DECIMAL(12,4) | ✅ | Quantidade movimentada |
 | `reason` | VARCHAR | ❌ | Motivo (movimentações manuais) |
-| `reference_id` | UUID | ❌ | ID da venda/compra geradora |
+| `reference_id` | UUID | ❌ | ID da compra geradora |
 | `created_at` | TIMESTAMP | ✅ | |
 | `deleted_at` | TIMESTAMP | ❌ | Soft delete |
 
-### `sales` — Vendas
-
-| Coluna | Tipo | Obrig. | Descrição |
-|--------|------|--------|-----------|
-| `id` | UUID | ✅ | Chave primária |
-| `company_id` | UUID (FK) | ✅ | Empresa |
-| `establishment_id` | UUID (FK) | ✅ | Estabelecimento |
-| `client_id` | UUID (FK) | ❌ | Cliente (parceiro) |
-| `status` | ENUM | ✅ | DRAFT, CONFIRMED, CANCELLED |
-| `sale_number` | INT | ✅ | Número sequencial por empresa |
-| `total_amount` | DECIMAL(12,2) | ✅ | Total da venda |
-| `discount` | DECIMAL(12,2) | ✅ | Desconto geral |
-| `notes` | TEXT | ❌ | Observações |
-| `sale_date` | TIMESTAMP | ✅ | Data da venda |
-| `deleted_at` | TIMESTAMP | ❌ | Soft delete |
-
-**Constraint:** `(company_id, sale_number)` UNIQUE
-
-### `sale_items` — Itens de Venda
-
-| Coluna | Tipo | Descrição |
-|--------|------|-----------|
-| `sale_id` | UUID (FK) | Venda |
-| `product_id` | UUID (FK) | Produto |
-| `quantity` | DECIMAL(12,4) | Quantidade |
-| `unit_price` | DECIMAL(12,4) | Preço unitário |
-| `discount` | DECIMAL(12,2) | Desconto do item |
-| `total` | DECIMAL(12,2) | Total do item |
-
 ### `purchases` e `purchase_items` — Compras
 
-Estrutura análoga a `sales`/`sale_items`, com `purchase_number` no lugar de `sale_number` e `supplier_id` no lugar de `client_id`.
+Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_id` (fornecedor, opcional).
 
 ---
 
@@ -234,7 +205,6 @@ Estrutura análoga a `sales`/`sale_items`, com `purchase_number` no lugar de `sa
 | `PartnerType` | `CLIENT`, `SUPPLIER`, `BOTH` |
 | `PersonType` | `PF`, `PJ` |
 | `StockMovementType` | `ENTRADA`, `SAIDA`, `AJUSTE` |
-| `SaleStatus` | `DRAFT`, `CONFIRMED`, `CANCELLED` |
 | `PurchaseStatus` | `DRAFT`, `CONFIRMED`, `CANCELLED` |
 | `UnitOfMeasure` | `UN`, `KG`, `LT`, `MT`, `CX`, `PC`, `PCT`, `DZ` |
 
@@ -256,10 +226,6 @@ Estrutura análoga a `sales`/`sale_items`, com `purchase_number` no lugar de `sa
 | `stock_movements` | INDEX | `company_id` |
 | `stock_movements` | INDEX | `product_id` |
 | `stock_movements` | INDEX | `(company_id, created_at)` |
-| `sales` | UNIQUE | `(company_id, sale_number)` |
-| `sales` | INDEX | `company_id` |
-| `sales` | INDEX | `(company_id, sale_date)` |
-| `sale_items` | INDEX | `sale_id` |
 | `purchases` | UNIQUE | `(company_id, purchase_number)` |
 | `purchases` | INDEX | `company_id` |
 | `purchase_items` | INDEX | `purchase_id` |
@@ -269,7 +235,7 @@ Estrutura análoga a `sales`/`sale_items`, com `purchase_number` no lugar de `sa
 
 ## Soft Delete
 
-Todas as tabelas (exceto `sale_items` e `purchase_items`) possuem o campo `deleted_at TIMESTAMP NULL`.
+Todas as tabelas (exceto `purchase_items`) possuem o campo `deleted_at TIMESTAMP NULL`.
 
 - Registros ativos: `deleted_at IS NULL`
 - Registros excluídos: `deleted_at IS NOT NULL`

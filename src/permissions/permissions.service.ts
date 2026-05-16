@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MembershipRole } from '@prisma/client';
 
@@ -38,7 +42,6 @@ export class PermissionsService {
       company: 'Empresa',
       users: 'Usuários',
       products: 'Produtos',
-      sales: 'Vendas',
       purchases: 'Compras',
       stock: 'Estoque',
       partners: 'Parceiros',

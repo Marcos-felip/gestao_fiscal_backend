@@ -157,7 +157,6 @@ src/
 ├── products/        CRUD de produtos com paginação
 ├── partners/        CRUD de parceiros (clientes/fornecedores)
 ├── stock/           Movimentações de estoque
-├── sales/           Vendas com controle de estoque
 └── purchases/       Compras com controle de estoque
 ```
 
@@ -166,8 +165,6 @@ src/
 As seguintes operações **obrigatoriamente** usam `prisma.$transaction()`:
 - Criar empresa (company + membership + update user)
 - Onboarding (update company + create establishment)
-- Confirmar venda (criar StockMovements + atualizar currentStock + confirmar sale)
-- Cancelar venda confirmada (reverter StockMovements + atualizar currentStock)
 - Confirmar compra (criar StockMovements + atualizar currentStock + confirmar purchase)
 - Cancelar compra confirmada (reverter StockMovements + atualizar currentStock)
 - Movimentação manual de estoque (criar StockMovement + atualizar currentStock)

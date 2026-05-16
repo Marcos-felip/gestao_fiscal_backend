@@ -6,7 +6,7 @@ O sistema é um SaaS (Software as a Service) de gestão fiscal e operacional par
 
 - Gerenciar múltiplas empresas com usuários compartilhados
 - Controlar estoque de produtos
-- Registrar e controlar vendas e compras
+- Registrar e controlar compras
 - Manter cadastro de clientes e fornecedores
 - Preparar a base para emissão fiscal (NF-e)
 
@@ -15,7 +15,7 @@ O sistema é um SaaS (Software as a Service) de gestão fiscal e operacional par
 ## 2. Multi-tenancy
 
 ### Regra fundamental
-**Toda** entidade de negócio (produto, venda, parceiro, etc.) pertence a uma empresa específica, identificada pelo campo `company_id`.
+**Toda** entidade de negócio (produto, compra, parceiro, etc.) pertence a uma empresa específica, identificada pelo campo `company_id`.
 
 ### Contexto ativo
 - Cada usuário possui uma **empresa ativa** (`company_active_id`)
@@ -74,11 +74,11 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 - Acesso operacional completo
 - Pode convidar novos membros (com papel MEMBER)
 - Pode criar e gerenciar estabelecimentos
-- Pode confirmar e cancelar vendas e compras
+- Pode confirmar e cancelar compras
 
 ### MEMBER
 - Acesso básico de leitura e operação
-- Pode criar vendas e compras (status RASCUNHO)
+- Pode criar compras (status RASCUNHO)
 - Não pode cancelar operações confirmadas
 - Não pode gerenciar membros
 
@@ -93,9 +93,9 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 | Criar/editar estabelecimentos | ✅ | ✅ | ❌ |
 | CRUD de produtos | ✅ | ✅ | ✅ |
 | CRUD de parceiros | ✅ | ✅ | ✅ |
-| Criar vendas/compras (rascunho) | ✅ | ✅ | ✅ |
-| Confirmar vendas/compras | ✅ | ✅ | ✅ |
-| Cancelar vendas/compras | ✅ | ✅ | ❌ |
+| Criar compras (rascunho) | ✅ | ✅ | ✅ |
+| Confirmar compras | ✅ | ✅ | ✅ |
+| Cancelar compras | ✅ | ✅ | ❌ |
 | Movimentação manual de estoque | ✅ | ✅ | ✅ |
 
 ---
@@ -107,7 +107,7 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 - **Não é possível criar uma segunda MATRIZ** para a mesma empresa
 - **Não é possível excluir a MATRIZ**
 - Filiais podem ser criadas e excluídas livremente (por OWNER ou ADMIN)
-- Vendas e compras são vinculadas a um estabelecimento específico
+- Compras são vinculadas a um estabelecimento específico
 
 ---
 
@@ -149,13 +149,13 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 ### Regras
 - **Estoque não pode ficar negativo**: tentativa de SAIDA com quantidade maior que o estoque atual retorna erro
 - Movimentações manuais de estoque são registradas com motivo (opcional)
-- Movimentações automáticas (geradas por vendas/compras confirmadas) têm o `reference_id` preenchido com o ID da venda/compra
+- Movimentações automáticas (geradas por compras confirmadas) têm o `reference_id` preenchido com o ID da compra
 - Toda movimentação é registrada de forma permanente (histórico completo)
 - A operação de criação de movimentação e atualização do estoque é **atômica** (transação)
 
 ---
 
-## 9. Vendas
+## 9. Compras
 
 ### Ciclo de vida
 
@@ -165,50 +165,30 @@ RASCUNHO → CANCELADO
 ```
 
 ### RASCUNHO
-- Venda criada mas não executada
+- Compra criada mas não executada
 - Estoque **não é afetado**
-- Pode ser editada (cliente, desconto, notas)
+- Pode ser editada (fornecedor, notas)
 - Pode ser confirmada ou cancelada
 
 ### CONFIRMADO
-- Estoque **baixado** automaticamente (movimentação SAIDA por item)
-- Numeração sequencial por empresa (`sale_number`)
+- Estoque **aumentado** automaticamente (movimentação ENTRADA por item)
+- Numeração sequencial por empresa (`purchase_number`)
 - **Não pode ser editada**
 - Pode ser cancelada (com estorno automático do estoque)
 
 ### CANCELADO
-- Se veio de CONFIRMADO: estoque **estornado** automaticamente (movimentação ENTRADA por item)
+- Se veio de CONFIRMADO: estoque **estornado** automaticamente (movimentação SAIDA por item)
 - Não pode mais ser alterado
 
 ### Regras adicionais
-- Apenas vendas em RASCUNHO ou CANCELADO podem ser excluídas (soft delete)
-- Número da venda (`sale_number`) é único por empresa e sequencial
-- Total calculado automaticamente: `Σ (quantidade × preço_unitário - desconto_item) - desconto_venda`
-- Itens: mínimo 1 item por venda
+- Apenas compras em RASCUNHO ou CANCELADO podem ser excluídas (soft delete)
+- Número da compra (`purchase_number`) é único por empresa e sequencial
+- Total calculado automaticamente: `Σ (quantidade × preço_unitário)`
+- Itens: mínimo 1 item por compra
 
 ---
 
-## 10. Compras
-
-### Ciclo de vida
-
-```
-RASCUNHO → CONFIRMADO → CANCELADO
-RASCUNHO → CANCELADO
-```
-
-Segue as mesmas regras das Vendas, com as diferenças:
-
-| Aspecto | Venda | Compra |
-|---------|-------|--------|
-| Movimentação ao confirmar | SAIDA (baixa estoque) | ENTRADA (aumenta estoque) |
-| Movimentação ao cancelar confirmada | ENTRADA (estorna) | SAIDA (estorna) |
-| Parceiro vinculado | Cliente (opcional) | Fornecedor (opcional) |
-| Numeração | `sale_number` | `purchase_number` |
-
----
-
-## 11. Soft Delete
+## 10. Soft Delete
 
 - Registros "excluídos" **não são apagados do banco** — recebem `deleted_at = data/hora`
 - Registros com `deleted_at != null` **não aparecem em nenhuma consulta**
@@ -219,5 +199,4 @@ Segue as mesmas regras das Vendas, com as diferenças:
 |----------|-----------|
 | Membership OWNER | Não pode ser removido da empresa |
 | Establishment MATRIZ | Não pode ser excluído |
-| Venda CONFIRMADA | Não pode ser excluída (apenas cancelada) |
 | Compra CONFIRMADA | Não pode ser excluída (apenas cancelada) |

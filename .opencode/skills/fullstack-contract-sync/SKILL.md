@@ -11,7 +11,7 @@ Use esta skill sempre que houver mudanca de contrato que afete backend e fronten
 - mudanca de metodo HTTP, parametros, query params ou status code
 - alteracao em DTO de request/response
 - inclusao/remocao de valores de enum
-- alteracao de regra de workflow (vendas, compras, estoque)
+- alteracao de regra de workflow (compras, estoque)
 
 ## Fluxo de sincronizacao (backend + frontend)
 

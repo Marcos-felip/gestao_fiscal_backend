@@ -48,13 +48,7 @@ Backend de um SaaS multi-tenant de gestão fiscal para empresas brasileiras.
 - `ADMIN` opera gestão diária, sem poderes de owner.
 - `MEMBER` opera fluxo básico sem ações administrativas sensíveis.
 
-## 4) Workflows de Venda, Compra e Estoque
-
-### Vendas
-- Ciclo: **`DRAFT → CONFIRMED → CANCELLED`**.
-- Apenas `DRAFT` é editável.
-- Confirmar venda: baixa estoque (`SAIDA`) por item.
-- Cancelar venda confirmada: estorna estoque (`ENTRADA`) por item.
+## 4) Workflows de Compra e Estoque
 
 ### Compras
 - Ciclo: **`DRAFT → CONFIRMED → CANCELLED`**.
@@ -72,7 +66,7 @@ Backend de um SaaS multi-tenant de gestão fiscal para empresas brasileiras.
 ### DTO
 - Seguir nomenclatura por contexto: `CreateXDto`, `UpdateXDto`, `ListXQueryDto`, etc.
 - Validar campos obrigatórios/opcionais com `class-validator`.
-- Garantir tipagem precisa para enums de domínio (`SaleStatus`, `PurchaseStatus`, etc.).
+- Garantir tipagem precisa para enums de domínio (`PurchaseStatus`, etc.).
 
 ### Erros
 - Mensagens de exceção em **pt-BR**.

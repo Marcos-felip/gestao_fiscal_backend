@@ -26,7 +26,7 @@ Referencias obrigatorias:
 3. Operacoes de risco
    - [ ] nao usar `findUnique`/`update`/`delete` por `id` sem validar tenant
    - [ ] `updateMany`/`deleteMany` com filtros defensivos
-   - [ ] nenhuma query sem escopo em modulos criticos (sales/purchases/stock)
+   - [ ] nenhuma query sem escopo em modulos criticos (purchases/stock)
 
 4. Workflow e estoque
    - [ ] transicoes de status validas (`DRAFT`, `CONFIRMED`, `CANCELLED`)
@@ -36,7 +36,7 @@ Referencias obrigatorias:
 
 5. Integridade de negocio
    - [ ] unicidade por empresa (ex.: SKU, barcode)
-   - [ ] numeracao de venda/compra consistente por empresa
+   - [ ] numeracao de compra consistente por empresa
    - [ ] historico de movimentacoes de estoque preservado
 
 ## Formato de resultado

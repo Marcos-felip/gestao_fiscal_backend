@@ -6,9 +6,11 @@ import { RequirePermissionGuard } from './require-permission.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator';
 
-function createMockContext(
-  membership?: { id: string; role: MembershipRole; companyId: string },
-): ExecutionContext {
+function createMockContext(membership?: {
+  id: string;
+  role: MembershipRole;
+  companyId: string;
+}): ExecutionContext {
   const request = {
     membership,
   };
@@ -73,10 +75,12 @@ describe('RequirePermissionGuard', () => {
 
   it('should allow OWNER to create users', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('users.create');
-    jest.spyOn(prismaService.rolePermission, 'findMany').mockResolvedValue([
-      { permissionCode: 'users.create' },
-      { permissionCode: 'users.list' },
-    ] as any);
+    jest
+      .spyOn(prismaService.rolePermission, 'findMany')
+      .mockResolvedValue([
+        { permissionCode: 'users.create' },
+        { permissionCode: 'users.list' },
+      ] as any);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -90,10 +94,12 @@ describe('RequirePermissionGuard', () => {
 
   it('should allow ADMIN to create users', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('users.create');
-    jest.spyOn(prismaService.rolePermission, 'findMany').mockResolvedValue([
-      { permissionCode: 'users.create' },
-      { permissionCode: 'users.list' },
-    ] as any);
+    jest
+      .spyOn(prismaService.rolePermission, 'findMany')
+      .mockResolvedValue([
+        { permissionCode: 'users.create' },
+        { permissionCode: 'users.list' },
+      ] as any);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -107,10 +113,12 @@ describe('RequirePermissionGuard', () => {
 
   it('should deny MEMBER from creating users', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('users.create');
-    jest.spyOn(prismaService.rolePermission, 'findMany').mockResolvedValue([
-      { permissionCode: 'users.list' },
-      { permissionCode: 'products.read' },
-    ] as any);
+    jest
+      .spyOn(prismaService.rolePermission, 'findMany')
+      .mockResolvedValue([
+        { permissionCode: 'users.list' },
+        { permissionCode: 'products.read' },
+      ] as any);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -124,10 +132,12 @@ describe('RequirePermissionGuard', () => {
   });
 
   it('should throw ForbiddenException with correct message when permission is denied', async () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('sales.cancel');
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue('products.delete');
     jest
       .spyOn(prismaService.rolePermission, 'findMany')
-      .mockResolvedValue([{ permissionCode: 'sales.read' }] as any);
+      .mockResolvedValue([{ permissionCode: 'products.list' }] as any);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -136,7 +146,7 @@ describe('RequirePermissionGuard', () => {
     });
 
     await expect(guard.canActivate(context)).rejects.toThrow(
-      new ForbiddenException('Sem permissão para acessar: sales.cancel'),
+      new ForbiddenException('Sem permissão para acessar: products.delete'),
     );
   });
 

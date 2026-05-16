@@ -503,106 +503,9 @@
 
 ---
 
-## Vendas
-
-> Todos requerem empresa ativa
-
-### POST /sales — Criar nova venda (status: RASCUNHO)
-
-**Body:**
-```json
-{
-  "establishmentId": "uuid (obrigatório)",
-  "clientId": "uuid (opcional)",
-  "items": [
-    {
-      "productId": "uuid",
-      "quantity": "number > 0",
-      "unitPrice": "number > 0",
-      "discount": "number >= 0 (default: 0)"
-    }
-  ],
-  "discount": "number >= 0 (desconto geral, default: 0)",
-  "notes": "string (opcional)",
-  "saleDate": "ISO8601 (opcional, default: agora)"
-}
-```
-
-**Resposta 201:** venda criada com status DRAFT e itens
-
-> O estoque **não é afetado** ao criar o rascunho.
-
----
-
-### GET /sales — Listar vendas
-
-**Query params:**
-| Param | Tipo | Descrição |
-|-------|------|-----------|
-| `page` / `limit` | number | Paginação |
-| `status` | DRAFT \| CONFIRMED \| CANCELLED | Filtro por status |
-| `clientId` | uuid | Filtro por cliente |
-| `startDate` / `endDate` | ISO8601 | Período |
-
----
-
-### GET /sales/:id — Buscar venda com itens
-
-**Resposta 200:** venda completa com `items`, `client`, `establishment`
-
----
-
-### PATCH /sales/:id — Atualizar venda
-
-> Somente vendas em **RASCUNHO** podem ser editadas.
-
-**Body (todos opcionais):**
-```json
-{
-  "clientId": "uuid",
-  "discount": "number",
-  "notes": "string",
-  "saleDate": "ISO8601"
-}
-```
-
-**Erros:** `400` Apenas vendas em RASCUNHO podem ser editadas
-
----
-
-### POST /sales/:id/confirm — Confirmar venda
-
-> Baixa o estoque de cada item. Operação atômica.
-
-**Resposta 200:** venda com status CONFIRMED
-
-**Erros:**
-- `400` Apenas vendas em RASCUNHO podem ser confirmadas
-- `400` Estoque insuficiente para o produto {nome}
-
----
-
-### POST /sales/:id/cancel — Cancelar venda (ADMIN ou OWNER)
-
-> Se a venda estava CONFIRMADA: estorna o estoque automaticamente.
-
-**Resposta 200:** venda com status CANCELLED
-
-**Erros:** `400` Esta venda não pode ser cancelada
-
----
-
-### DELETE /sales/:id — Excluir venda (soft delete, ADMIN ou OWNER)
-
-> Somente RASCUNHO ou CANCELADA.
-
-**Erros:** `400` Apenas vendas em RASCUNHO ou CANCELADAS podem ser excluídas
-
----
-
 ## Compras
 
-> Estrutura análoga às Vendas. Todos requerem empresa ativa.
+> Estrutura análoga. Todos requerem empresa ativa.
 
 ### POST /purchases — Criar nova compra (status: RASCUNHO)
 
@@ -689,7 +592,6 @@ Todos os endpoints de listagem suportam paginação:
 | `PersonType` | `PF`, `PJ` |
 | `UnitOfMeasure` | `UN`, `KG`, `LT`, `MT`, `CX`, `PC`, `PCT`, `DZ` |
 | `StockMovementType` | `ENTRADA`, `SAIDA`, `AJUSTE` |
-| `SaleStatus` | `DRAFT`, `CONFIRMED`, `CANCELLED` |
 | `PurchaseStatus` | `DRAFT`, `CONFIRMED`, `CANCELLED` |
 
 ---
@@ -726,13 +628,7 @@ POST /purchases              → criar compra em RASCUNHO
 POST /purchases/:id/confirm  → confirmar (estoque aumenta)
 ```
 
-### 4. Fluxo de venda
-```
-POST /sales                  → criar venda em RASCUNHO
-POST /sales/:id/confirm      → confirmar (estoque baixa)
-```
-
-### 5. Renovar token
+### 4. Renovar token
 ```
 POST /auth/refresh           → enviar refreshToken, receber novo par de tokens
 ```

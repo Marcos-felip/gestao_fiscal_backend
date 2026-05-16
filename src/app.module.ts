@@ -10,7 +10,7 @@ import { EstablishmentsModule } from './establishments/establishments.module';
 import { ProductsModule } from './products/products.module';
 import { PartnersModule } from './partners/partners.module';
 import { StockModule } from './stock/stock.module';
-import { SalesModule } from './sales/sales.module';
+
 import { PurchasesModule } from './purchases/purchases.module';
 import { PermissionsModule } from './permissions/permissions.module';
 
@@ -27,7 +27,6 @@ import { PermissionsModule } from './permissions/permissions.module';
     ProductsModule,
     PartnersModule,
     StockModule,
-    SalesModule,
     PurchasesModule,
     PermissionsModule,
   ],

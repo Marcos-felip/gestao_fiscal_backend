@@ -24,7 +24,7 @@ Regras obrigatorias:
 
 **Prisma 7:**
 - `PrismaService` usa o adapter `@prisma/adapter-pg`
-- Transacoes obrigatorias: vendas, compras, movimentacoes de estoque, criacao de empresa
+- Transacoes obrigatorias: compras, movimentacoes de estoque, criacao de empresa
 
 **Soft delete:**
 - Sempre adicionar `deletedAt: null` no `where` de toda query de leitura

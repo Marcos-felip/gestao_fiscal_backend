@@ -1,6 +1,6 @@
 # Gestão Fiscal Backend
 
-API backend do sistema SaaS de gestão fiscal e operacional para empresas brasileiras. Construído com NestJS, Prisma 7 e PostgreSQL, com suporte a multi-tenancy, controle de estoque, vendas e compras.
+API backend do sistema SaaS de gestão fiscal e operacional para empresas brasileiras. Construído com NestJS, Prisma 7 e PostgreSQL, com suporte a multi-tenancy, controle de estoque e compras.
 
 ## Tecnologias
 
@@ -135,7 +135,6 @@ src/
 ├── products/          # Cadastro de produtos
 ├── partners/          # Clientes e fornecedores
 ├── stock/             # Movimentações de estoque
-├── sales/             # Pedidos de venda
 ├── purchases/         # Pedidos de compra
 ├── prisma/            # Serviço global do Prisma ORM
 └── common/            # Guards, decorators, filtros, validators

@@ -26,7 +26,7 @@ Referencias obrigatorias:
    - [ ] `page`, `limit`, `search` e limites aplicados
    - [ ] resposta `{ data, total, page, limit }`
 4. Regras criticas
-   - [ ] workflow `DRAFT -> CONFIRMED -> CANCELLED` em vendas/compras
+   - [ ] workflow `DRAFT -> CONFIRMED -> CANCELLED` em compras
    - [ ] somente `DRAFT` editavel
    - [ ] confirmacao/cancelamento com impacto correto no estoque
    - [ ] bloqueio de estoque negativo

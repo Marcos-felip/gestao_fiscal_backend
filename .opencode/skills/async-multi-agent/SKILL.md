@@ -30,7 +30,7 @@ Referencias obrigatorias antes de iniciar:
 
 ## Checklist critico de negocio (backend-first)
 
-- [ ] Workflow de vendas e compras respeita `DRAFT -> CONFIRMED -> CANCELLED`
+- [ ] Workflow de compras respeita `DRAFT -> CONFIRMED -> CANCELLED`
 - [ ] Apenas `DRAFT` e editavel; operacoes invalidas retornam erro de regra
 - [ ] Confirmacao/cancelamento gera movimentacao e estorno de estoque corretos
 - [ ] Nunca permite estoque negativo

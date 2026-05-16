@@ -31,7 +31,7 @@ Checklist obrigatorio de validacao:
 2. Regras de negocio:
    - filtros com `companyId` + `deletedAt: null` em leituras;
    - soft delete aplicado corretamente;
-   - fluxo DRAFT -> CONFIRMED -> CANCELLED em vendas/compras;
+   - fluxo DRAFT -> CONFIRMED -> CANCELLED em compras;
    - sem estoque negativo e com estorno correto em cancelamentos.
 3. Seguranca e autenticacao:
    - cadeia de guards (`JwtAuthGuard`, `CompanyTenantGuard`, `RolesGuard`);

@@ -50,7 +50,7 @@ Frontend: Angular 19+ (standalone, signals) + Tailwind CSS + PrimeNG (unstyled) 
 1. Multi-tenant: toda operacao no contexto da empresa ativa
 2. Refresh token: interceptor faz refresh silencioso em 401
 3. Permissoes: OWNER > ADMIN > MEMBER
-4. Workflow vendas/compras: DRAFT -> CONFIRMED -> CANCELLED
+4. Workflow compras: DRAFT -> CONFIRMED -> CANCELLED
 5. Estoque nunca negativo; confirmacao baixa, cancelamento estorna
 6. Soft delete: frontend so chama DELETE, backend faz exclusao logica
 7. Validacoes brasileiras: CPF, CNPJ, CEP, telefone
