@@ -41,7 +41,13 @@ export class AuthService {
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
+    return this.generateTokens(
+      user.id,
+      user.email,
+      user.name,
+      user.companyActiveId,
+      user.forcePasswordChange,
+    );
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
@@ -58,7 +64,13 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
+    return this.generateTokens(
+      user.id,
+      user.email,
+      user.name,
+      user.companyActiveId,
+      user.forcePasswordChange,
+    );
   }
 
   async refreshTokens(
@@ -78,7 +90,13 @@ export class AuthService {
       throw new UnauthorizedException('Token de atualização inválido');
     }
 
-    return this.generateTokens(user.id, user.email, user.name, user.companyActiveId, user.forcePasswordChange);
+    return this.generateTokens(
+      user.id,
+      user.email,
+      user.name,
+      user.companyActiveId,
+      user.forcePasswordChange,
+    );
   }
 
   async logout(userId: string): Promise<void> {
@@ -164,7 +182,10 @@ export class AuthService {
         expiresIn: '15m',
       }),
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'default_refresh_secret'),
+        secret: this.configService.get<string>(
+          'JWT_REFRESH_SECRET',
+          'default_refresh_secret',
+        ),
         expiresIn: '7d',
       }),
     ]);

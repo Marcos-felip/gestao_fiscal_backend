@@ -31,7 +31,12 @@ export class PartnersService {
     }
 
     const [data, total] = await Promise.all([
-      this.prisma.partner.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+      this.prisma.partner.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.partner.count({ where }),
     ]);
 

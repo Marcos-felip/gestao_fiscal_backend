@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { StockMovement, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';

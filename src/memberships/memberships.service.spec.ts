@@ -40,7 +40,10 @@ describe('MembershipsService', () => {
       mockPrismaService.user.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.invite('company-1', { email: 'unknown@example.com', role: MembershipRole.MEMBER }),
+        service.invite('company-1', {
+          email: 'unknown@example.com',
+          role: MembershipRole.MEMBER,
+        }),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -49,7 +52,10 @@ describe('MembershipsService', () => {
       mockPrismaService.membership.findFirst.mockResolvedValue({ id: 'm1' });
 
       await expect(
-        service.invite('company-1', { email: 'test@example.com', role: MembershipRole.MEMBER }),
+        service.invite('company-1', {
+          email: 'test@example.com',
+          role: MembershipRole.MEMBER,
+        }),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -133,7 +139,9 @@ describe('MembershipsService', () => {
     it('should throw NotFoundException if membership not found', async () => {
       mockPrismaService.membership.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove('m1', 'company-1')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('m1', 'company-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw BadRequestException when trying to remove OWNER', async () => {
@@ -142,7 +150,9 @@ describe('MembershipsService', () => {
         role: MembershipRole.OWNER,
       });
 
-      await expect(service.remove('m1', 'company-1')).rejects.toThrow(BadRequestException);
+      await expect(service.remove('m1', 'company-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should soft delete membership for non-owner', async () => {

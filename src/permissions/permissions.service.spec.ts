@@ -60,7 +60,9 @@ describe('PermissionsService', () => {
         { permissionCode: 'company.read' },
         { permissionCode: 'company.update' },
       ];
-      mockPrismaService.rolePermission.findMany.mockResolvedValue(rolePermissions);
+      mockPrismaService.rolePermission.findMany.mockResolvedValue(
+        rolePermissions,
+      );
 
       const result = await service.findByRole('OWNER');
 
@@ -77,7 +79,9 @@ describe('PermissionsService', () => {
         { permissionCode: 'company.read' },
         { permissionCode: 'products.read' },
       ];
-      mockPrismaService.rolePermission.findMany.mockResolvedValue(rolePermissions);
+      mockPrismaService.rolePermission.findMany.mockResolvedValue(
+        rolePermissions,
+      );
 
       const result = await service.findByRole('MEMBER');
 
@@ -124,7 +128,10 @@ describe('PermissionsService', () => {
       ]);
 
       await expect(
-        service.updateRolePermissions('MEMBER', ['company.read', 'invalid.code']),
+        service.updateRolePermissions('MEMBER', [
+          'company.read',
+          'invalid.code',
+        ]),
       ).rejects.toThrow(NotFoundException);
     });
   });

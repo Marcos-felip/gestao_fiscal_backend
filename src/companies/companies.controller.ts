@@ -63,12 +63,12 @@ export class CompaniesController {
 
   @Post('onboarding')
   @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Configurar empresa com CNPJ, regime tributário e estabelecimento MATRIZ' })
+  @ApiOperation({
+    summary:
+      'Configurar empresa com CNPJ, regime tributário e estabelecimento MATRIZ',
+  })
   @ApiResponse({ status: 200 })
-  onboard(
-    @CurrentCompany() companyId: string,
-    @Body() dto: OnboardingDto,
-  ) {
+  onboard(@CurrentCompany() companyId: string, @Body() dto: OnboardingDto) {
     return this.companiesService.onboard(companyId, dto);
   }
 

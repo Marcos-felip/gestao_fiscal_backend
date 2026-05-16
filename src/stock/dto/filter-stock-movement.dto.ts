@@ -1,6 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { StockMovementType } from '@prisma/client';
-import { IsEnum, IsISO8601, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsEnum,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 export class FilterStockMovementDto extends PaginationDto {

@@ -11,7 +11,10 @@ const mockPrismaService = {
   },
 };
 
-function createMockContext(userId: string, requestOverrides: Record<string, unknown> = {}): ExecutionContext {
+function createMockContext(
+  userId: string,
+  requestOverrides: Record<string, unknown> = {},
+): ExecutionContext {
   const request = {
     user: { id: userId },
     ...requestOverrides,
@@ -47,7 +50,9 @@ describe('CompanyTenantGuard', () => {
 
     const context = createMockContext('user-1');
 
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('should throw ForbiddenException if user has no membership for active company', async () => {
@@ -61,7 +66,9 @@ describe('CompanyTenantGuard', () => {
 
     const context = createMockContext('user-1');
 
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('should set request.companyId and request.membership on success', async () => {

@@ -10,7 +10,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { MembershipRole } from '@prisma/client';
 import { MembershipsService } from './memberships.service';
 import { InviteMemberDto } from './dto/invite-member.dto';
@@ -33,10 +38,7 @@ export class MembershipsController {
   @RequirePermission('users.create')
   @ApiOperation({ summary: 'Convidar usuário para a empresa' })
   @ApiResponse({ status: 201 })
-  invite(
-    @CurrentCompany() companyId: string,
-    @Body() dto: InviteMemberDto,
-  ) {
+  invite(@CurrentCompany() companyId: string, @Body() dto: InviteMemberDto) {
     return this.membershipsService.invite(companyId, dto);
   }
 

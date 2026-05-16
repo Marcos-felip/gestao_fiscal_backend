@@ -35,18 +35,29 @@ describe('StockService', () => {
 
     service = module.get<StockService>(StockService);
     jest.clearAllMocks();
-    mockPrismaService.$transaction.mockImplementation((callback) => callback(mockTx));
+    mockPrismaService.$transaction.mockImplementation((callback) =>
+      callback(mockTx),
+    );
   });
 
   describe('createMovement', () => {
     it('ENTRADA should increase stock', async () => {
       const product = { id: 'prod-1', currentStock: 10, companyId: 'comp-1' };
-      const movement = { id: 'mov-1', type: StockMovementType.ENTRADA, quantity: 5 };
+      const movement = {
+        id: 'mov-1',
+        type: StockMovementType.ENTRADA,
+        quantity: 5,
+      };
       mockTx.product.findFirst.mockResolvedValue(product);
       mockTx.stockMovement.create.mockResolvedValue(movement);
       mockTx.product.update.mockResolvedValue({});
 
-      const dto = { productId: 'prod-1', type: StockMovementType.ENTRADA, quantity: 5, reason: 'test' };
+      const dto = {
+        productId: 'prod-1',
+        type: StockMovementType.ENTRADA,
+        quantity: 5,
+        reason: 'test',
+      };
       const result = await service.createMovement('comp-1', dto as any);
 
       expect(mockTx.product.update).toHaveBeenCalledWith(
@@ -57,12 +68,21 @@ describe('StockService', () => {
 
     it('SAIDA should decrease stock', async () => {
       const product = { id: 'prod-1', currentStock: 10, companyId: 'comp-1' };
-      const movement = { id: 'mov-1', type: StockMovementType.SAIDA, quantity: 3 };
+      const movement = {
+        id: 'mov-1',
+        type: StockMovementType.SAIDA,
+        quantity: 3,
+      };
       mockTx.product.findFirst.mockResolvedValue(product);
       mockTx.stockMovement.create.mockResolvedValue(movement);
       mockTx.product.update.mockResolvedValue({});
 
-      const dto = { productId: 'prod-1', type: StockMovementType.SAIDA, quantity: 3, reason: 'test' };
+      const dto = {
+        productId: 'prod-1',
+        type: StockMovementType.SAIDA,
+        quantity: 3,
+        reason: 'test',
+      };
       const result = await service.createMovement('comp-1', dto as any);
 
       expect(mockTx.product.update).toHaveBeenCalledWith(
@@ -73,12 +93,21 @@ describe('StockService', () => {
 
     it('AJUSTE should set stock directly', async () => {
       const product = { id: 'prod-1', currentStock: 10, companyId: 'comp-1' };
-      const movement = { id: 'mov-1', type: StockMovementType.AJUSTE, quantity: 20 };
+      const movement = {
+        id: 'mov-1',
+        type: StockMovementType.AJUSTE,
+        quantity: 20,
+      };
       mockTx.product.findFirst.mockResolvedValue(product);
       mockTx.stockMovement.create.mockResolvedValue(movement);
       mockTx.product.update.mockResolvedValue({});
 
-      const dto = { productId: 'prod-1', type: StockMovementType.AJUSTE, quantity: 20, reason: 'adjustment' };
+      const dto = {
+        productId: 'prod-1',
+        type: StockMovementType.AJUSTE,
+        quantity: 20,
+        reason: 'adjustment',
+      };
       await service.createMovement('comp-1', dto as any);
 
       expect(mockTx.product.update).toHaveBeenCalledWith(
@@ -90,17 +119,30 @@ describe('StockService', () => {
       const product = { id: 'prod-1', currentStock: 2, companyId: 'comp-1' };
       mockTx.product.findFirst.mockResolvedValue(product);
 
-      const dto = { productId: 'prod-1', type: StockMovementType.SAIDA, quantity: 5, reason: 'test' };
+      const dto = {
+        productId: 'prod-1',
+        type: StockMovementType.SAIDA,
+        quantity: 5,
+        reason: 'test',
+      };
 
-      await expect(service.createMovement('comp-1', dto as any)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.createMovement('comp-1', dto as any),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw NotFoundException if product not found', async () => {
       mockTx.product.findFirst.mockResolvedValue(null);
 
-      const dto = { productId: 'prod-999', type: StockMovementType.ENTRADA, quantity: 5 };
+      const dto = {
+        productId: 'prod-999',
+        type: StockMovementType.ENTRADA,
+        quantity: 5,
+      };
 
-      await expect(service.createMovement('comp-1', dto as any)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.createMovement('comp-1', dto as any),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -117,7 +159,10 @@ describe('StockService', () => {
 
       expect(mockPrismaService.stockMovement.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ companyId: 'comp-1', deletedAt: null }),
+          where: expect.objectContaining({
+            companyId: 'comp-1',
+            deletedAt: null,
+          }),
           skip: 0,
           take: 20,
         }),

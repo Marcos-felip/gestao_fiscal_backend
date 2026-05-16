@@ -17,7 +17,9 @@ export class CompanyEstablishmentDto {
   @ApiPropertyOptional({ example: 'Filial SP' })
   @IsOptional()
   @IsString()
-  @MinLength(2, { message: 'Nome do estabelecimento deve ter no mínimo 2 caracteres' })
+  @MinLength(2, {
+    message: 'Nome do estabelecimento deve ter no mínimo 2 caracteres',
+  })
   socialReason?: string;
 
   @ApiPropertyOptional({

@@ -47,7 +47,9 @@ describe('RolesGuard', () => {
   });
 
   it('should allow when user role matches required role', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([MembershipRole.OWNER]);
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue([MembershipRole.OWNER]);
 
     const context = createMockContext(MembershipRole.OWNER);
     expect(guard.canActivate(context)).toBe(true);
@@ -63,14 +65,18 @@ describe('RolesGuard', () => {
   });
 
   it('should deny when user role does not match required role', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([MembershipRole.OWNER]);
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue([MembershipRole.OWNER]);
 
     const context = createMockContext(MembershipRole.MEMBER);
     expect(guard.canActivate(context)).toBe(false);
   });
 
   it('should deny when user has no membership role and roles are required', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([MembershipRole.OWNER]);
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue([MembershipRole.OWNER]);
 
     const context = createMockContext(undefined);
     expect(guard.canActivate(context)).toBe(false);

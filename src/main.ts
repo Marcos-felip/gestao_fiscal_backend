@@ -31,7 +31,9 @@ async function bootstrap() {
   // Swagger
   const config = new DocumentBuilder()
     .setTitle('Gestão Fiscal API')
-    .setDescription('API do sistema SaaS de gestão fiscal multi-tenant para empresas brasileiras')
+    .setDescription(
+      'API do sistema SaaS de gestão fiscal multi-tenant para empresas brasileiras',
+    )
     .setVersion('1.0')
     .addBearerAuth()
     .build();

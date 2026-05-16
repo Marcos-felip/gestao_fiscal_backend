@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength, IsUUID, IsBoolean } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+  IsUUID,
+  IsBoolean,
+} from 'class-validator';
 import { MembershipRole } from '@prisma/client';
 
 export class CreateUserDto {

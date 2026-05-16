@@ -76,7 +76,9 @@ export class EstablishmentsController {
 
   @Delete(':id')
   @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Excluir estabelecimento (não é possível excluir MATRIZ)' })
+  @ApiOperation({
+    summary: 'Excluir estabelecimento (não é possível excluir MATRIZ)',
+  })
   @ApiResponse({ status: 200 })
   remove(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.establishmentsService.remove(id, companyId);

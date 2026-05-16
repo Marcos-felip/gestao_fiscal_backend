@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -59,7 +63,9 @@ describe('UsersService', () => {
     it('should throw NotFoundException if user not found', async () => {
       mockPrismaService.user.findFirst.mockResolvedValue(null);
 
-      await expect(service.getProfile('unknown')).rejects.toThrow(NotFoundException);
+      await expect(service.getProfile('unknown')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

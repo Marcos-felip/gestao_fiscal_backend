@@ -65,7 +65,9 @@ export class MembershipsService {
     }
 
     if (membership.role === MembershipRole.OWNER) {
-      throw new BadRequestException('Não é possível alterar o papel de um OWNER');
+      throw new BadRequestException(
+        'Não é possível alterar o papel de um OWNER',
+      );
     }
 
     return this.prisma.membership.update({
@@ -89,7 +91,9 @@ export class MembershipsService {
     }
 
     if (membership.role === MembershipRole.OWNER) {
-      throw new BadRequestException('Não é possível remover o OWNER da empresa');
+      throw new BadRequestException(
+        'Não é possível remover o OWNER da empresa',
+      );
     }
 
     await this.prisma.membership.update({

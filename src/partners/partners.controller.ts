@@ -11,7 +11,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { PartnersService } from './partners.service';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { UpdatePartnerDto } from './dto/update-partner.dto';
@@ -45,10 +50,7 @@ export class PartnersController {
   @RequirePermission('partners.create')
   @ApiOperation({ summary: 'Criar novo parceiro' })
   @ApiResponse({ status: 201 })
-  create(
-    @CurrentCompany() companyId: string,
-    @Body() dto: CreatePartnerDto,
-  ) {
+  create(@CurrentCompany() companyId: string, @Body() dto: CreatePartnerDto) {
     return this.partnersService.create(companyId, dto);
   }
 

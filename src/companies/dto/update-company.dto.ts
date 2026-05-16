@@ -22,7 +22,8 @@ export class UpdateCompanyDto {
   @ApiPropertyOptional({ enum: CompanyType })
   @IsOptional()
   @IsEnum(CompanyType, {
-    message: 'Tipo de empresa inválido. Valores válidos: MEI, ME, EPP, LTDA, SA, EIRELI, SLU',
+    message:
+      'Tipo de empresa inválido. Valores válidos: MEI, ME, EPP, LTDA, SA, EIRELI, SLU',
   })
   type?: CompanyType;
 
@@ -54,7 +55,8 @@ export class UpdateCompanyDto {
   @ApiPropertyOptional({ enum: TaxRegime })
   @IsOptional()
   @IsEnum(TaxRegime, {
-    message: 'Regime tributário inválido. Valores válidos: SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL, MEI',
+    message:
+      'Regime tributário inválido. Valores válidos: SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL, MEI',
   })
   taxRegime?: TaxRegime;
 
@@ -67,4 +69,3 @@ export class UpdateCompanyDto {
   @Type(() => CompanyEstablishmentDto)
   establishment?: CompanyEstablishmentDto;
 }
-

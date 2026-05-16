@@ -41,7 +41,10 @@ describe('ProductsService', () => {
 
       expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ companyId: 'company-1', deletedAt: null }),
+          where: expect.objectContaining({
+            companyId: 'company-1',
+            deletedAt: null,
+          }),
           skip: 0,
           take: 20,
         }),
@@ -54,11 +57,17 @@ describe('ProductsService', () => {
       mockPrismaService.product.findMany.mockResolvedValue([]);
       mockPrismaService.product.count.mockResolvedValue(0);
 
-      await service.findAll('company-1', { page: 1, limit: 20, search: 'Widget' });
+      await service.findAll('company-1', {
+        page: 1,
+        limit: 20,
+        search: 'Widget',
+      });
 
       expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ name: { contains: 'Widget', mode: 'insensitive' } }),
+          where: expect.objectContaining({
+            name: { contains: 'Widget', mode: 'insensitive' },
+          }),
         }),
       );
     });
@@ -76,13 +85,19 @@ describe('ProductsService', () => {
 
   describe('findOne', () => {
     it('should return a product by id', async () => {
-      const product = { id: 'prod-1', companyId: 'company-1', name: 'Product A' };
+      const product = {
+        id: 'prod-1',
+        companyId: 'company-1',
+        name: 'Product A',
+      };
       mockPrismaService.product.findFirst.mockResolvedValue(product);
 
       const result = await service.findOne('prod-1', 'company-1');
 
       expect(mockPrismaService.product.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'prod-1', companyId: 'company-1', deletedAt: null } }),
+        expect.objectContaining({
+          where: { id: 'prod-1', companyId: 'company-1', deletedAt: null },
+        }),
       );
       expect(result).toEqual(product);
     });
@@ -90,7 +105,9 @@ describe('ProductsService', () => {
     it('should throw NotFoundException if product not found', async () => {
       mockPrismaService.product.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('prod-999', 'company-1')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('prod-999', 'company-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -104,7 +121,10 @@ describe('ProductsService', () => {
 
       expect(mockPrismaService.product.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ companyId: 'company-1', name: 'New Product' }),
+          data: expect.objectContaining({
+            companyId: 'company-1',
+            name: 'New Product',
+          }),
         }),
       );
       expect(result).toEqual(created);
@@ -113,12 +133,18 @@ describe('ProductsService', () => {
 
   describe('update', () => {
     it('should call findOne then update and return the product', async () => {
-      const existing = { id: 'prod-1', companyId: 'company-1', name: 'Product A' };
+      const existing = {
+        id: 'prod-1',
+        companyId: 'company-1',
+        name: 'Product A',
+      };
       const updated = { ...existing, name: 'Product A Updated' };
       mockPrismaService.product.findFirst.mockResolvedValue(existing);
       mockPrismaService.product.update.mockResolvedValue(updated);
 
-      const result = await service.update('prod-1', 'company-1', { name: 'Product A Updated' } as any);
+      const result = await service.update('prod-1', 'company-1', {
+        name: 'Product A Updated',
+      } as any);
 
       expect(mockPrismaService.product.findFirst).toHaveBeenCalled();
       expect(mockPrismaService.product.update).toHaveBeenCalledWith(
@@ -130,15 +156,24 @@ describe('ProductsService', () => {
     it('should throw NotFoundException if product does not exist', async () => {
       mockPrismaService.product.findFirst.mockResolvedValue(null);
 
-      await expect(service.update('prod-999', 'company-1', {} as any)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.update('prod-999', 'company-1', {} as any),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('remove', () => {
     it('should soft delete by setting deletedAt', async () => {
-      const existing = { id: 'prod-1', companyId: 'company-1', name: 'Product A' };
+      const existing = {
+        id: 'prod-1',
+        companyId: 'company-1',
+        name: 'Product A',
+      };
       mockPrismaService.product.findFirst.mockResolvedValue(existing);
-      mockPrismaService.product.update.mockResolvedValue({ ...existing, deletedAt: new Date() });
+      mockPrismaService.product.update.mockResolvedValue({
+        ...existing,
+        deletedAt: new Date(),
+      });
 
       await service.remove('prod-1', 'company-1');
 
@@ -153,7 +188,9 @@ describe('ProductsService', () => {
     it('should throw NotFoundException if product does not exist', async () => {
       mockPrismaService.product.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove('prod-999', 'company-1')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('prod-999', 'company-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

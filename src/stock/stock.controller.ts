@@ -1,5 +1,10 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { StockService } from './stock.service';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { FilterStockMovementDto } from './dto/filter-stock-movement.dto';

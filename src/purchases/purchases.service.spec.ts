@@ -46,19 +46,25 @@ describe('PurchasesService', () => {
 
     service = module.get<PurchasesService>(PurchasesService);
     jest.clearAllMocks();
-    mockPrismaService.$transaction.mockImplementation((callback) => callback(mockTx));
+    mockPrismaService.$transaction.mockImplementation((callback) =>
+      callback(mockTx),
+    );
   });
 
   describe('create', () => {
     it('should create purchase with sequential purchaseNumber', async () => {
-      mockTx.purchase.aggregate.mockResolvedValue({ _max: { purchaseNumber: 5 } });
+      mockTx.purchase.aggregate.mockResolvedValue({
+        _max: { purchaseNumber: 5 },
+      });
       mockTx.establishment.findFirst.mockResolvedValue({ id: 'est-1' });
       mockTx.product.findFirst.mockResolvedValue({ id: 'prod-1' });
       const createdPurchase = {
         id: 'purch-1',
         purchaseNumber: 6,
         totalAmount: 200,
-        items: [{ productId: 'prod-1', quantity: 4, unitPrice: 50, total: 200 }],
+        items: [
+          { productId: 'prod-1', quantity: 4, unitPrice: 50, total: 200 },
+        ],
       };
       mockTx.purchase.create.mockResolvedValue(createdPurchase);
 
@@ -69,40 +75,63 @@ describe('PurchasesService', () => {
       const result = await service.create('comp-1', dto as any);
 
       expect(mockTx.purchase.aggregate).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ companyId: 'comp-1' }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: 'comp-1' }),
+        }),
       );
       expect(mockTx.purchase.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ purchaseNumber: 6, companyId: 'comp-1', totalAmount: 200 }),
+          data: expect.objectContaining({
+            purchaseNumber: 6,
+            companyId: 'comp-1',
+            totalAmount: 200,
+          }),
         }),
       );
       expect(result).toEqual(createdPurchase);
     });
 
     it('should use purchaseNumber 1 when no existing purchases', async () => {
-      mockTx.purchase.aggregate.mockResolvedValue({ _max: { purchaseNumber: null } });
+      mockTx.purchase.aggregate.mockResolvedValue({
+        _max: { purchaseNumber: null },
+      });
       mockTx.establishment.findFirst.mockResolvedValue({ id: 'est-1' });
       mockTx.product.findFirst.mockResolvedValue({ id: 'prod-1' });
-      mockTx.purchase.create.mockResolvedValue({ id: 'purch-1', purchaseNumber: 1, items: [] });
+      mockTx.purchase.create.mockResolvedValue({
+        id: 'purch-1',
+        purchaseNumber: 1,
+        items: [],
+      });
 
-      const dto = { establishmentId: 'est-1', items: [{ productId: 'prod-1', quantity: 1, unitPrice: 10 }] };
+      const dto = {
+        establishmentId: 'est-1',
+        items: [{ productId: 'prod-1', quantity: 1, unitPrice: 10 }],
+      };
       await service.create('comp-1', dto as any);
 
       expect(mockTx.purchase.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ purchaseNumber: 1 }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ purchaseNumber: 1 }),
+        }),
       );
     });
 
     it('should throw NotFoundException if establishment not found', async () => {
-      mockTx.purchase.aggregate.mockResolvedValue({ _max: { purchaseNumber: 0 } });
+      mockTx.purchase.aggregate.mockResolvedValue({
+        _max: { purchaseNumber: 0 },
+      });
       mockTx.establishment.findFirst.mockResolvedValue(null);
 
       const dto = { establishmentId: 'est-999', items: [] };
-      await expect(service.create('comp-1', dto as any)).rejects.toThrow(NotFoundException);
+      await expect(service.create('comp-1', dto as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw NotFoundException if product not found', async () => {
-      mockTx.purchase.aggregate.mockResolvedValue({ _max: { purchaseNumber: 0 } });
+      mockTx.purchase.aggregate.mockResolvedValue({
+        _max: { purchaseNumber: 0 },
+      });
       mockTx.establishment.findFirst.mockResolvedValue({ id: 'est-1' });
       mockTx.product.findFirst.mockResolvedValue(null);
 
@@ -110,7 +139,9 @@ describe('PurchasesService', () => {
         establishmentId: 'est-1',
         items: [{ productId: 'prod-999', quantity: 1, unitPrice: 10 }],
       };
-      await expect(service.create('comp-1', dto as any)).rejects.toThrow(NotFoundException);
+      await expect(service.create('comp-1', dto as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -123,7 +154,10 @@ describe('PurchasesService', () => {
         items: [{ productId: 'prod-1', quantity: 10 }],
       };
       const product = { id: 'prod-1', currentStock: 5 };
-      const confirmedPurchase = { ...purchase, status: PurchaseStatus.CONFIRMED };
+      const confirmedPurchase = {
+        ...purchase,
+        status: PurchaseStatus.CONFIRMED,
+      };
 
       mockTx.purchase.findFirst.mockResolvedValue(purchase);
       mockTx.product.findFirst.mockResolvedValue(product);
@@ -154,14 +188,22 @@ describe('PurchasesService', () => {
     it('should throw NotFoundException if purchase not found', async () => {
       mockTx.purchase.findFirst.mockResolvedValue(null);
 
-      await expect(service.confirm('purch-999', 'comp-1')).rejects.toThrow(NotFoundException);
+      await expect(service.confirm('purch-999', 'comp-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw BadRequestException if purchase is not DRAFT', async () => {
-      const purchase = { id: 'purch-1', status: PurchaseStatus.CONFIRMED, items: [] };
+      const purchase = {
+        id: 'purch-1',
+        status: PurchaseStatus.CONFIRMED,
+        items: [],
+      };
       mockTx.purchase.findFirst.mockResolvedValue(purchase);
 
-      await expect(service.confirm('purch-1', 'comp-1')).rejects.toThrow(BadRequestException);
+      await expect(service.confirm('purch-1', 'comp-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -174,7 +216,10 @@ describe('PurchasesService', () => {
         items: [{ productId: 'prod-1', quantity: 10 }],
       };
       const product = { id: 'prod-1', currentStock: 15 };
-      const cancelledPurchase = { ...purchase, status: PurchaseStatus.CANCELLED };
+      const cancelledPurchase = {
+        ...purchase,
+        status: PurchaseStatus.CANCELLED,
+      };
 
       mockTx.purchase.findFirst.mockResolvedValue(purchase);
       mockTx.product.findFirst.mockResolvedValue(product);
@@ -206,7 +251,10 @@ describe('PurchasesService', () => {
         status: PurchaseStatus.DRAFT,
         items: [{ productId: 'prod-1', quantity: 5 }],
       };
-      const cancelledPurchase = { ...purchase, status: PurchaseStatus.CANCELLED };
+      const cancelledPurchase = {
+        ...purchase,
+        status: PurchaseStatus.CANCELLED,
+      };
 
       mockTx.purchase.findFirst.mockResolvedValue(purchase);
       mockTx.purchase.update.mockResolvedValue(cancelledPurchase);
@@ -223,7 +271,9 @@ describe('PurchasesService', () => {
     it('should throw NotFoundException if purchase not found', async () => {
       mockTx.purchase.findFirst.mockResolvedValue(null);
 
-      await expect(service.cancel('purch-999', 'comp-1')).rejects.toThrow(NotFoundException);
+      await expect(service.cancel('purch-999', 'comp-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

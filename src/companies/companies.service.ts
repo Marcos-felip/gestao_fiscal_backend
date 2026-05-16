@@ -122,7 +122,9 @@ export class CompaniesService {
       });
 
       if (existingMatriz) {
-        throw new ConflictException('Já existe um estabelecimento MATRIZ para esta empresa');
+        throw new ConflictException(
+          'Já existe um estabelecimento MATRIZ para esta empresa',
+        );
       }
 
       await tx.company.update({
@@ -252,7 +254,8 @@ export class CompaniesService {
               establishmentUpdateData.complement = addr.complement;
             if (addr.neighborhood !== undefined)
               establishmentUpdateData.neighborhood = addr.neighborhood;
-            if (addr.city !== undefined) establishmentUpdateData.city = addr.city;
+            if (addr.city !== undefined)
+              establishmentUpdateData.city = addr.city;
             if (addr.state !== undefined)
               establishmentUpdateData.state = addr.state;
           }

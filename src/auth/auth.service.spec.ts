@@ -78,7 +78,9 @@ describe('AuthService', () => {
     });
 
     it('should throw ConflictException if email already exists', async () => {
-      mockPrismaService.user.findFirst.mockResolvedValue({ id: 'existing-user' });
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'existing-user',
+      });
 
       await expect(
         service.register({
@@ -153,7 +155,10 @@ describe('AuthService', () => {
         .mockResolvedValueOnce('new_refresh_token');
       mockPrismaService.user.update.mockResolvedValue({});
 
-      const result = await service.refreshTokens('user-1', 'valid_refresh_token');
+      const result = await service.refreshTokens(
+        'user-1',
+        'valid_refresh_token',
+      );
 
       expect(result.accessToken).toBe('new_access_token');
       expect(result.refreshToken).toBe('new_refresh_token');

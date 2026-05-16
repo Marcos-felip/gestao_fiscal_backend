@@ -11,7 +11,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { PurchasesService } from './purchases.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { UpdatePurchaseDto } from './dto/update-purchase.dto';
@@ -33,10 +38,7 @@ export class PurchasesController {
   @RequirePermission('purchases.create')
   @ApiOperation({ summary: 'Criar nova compra' })
   @ApiResponse({ status: 201 })
-  create(
-    @CurrentCompany() companyId: string,
-    @Body() dto: CreatePurchaseDto,
-  ) {
+  create(@CurrentCompany() companyId: string, @Body() dto: CreatePurchaseDto) {
     return this.purchasesService.create(companyId, dto);
   }
 

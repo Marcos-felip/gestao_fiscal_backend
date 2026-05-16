@@ -41,7 +41,9 @@ export class PurchasesService {
           where: { id: item.productId, companyId, deletedAt: null },
         });
         if (!product) {
-          throw new NotFoundException(`Produto não encontrado: ${item.productId}`);
+          throw new NotFoundException(
+            `Produto não encontrado: ${item.productId}`,
+          );
         }
         const total = item.quantity * item.unitPrice;
         totalAmount += total;
@@ -141,7 +143,9 @@ export class PurchasesService {
     const purchase = await this.findOne(id, companyId);
 
     if (purchase.status !== PurchaseStatus.DRAFT) {
-      throw new BadRequestException('Apenas compras em RASCUNHO podem ser editadas');
+      throw new BadRequestException(
+        'Apenas compras em RASCUNHO podem ser editadas',
+      );
     }
 
     return this.prisma.purchase.update({
@@ -164,7 +168,9 @@ export class PurchasesService {
 
       if (!purchase) throw new NotFoundException('Compra não encontrada');
       if (purchase.status !== PurchaseStatus.DRAFT) {
-        throw new BadRequestException('Apenas compras em RASCUNHO podem ser confirmadas');
+        throw new BadRequestException(
+          'Apenas compras em RASCUNHO podem ser confirmadas',
+        );
       }
 
       for (const item of purchase.items) {
@@ -173,7 +179,9 @@ export class PurchasesService {
         });
 
         if (!product) {
-          throw new NotFoundException(`Produto não encontrado: ${item.productId}`);
+          throw new NotFoundException(
+            `Produto não encontrado: ${item.productId}`,
+          );
         }
 
         const qty = Number(item.quantity);

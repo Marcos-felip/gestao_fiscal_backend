@@ -40,7 +40,7 @@ export class UsersService {
     }
 
     const { memberships, companyActiveId, forcePasswordChange, ...rest } = user;
-    
+
     // Encontrar o role do membership da empresa ativa
     let role: string | null = null;
     if (companyActiveId) {
@@ -85,7 +85,9 @@ export class UsersService {
     });
 
     if (!membership) {
-      throw new ForbiddenException('Usuário não é membro da empresa selecionada');
+      throw new ForbiddenException(
+        'Usuário não é membro da empresa selecionada',
+      );
     }
 
     return this.prisma.user.update({

@@ -31,6 +31,9 @@ export class PermissionsController {
     @Param('role') role: MembershipRole,
     @Body() dto: UpdateRolePermissionsDto,
   ) {
-    return this.permissionsService.updateRolePermissions(role, dto.permissionCodes);
+    return this.permissionsService.updateRolePermissions(
+      role,
+      dto.permissionCodes,
+    );
   }
 }

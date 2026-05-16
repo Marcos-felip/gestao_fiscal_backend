@@ -28,7 +28,12 @@ export class ProductsService {
     }
 
     const [data, total] = await Promise.all([
-      this.prisma.product.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+      this.prisma.product.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.product.count({ where }),
     ]);
 
@@ -63,7 +68,9 @@ export class ProductsService {
         cest: dto.cest,
         cfop: dto.cfop,
         origin: dto.origin,
-        technicalAttributes: dto.technicalAttributes as Prisma.InputJsonValue | undefined,
+        technicalAttributes: dto.technicalAttributes as
+          | Prisma.InputJsonValue
+          | undefined,
       },
     });
   }
@@ -90,7 +97,9 @@ export class ProductsService {
         cest: dto.cest,
         cfop: dto.cfop,
         origin: dto.origin,
-        technicalAttributes: dto.technicalAttributes as Prisma.InputJsonValue | undefined,
+        technicalAttributes: dto.technicalAttributes as
+          | Prisma.InputJsonValue
+          | undefined,
         isActive: dto.isActive,
       },
     });
