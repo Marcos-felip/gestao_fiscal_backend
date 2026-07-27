@@ -37,7 +37,7 @@ Frontend: Angular 19+ (standalone, signals) + Tailwind CSS + PrimeNG (unstyled) 
 - Cadeia de guards por papel: `JwtAuthGuard -> CompanyTenantGuard -> RolesGuard`
 - Cadeia de guards por permissao: `JwtAuthGuard -> CompanyTenantGuard -> RequirePermissionGuard`
 - Decorators: `@CurrentUser()`, `@CurrentCompany()`, `@TenantProtected()`, `@RequirePermission('dominio.acao')`
-- Modulo novo exige migration que insira os codigos em `permissions` e os vincule em `role_permissions`
+- Modulo novo exige migration em 3 passos: catalogo (`permissions`), template (`role_permissions`) e backfill das empresas existentes (`company_role_permissions`)
 - Mensagens de erro em PT-BR
 - Paginacao: `PaginationDto` com resposta `{ data, total, page, limit }`
 
@@ -51,13 +51,15 @@ Frontend: Angular 19+ (standalone, signals) + Tailwind CSS + PrimeNG (unstyled) 
 
 1. Multi-tenant: toda operacao no contexto da empresa ativa
 2. Refresh token: interceptor faz refresh silencioso em 401
-3. Papeis: OWNER > ADMIN > MEMBER — mas o acesso real vem das permissoes granulares (`dominio.acao`) em `role_permissions`; ADMIN nao tem `users.create` e MEMBER tem
-4. Permissoes sao globais por papel (nao ha `company_id` em `role_permissions`) e so o OWNER altera as do papel MEMBER
-5. Primeiro acesso: usuario criado por admin recebe senha provisoria e `forcePasswordChange: true` — frontend conduz a `POST /auth/change-password-first-login`
-6. Workflow compras: DRAFT -> CONFIRMED -> CANCELLED
-7. Estoque nunca negativo; confirmacao baixa, cancelamento estorna
-8. Soft delete: frontend so chama DELETE, backend faz exclusao logica
-9. Validacoes brasileiras: CPF, CNPJ, CEP, telefone
+3. Papeis: OWNER faz tudo (guard nunca o barra); ADMIN recebe todas as permissoes por padrao; MEMBER e o papel configuravel
+4. Permissoes sao POR EMPRESA (`company_role_permissions`); `role_permissions` e so o template copiado na criacao da empresa; so o OWNER altera as do papel MEMBER
+5. Hierarquia: OWNER nunca e atribuivel pela API e ninguem atribui papel acima do seu (`assertCanAssignRole`)
+6. Frontend le as proprias permissoes em `GET /permissions/me`
+7. Primeiro acesso: usuario criado por admin recebe senha provisoria e `forcePasswordChange: true` — frontend conduz a `POST /auth/change-password-first-login`
+8. Workflow compras: DRAFT -> CONFIRMED -> CANCELLED
+9. Estoque nunca negativo; confirmacao baixa, cancelamento estorna
+10. Soft delete: frontend so chama DELETE, backend faz exclusao logica
+11. Validacoes brasileiras: CPF, CNPJ, CEP, telefone
 
 ## Comandos de qualidade
 

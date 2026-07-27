@@ -24,6 +24,8 @@ import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
+import { CurrentMembership } from '../common/decorators/current-membership.decorator';
+import type { CurrentMembershipData } from '../common/decorators/current-membership.decorator';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -64,8 +66,12 @@ export class UsersController {
   @RequirePermission('users.create')
   @ApiOperation({ summary: 'Criar novo usuário na empresa' })
   @ApiResponse({ status: 201 })
-  createUser(@Body() dto: CreateUserDto) {
-    return this.usersService.createUser(dto);
+  createUser(
+    @CurrentCompany() companyId: string,
+    @CurrentMembership() membership: CurrentMembershipData,
+    @Body() dto: CreateUserDto,
+  ) {
+    return this.usersService.createUser(dto, companyId, membership.role);
   }
 
   @Post(':id/memberships')
@@ -76,8 +82,14 @@ export class UsersController {
   addMembership(
     @Param('id') userId: string,
     @CurrentCompany() companyId: string,
+    @CurrentMembership() membership: CurrentMembershipData,
     @Body() dto: AddUserToCompanyMembershipDto,
   ) {
-    return this.usersService.addMembership(userId, companyId, dto);
+    return this.usersService.addMembership(
+      userId,
+      companyId,
+      dto,
+      membership.role,
+    );
   }
 }

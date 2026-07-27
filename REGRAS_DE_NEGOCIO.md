@@ -67,25 +67,25 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 A autorização acontece em **duas camadas**:
 
 1. **Papel (`MembershipRole`)** — `OWNER`, `ADMIN` ou `MEMBER`, definido no membership do usuário naquela empresa. Usado diretamente em operações estruturais (onboarding, gestão de papéis, exclusão de estabelecimento, gestão de permissões).
-2. **Permissão granular (`dominio.acao`)** — códigos como `products.create`, guardados na tabela `permissions` e vinculados aos papéis em `role_permissions`. Usado na maioria dos endpoints de CRUD.
+2. **Permissão granular (`dominio.acao`)** — códigos como `products.create`, guardados na tabela `permissions` e vinculados aos papéis **de cada empresa** em `company_role_permissions`. Usado na maioria dos endpoints de CRUD.
 
 Na prática o papel não concede acesso por si só: ele define **qual conjunto de permissões** o usuário carrega.
 
 ### OWNER
-- Controle total da empresa; possui **todas** as permissões
-- Único que pode: fazer o onboarding, alterar papéis, remover membros, excluir estabelecimentos e gerenciar permissões
-- **Não pode ser removido da empresa**
-- **Não pode ter seu papel alterado**
+- **Acesso total por definição** — o guard de permissões nunca barra um OWNER, independentemente do que está cadastrado
+- Único que pode: fazer o onboarding, alterar papéis, remover membros e gerenciar permissões
+- **Não pode alterar as próprias permissões** (nem as do ADMIN) — só as do MEMBER são editáveis
+- **Não pode ser removido da empresa** e **não pode ter seu papel alterado**
+- Não existe exclusão de empresa na API
 
 ### ADMIN
-- Acesso operacional completo (CRUD de produtos, parceiros, estoque, compras, estabelecimentos)
-- Pode confirmar e cancelar compras
-- **Não possui `users.create` por padrão** — logo, não cadastra novos membros
+- Recebe **todas as permissões** por padrão: opera tudo abaixo do OWNER
+- O que o separa do OWNER são as operações travadas por papel: onboarding, alterar papéis, remover membros e gerenciar permissões
+- Suas permissões são fixas, como as do OWNER
 
 ### MEMBER
-- Acesso operacional restrito, totalmente configurável pelo OWNER
-- Por padrão: cria compras e as confirma, mas **não pode cancelá-las**; lê estabelecimentos mas não os cria/edita; não edita dados da empresa
-- Por padrão **possui `users.create`**, ou seja, cadastra novos membros
+- Único papel **configurável**, e é para isso que existe o módulo de permissões
+- Por padrão: opera produtos, parceiros, estoque e compras; confirma compras mas **não as cancela nem exclui**; lê estabelecimentos mas não os cria/edita; não edita dados da empresa; **não cadastra usuários**
 
 ### Tabela resumida (configuração padrão)
 
@@ -93,36 +93,45 @@ Na prática o papel não concede acesso por si só: ele define **qual conjunto d
 |------|:-----:|:-----:|:------:|----------------|
 | Configurar empresa (onboarding) | ✅ | ❌ | ❌ | Papel |
 | Editar dados da empresa | ✅ | ✅ | ❌ | `company.edit` |
-| Criar membros | ✅ | ❌ | ✅ | `users.create` |
+| Criar membros | ✅ | ✅ | ❌ | `users.create` |
 | Listar membros | ✅ | ✅ | ✅ | `users.list` |
 | Alterar papéis | ✅ | ❌ | ❌ | Papel |
 | Remover membros | ✅ | ❌ | ❌ | Papel |
 | Gerenciar permissões | ✅ | somente leitura | ❌ | Papel |
+| Ver as próprias permissões | ✅ | ✅ | ✅ | — (`GET /permissions/me`) |
 | Criar/editar estabelecimentos | ✅ | ✅ | ❌ | `establishments.create` / `.edit` |
-| Excluir estabelecimento | ✅ | ❌ | ❌ | Papel |
+| Excluir estabelecimento | ✅ | ✅ | ❌ | `establishments.delete` |
 | CRUD de produtos | ✅ | ✅ | ✅ | `products.*` |
 | CRUD de parceiros | ✅ | ✅ | ✅ | `partners.*` |
 | Criar/editar compras (rascunho) | ✅ | ✅ | ✅ | `purchases.create` / `.edit` |
 | Confirmar compras | ✅ | ✅ | ✅ | `purchases.confirm` |
 | Cancelar compras | ✅ | ✅ | ❌ | `purchases.cancel` |
+| Excluir compras | ✅ | ✅ | ❌ | `purchases.delete` |
 | Movimentação manual de estoque | ✅ | ✅ | ✅ | `stock.create` |
 
 > A lista completa de códigos está no [API.md](./API.md#catálogo-de-permissões).
 
 ### Gestão de permissões
 
+- As permissões são **por empresa**: cada empresa recebe uma cópia do conjunto padrão do sistema no momento em que é criada, e passa a evoluir de forma independente
 - Apenas o **OWNER** pode alterar permissões, e **somente as do papel MEMBER** — as de OWNER e ADMIN são fixas (`400` ao tentar alterá-las)
-- A atualização é uma **substituição total**: o conjunto enviado passa a ser o único conjunto do papel
+- A atualização é uma **substituição total**: o conjunto enviado passa a ser o único conjunto do papel naquela empresa
 - Códigos inexistentes na tabela `permissions` são rejeitados com `404`
-- ⚠️ **As permissões são globais, não por empresa.** `role_permissions` não tem `company_id`, então alterar o papel MEMBER afeta todas as empresas da instância. Enquanto isso não mudar, trate a tela de permissões como configuração de plataforma, não de tenant.
+- Qualquer membro consulta as próprias permissões em `GET /permissions/me` — é assim que o frontend decide o que exibir
+
+### Hierarquia de papéis
+
+Vale em toda criação ou alteração de vínculo (`POST /memberships`, `POST /users`, `POST /users/:id/memberships`, `PATCH /memberships/:id/role`):
+
+- O papel **OWNER nunca é atribuível pela API** — ele nasce com a criação da empresa
+- Ninguém pode atribuir um papel **superior ao seu**: OWNER atribui ADMIN/MEMBER, ADMIN atribui ADMIN/MEMBER, MEMBER (se receber `users.create`) atribui apenas MEMBER
 
 ### Vinculação de usuários
 
 - `POST /memberships` cria usuário + membership na empresa ativa (senha provisória interna)
-- `POST /users` cria usuário + membership e devolve a senha provisória em `temporaryPassword`
+- `POST /users` cria usuário + membership e devolve a senha provisória em `temporaryPassword`; o `companyId` do corpo **precisa ser a empresa ativa** (`403` caso contrário)
 - `POST /users/:id/memberships` vincula um usuário já existente à empresa ativa
 - Um usuário não pode ter dois memberships ativos na mesma empresa (`409`)
-- ⚠️ O papel informado na criação **não é validado contra o papel de quem cria** — hoje qualquer usuário com `users.create` consegue criar um `OWNER`
 
 ---
 
@@ -143,7 +152,7 @@ Na prática o papel não concede acesso por si só: ele define **qual conjunto d
 - **Toda empresa deve ter exatamente uma MATRIZ** (criada no onboarding)
 - **Não é possível criar uma segunda MATRIZ** para a mesma empresa
 - **Não é possível excluir a MATRIZ**
-- Filiais podem ser criadas e excluídas livremente (por OWNER ou ADMIN)
+- Filiais podem ser criadas e excluídas por quem tiver `establishments.create` / `establishments.delete` (por padrão OWNER e ADMIN)
 - Compras são vinculadas a um estabelecimento específico
 
 ---
@@ -218,7 +227,7 @@ RASCUNHO → CANCELADO
 - Não pode mais ser alterado
 
 ### Regras adicionais
-- Apenas compras em RASCUNHO ou CANCELADO podem ser excluídas (soft delete) — ⚠️ na prática o endpoint `DELETE /purchases/:id` exige a permissão `purchases.delete`, que não existe na tabela `permissions`, então a exclusão está indisponível para todos os papéis
+- Apenas compras em RASCUNHO ou CANCELADO podem ser excluídas (soft delete) — exige a permissão `purchases.delete`, concedida por padrão a OWNER e ADMIN
 - Número da compra (`purchase_number`) é único por empresa e sequencial
 - Total calculado automaticamente: `Σ (quantidade × preço_unitário)`
 - Itens: mínimo 1 item por compra

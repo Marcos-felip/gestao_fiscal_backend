@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { MembershipRole } from '@prisma/client';
@@ -66,11 +67,19 @@ describe('MembershipsService', () => {
       });
 
       await expect(
-        service.createMember('company-1', createMemberDto),
+        service.createMember(
+          'company-1',
+          createMemberDto,
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(ConflictException);
 
       await expect(
-        service.createMember('company-1', createMemberDto),
+        service.createMember(
+          'company-1',
+          createMemberDto,
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow('E-mail já cadastrado');
     });
 
@@ -84,7 +93,11 @@ describe('MembershipsService', () => {
       });
 
       await expect(
-        service.createMember('company-1', createMemberDto),
+        service.createMember(
+          'company-1',
+          createMemberDto,
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -105,7 +118,11 @@ describe('MembershipsService', () => {
         ],
       });
 
-      const result = await service.createMember('company-1', createMemberDto);
+      const result = await service.createMember(
+        'company-1',
+        createMemberDto,
+        MembershipRole.OWNER,
+      );
 
       // Verify bcrypt.hash was called (for provisional password)
       expect(bcrypt.hash).toHaveBeenCalledWith(expect.any(String), 12);
@@ -146,7 +163,7 @@ describe('MembershipsService', () => {
 
       const dtoNoRole = { name: 'João Silva', email: 'joao@exemplo.com' };
 
-      await service.createMember('company-1', dtoNoRole);
+      await service.createMember('company-1', dtoNoRole, MembershipRole.OWNER);
 
       expect(mockTxUserCreate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -184,7 +201,7 @@ describe('MembershipsService', () => {
         role: MembershipRole.ADMIN,
       };
 
-      await service.createMember('company-1', dtoAdmin);
+      await service.createMember('company-1', dtoAdmin, MembershipRole.OWNER);
 
       expect(mockTxUserCreate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -198,6 +215,38 @@ describe('MembershipsService', () => {
         }),
       );
     });
+
+    it('should reject creating an OWNER', async () => {
+      await expect(
+        service.createMember(
+          'company-1',
+          {
+            name: 'Novo Dono',
+            email: 'dono@example.com',
+            role: MembershipRole.OWNER,
+          },
+          MembershipRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockPrismaService.user.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('should reject a MEMBER creating an ADMIN', async () => {
+      await expect(
+        service.createMember(
+          'company-1',
+          {
+            name: 'Novo Admin',
+            email: 'admin@example.com',
+            role: MembershipRole.ADMIN,
+          },
+          MembershipRole.MEMBER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockTxUserCreate).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateRole', () => {
@@ -205,7 +254,12 @@ describe('MembershipsService', () => {
       mockPrismaService.membership.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.updateRole('m1', 'company-1', { role: MembershipRole.ADMIN }),
+        service.updateRole(
+          'm1',
+          'company-1',
+          { role: MembershipRole.ADMIN },
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -216,7 +270,12 @@ describe('MembershipsService', () => {
       });
 
       await expect(
-        service.updateRole('m1', 'company-1', { role: MembershipRole.MEMBER }),
+        service.updateRole(
+          'm1',
+          'company-1',
+          { role: MembershipRole.MEMBER },
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -232,9 +291,12 @@ describe('MembershipsService', () => {
       });
       mockPrismaService.membership.update.mockResolvedValue(updatedMembership);
 
-      const result = await service.updateRole('m1', 'company-1', {
-        role: MembershipRole.ADMIN,
-      });
+      const result = await service.updateRole(
+        'm1',
+        'company-1',
+        { role: MembershipRole.ADMIN },
+        MembershipRole.OWNER,
+      );
 
       expect(mockPrismaService.membership.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -243,6 +305,19 @@ describe('MembershipsService', () => {
         }),
       );
       expect(result).toEqual(updatedMembership);
+    });
+
+    it('should reject promoting a membership to OWNER', async () => {
+      await expect(
+        service.updateRole(
+          'm1',
+          'company-1',
+          { role: MembershipRole.OWNER },
+          MembershipRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockPrismaService.membership.update).not.toHaveBeenCalled();
     });
   });
 

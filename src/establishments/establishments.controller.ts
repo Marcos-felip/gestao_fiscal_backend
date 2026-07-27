@@ -14,7 +14,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { MembershipRole } from '@prisma/client';
 import { EstablishmentsService } from './establishments.service';
 import { CreateEstablishmentDto } from './dto/create-establishment.dto';
 import { UpdateEstablishmentDto } from './dto/update-establishment.dto';
@@ -22,7 +21,6 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
 import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
-import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
 
 @ApiTags('establishments')
@@ -75,7 +73,8 @@ export class EstablishmentsController {
   }
 
   @Delete(':id')
-  @TenantProtected(MembershipRole.OWNER)
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('establishments.delete')
   @ApiOperation({
     summary: 'Excluir estabelecimento (não é possível excluir MATRIZ)',
   })

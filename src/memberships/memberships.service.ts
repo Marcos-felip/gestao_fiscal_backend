@@ -8,6 +8,7 @@ import { MembershipRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertCanAssignRole } from '../common/utils/role-hierarchy';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
@@ -15,7 +16,14 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 export class MembershipsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createMember(companyId: string, dto: CreateMemberDto) {
+  async createMember(
+    companyId: string,
+    dto: CreateMemberDto,
+    actorRole: MembershipRole,
+  ) {
+    const role = dto.role ?? MembershipRole.MEMBER;
+    assertCanAssignRole(actorRole, role);
+
     // Verificar se o e-mail já está cadastrado
     const existingUser = await this.prisma.user.findFirst({
       where: { email: dto.email, deletedAt: null },
@@ -42,7 +50,7 @@ export class MembershipsService {
           memberships: {
             create: {
               companyId,
-              role: dto.role ?? MembershipRole.MEMBER,
+              role,
             },
           },
         },
@@ -83,7 +91,14 @@ export class MembershipsService {
     });
   }
 
-  async updateRole(id: string, companyId: string, dto: UpdateRoleDto) {
+  async updateRole(
+    id: string,
+    companyId: string,
+    dto: UpdateRoleDto,
+    actorRole: MembershipRole,
+  ) {
+    assertCanAssignRole(actorRole, dto.role);
+
     const membership = await this.prisma.membership.findFirst({
       where: { id, companyId, deletedAt: null },
     });

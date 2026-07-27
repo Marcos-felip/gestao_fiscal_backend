@@ -26,6 +26,8 @@ import { RequirePermissionGuard } from '../common/guards/require-permission.guar
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
+import { CurrentMembership } from '../common/decorators/current-membership.decorator';
+import type { CurrentMembershipData } from '../common/decorators/current-membership.decorator';
 
 @ApiTags('memberships')
 @ApiBearerAuth()
@@ -40,9 +42,14 @@ export class MembershipsController {
   @ApiResponse({ status: 201 })
   createMember(
     @CurrentCompany() companyId: string,
+    @CurrentMembership() membership: CurrentMembershipData,
     @Body() dto: CreateMemberDto,
   ) {
-    return this.membershipsService.createMember(companyId, dto);
+    return this.membershipsService.createMember(
+      companyId,
+      dto,
+      membership.role,
+    );
   }
 
   @Get()
@@ -61,9 +68,15 @@ export class MembershipsController {
   updateRole(
     @Param('id') id: string,
     @CurrentCompany() companyId: string,
+    @CurrentMembership() membership: CurrentMembershipData,
     @Body() dto: UpdateRoleDto,
   ) {
-    return this.membershipsService.updateRole(id, companyId, dto);
+    return this.membershipsService.updateRole(
+      id,
+      companyId,
+      dto,
+      membership.role,
+    );
   }
 
   @Delete(':id')

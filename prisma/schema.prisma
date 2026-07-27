@@ -115,13 +115,14 @@ model Company {
   updatedAt       DateTime         @updatedAt @map("updated_at")
   deletedAt       DateTime?        @map("deleted_at")
 
-  activeUsers    User[]          @relation("ActiveCompany")
-  memberships    Membership[]
-  establishments Establishment[]
-  products       Product[]
-  partners       Partner[]
-  stockMovements StockMovement[]
-  purchases      Purchase[]
+  activeUsers     User[]                  @relation("ActiveCompany")
+  memberships     Membership[]
+  establishments  Establishment[]
+  products        Product[]
+  partners        Partner[]
+  stockMovements  StockMovement[]
+  purchases       Purchase[]
+  rolePermissions CompanyRolePermission[]
 
   @@map("companies")
 }
@@ -310,7 +311,8 @@ model Permission {
   code        String @id
   description String
 
-  rolePermissions RolePermission[]
+  rolePermissions        RolePermission[]
+  companyRolePermissions CompanyRolePermission[]
 
   @@map("permissions")
 }
@@ -323,4 +325,17 @@ model RolePermission {
 
   @@id([role, permissionCode])
   @@map("role_permissions")
+}
+
+model CompanyRolePermission {
+  companyId      String         @map("company_id")
+  role           MembershipRole @map("role")
+  permissionCode String         @map("permission_code")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
+
+  @@id([companyId, role, permissionCode])
+  @@index([companyId, role])
+  @@map("company_role_permissions")
 }

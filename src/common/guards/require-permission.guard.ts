@@ -5,6 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { MembershipRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator';
 
@@ -26,28 +27,31 @@ export class RequirePermissionGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<{
+      membership?: { id: string; role: MembershipRole; companyId: string };
+    }>();
     const membership = request.membership;
 
     if (!membership) {
       throw new ForbiddenException('Usuário não é membro de nenhuma empresa');
     }
 
-    // Buscar as permissões do role
-    const rolePermissions = await this.prisma.rolePermission.findMany({
+    // OWNER tem acesso total por definição — não depende do que está cadastrado
+    if (membership.role === MembershipRole.OWNER) {
+      return true;
+    }
+
+    // Permissões são resolvidas dentro da empresa ativa
+    const granted = await this.prisma.companyRolePermission.findFirst({
       where: {
+        companyId: membership.companyId,
         role: membership.role,
+        permissionCode: requiredPermission,
       },
-      select: {
-        permissionCode: true,
-      },
+      select: { permissionCode: true },
     });
 
-    const hasPermission = rolePermissions.some(
-      (rp) => rp.permissionCode === requiredPermission,
-    );
-
-    if (!hasPermission) {
+    if (!granted) {
       throw new ForbiddenException(
         `Sem permissão para acessar: ${requiredPermission}`,
       );

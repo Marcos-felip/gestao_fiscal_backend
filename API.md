@@ -12,8 +12,14 @@ A API combina dois mecanismos:
 
 | Mecanismo | Como é aplicado | Onde é usado |
 |-----------|-----------------|--------------|
-| **Papel (role)** | `@TenantProtected(OWNER, ADMIN, ...)` — compara `membership.role` | Onboarding, gestão de papéis, exclusão de estabelecimento, gestão de permissões |
-| **Permissão granular** | `@RequirePermission('products.create')` — consulta a tabela `role_permissions` | Maioria dos endpoints de CRUD |
+| **Papel (role)** | `@TenantProtected(OWNER, ADMIN, ...)` — compara `membership.role` | Onboarding, gestão de papéis, remoção de membros, gestão de permissões |
+| **Permissão granular** | `@RequirePermission('products.create')` — consulta `company_role_permissions` da empresa ativa | Maioria dos endpoints de CRUD |
+
+Três regras valem para todo o sistema:
+
+1. **OWNER tem acesso total.** O papel OWNER nunca é barrado por permissão — o guard o libera sem consultar o banco. Ele só não faz o que a API não oferece (não existe exclusão de empresa) e não pode alterar as próprias permissões.
+2. **ADMIN opera tudo abaixo do OWNER.** Recebe todas as permissões por padrão; o que o separa do OWNER são os endpoints travados por papel (onboarding, alterar papel, remover membro, gerenciar permissões).
+3. **MEMBER é configurável.** É o único papel cujas permissões o OWNER pode editar, e a configuração vale **apenas dentro da empresa ativa**.
 
 O erro de permissão granular retorna:
 
@@ -204,8 +210,8 @@ Cria o usuário e o membership em uma única chamada. Se `password` não for inf
   "name": "string (min 2, opcional — default: parte do e-mail antes do @)",
   "email": "string (e-mail válido, obrigatório)",
   "password": "string (min 6, opcional)",
-  "role": "OWNER | ADMIN | MEMBER (obrigatório)",
-  "companyId": "uuid (obrigatório)",
+  "role": "ADMIN | MEMBER (obrigatório)",
+  "companyId": "uuid (obrigatório — deve ser a empresa ativa)",
   "forcePasswordChange": "boolean (opcional, default: true)"
 }
 ```
@@ -228,8 +234,9 @@ Cria o usuário e o membership em uma única chamada. Se `password` não for inf
 - `404` Empresa não encontrada
 - `409` Email já cadastrado
 - `403` Sem permissão para acessar: users.create
-
-> ⚠️ O `companyId` vem do **corpo da requisição**, não da empresa ativa. Ver [Pontos de atenção](#pontos-de-atenção-conhecidos).
+- `403` Não é possível criar usuários em outra empresa (quando `companyId` ≠ empresa ativa)
+- `403` Não é possível atribuir o papel OWNER a um usuário
+- `403` Não é possível atribuir um papel superior ao seu
 
 ---
 
@@ -240,7 +247,7 @@ Cria o usuário e o membership em uma única chamada. Se `password` não for inf
 **Body:**
 ```json
 {
-  "role": "OWNER | ADMIN | MEMBER (obrigatório)"
+  "role": "ADMIN | MEMBER (obrigatório)"
 }
 ```
 
@@ -258,6 +265,8 @@ Cria o usuário e o membership em uma única chamada. Se `password` não for inf
 **Erros:**
 - `404` Usuário não encontrado · `404` Empresa não encontrada
 - `409` Usuário já é membro da empresa
+- `403` Não é possível atribuir o papel OWNER a um usuário
+- `403` Não é possível atribuir um papel superior ao seu
 
 ---
 
@@ -402,7 +411,7 @@ Permite atualizar dados da empresa: nome, tipo, CNPJ, inscrição estadual, tele
 
 ### POST /memberships — Criar membro na empresa
 
-> **Permissão:** `users.create` (por padrão OWNER e MEMBER — ADMIN **não** possui `users.create`)
+> **Permissão:** `users.create` (por padrão OWNER e ADMIN)
 
 Cria usuário + membership na **empresa ativa** em uma transação atômica. A senha é sempre provisória (gerada internamente, não retornada) e o usuário nasce com `forcePasswordChange: true`.
 
@@ -411,11 +420,11 @@ Cria usuário + membership na **empresa ativa** em uma transação atômica. A s
 {
   "name": "string (min 2, obrigatório)",
   "email": "string (e-mail válido, obrigatório)",
-  "role": "OWNER | ADMIN | MEMBER (default: MEMBER)"
+  "role": "ADMIN | MEMBER (default: MEMBER)"
 }
 ```
 
-> ⚠️ O backend **não valida escalonamento de papel**: quem tem `users.create` pode informar qualquer papel, inclusive `OWNER`. Ver [Pontos de atenção](#pontos-de-atenção-conhecidos).
+> O papel informado obedece à [hierarquia de papéis](#hierarquia-de-papéis).
 
 **Resposta 201:**
 ```json
@@ -435,6 +444,8 @@ Cria usuário + membership na **empresa ativa** em uma transação atômica. A s
 **Erros:**
 - `409` E-mail já cadastrado
 - `403` Sem permissão para acessar: users.create
+- `403` Não é possível atribuir o papel OWNER a um usuário
+- `403` Não é possível atribuir um papel superior ao seu
 
 ---
 
@@ -457,7 +468,10 @@ Cria usuário + membership na **empresa ativa** em uma transação atômica. A s
 }
 ```
 
-**Erros:** `404` Associação não encontrada · `400` Não é possível alterar o papel de um OWNER
+**Erros:**
+- `404` Associação não encontrada
+- `400` Não é possível alterar o papel de um OWNER
+- `403` Não é possível atribuir o papel OWNER a um usuário (promoção bloqueada)
 
 ---
 
@@ -473,8 +487,23 @@ Cria usuário + membership na **empresa ativa** em uma transação atômica. A s
 
 ## Permissões
 
-> Todos requerem empresa ativa.
-> As permissões são **globais por papel** — não são por empresa. Ver [Pontos de atenção](#pontos-de-atenção-conhecidos).
+> Todos requerem empresa ativa. As permissões são **por empresa**: cada empresa tem seu próprio
+> conjunto, criado a partir do padrão do sistema quando a empresa é criada.
+
+### GET /permissions/me — Listar as permissões do usuário autenticado
+
+> Qualquer membro autenticado com empresa ativa
+
+Use este endpoint para montar o menu e habilitar/desabilitar ações no frontend. É o único endpoint de permissões acessível ao MEMBER.
+
+**Resposta 200:** array de códigos ordenado alfabeticamente
+```json
+["partners.list", "products.list", "products.read", "purchases.create"]
+```
+
+> Para OWNER a resposta é o catálogo completo, refletindo o acesso total do papel.
+
+---
 
 ### GET /permissions — Listar permissões agrupadas por domínio
 
@@ -498,7 +527,7 @@ Os grupos vêm ordenados alfabeticamente por `domain`, e as permissões por `cod
 
 ---
 
-### GET /permissions/:role — Listar permissões de um papel
+### GET /permissions/:role — Listar permissões de um papel na empresa ativa
 
 > **Papel:** OWNER ou ADMIN
 > `:role` = `OWNER` | `ADMIN` | `MEMBER`
@@ -508,13 +537,17 @@ Os grupos vêm ordenados alfabeticamente por `domain`, e as permissões por `cod
 ["company.read", "partners.list", "products.create", "products.list"]
 ```
 
+> Para `:role = OWNER` a resposta é o catálogo completo (acesso total), independentemente do que estiver gravado.
+
+**Erros:** `400` Papel inválido. Valores aceitos: OWNER, ADMIN, MEMBER
+
 ---
 
-### PATCH /permissions/:role — Atualizar permissões de um papel
+### PATCH /permissions/:role — Atualizar permissões de um papel na empresa ativa
 
 > **Papel:** OWNER · **somente `:role` = `MEMBER`**
 
-Substitui **todo** o conjunto de permissões do papel (remove as atuais e insere as informadas). Enviar `[]` remove todas as permissões do papel.
+Substitui **todo** o conjunto de permissões do papel MEMBER **dentro da empresa ativa** (remove as atuais e insere as informadas). Enviar `[]` remove todas as permissões do papel. Outras empresas não são afetadas.
 
 **Body:**
 ```json
@@ -523,10 +556,11 @@ Substitui **todo** o conjunto de permissões do papel (remove as atuais e insere
 }
 ```
 
-**Resposta 200:** array com os códigos aplicados
+**Resposta 200:** array com os códigos aplicados, sem duplicatas e ordenado
 
 **Erros:**
 - `400` Apenas as permissões do papel MEMBER podem ser gerenciadas. (ao tentar `OWNER` ou `ADMIN`)
+- `400` Papel inválido. Valores aceitos: OWNER, ADMIN, MEMBER
 - `404` Permissão não encontrada: `<código>` (código inexistente na tabela `permissions`)
 
 ---
@@ -581,9 +615,9 @@ Substitui **todo** o conjunto de permissões do papel (remove as atuais e insere
 
 ---
 
-### DELETE /establishments/:id — Excluir (apenas OWNER)
+### DELETE /establishments/:id — Excluir estabelecimento
 
-> **Papel:** OWNER (este endpoint usa papel, não a permissão `establishments.delete`)
+> **Permissão:** `establishments.delete` (por padrão OWNER e ADMIN)
 
 **Erros:** `400` Não é possível excluir o estabelecimento MATRIZ
 
@@ -819,9 +853,7 @@ Substitui **todo** o conjunto de permissões do papel (remove as atuais e insere
 
 ### DELETE /purchases/:id — Excluir compra
 
-> **Permissão:** `purchases.delete` · **Resposta 204** sem corpo
->
-> ⚠️ O código `purchases.delete` **não existe** na tabela `permissions`, portanto nenhum papel o possui e este endpoint sempre retorna `403`. Ver [Pontos de atenção](#pontos-de-atenção-conhecidos).
+> **Permissão:** `purchases.delete` (por padrão OWNER e ADMIN) · **Resposta 204** sem corpo
 
 ---
 
@@ -848,7 +880,7 @@ Todos os endpoints de listagem suportam paginação:
 
 ## Catálogo de permissões
 
-Códigos no formato `dominio.acao`, armazenados na tabela `permissions` e vinculados aos papéis pela tabela `role_permissions`.
+Códigos no formato `dominio.acao`, armazenados na tabela `permissions` e vinculados aos papéis de cada empresa pela tabela `company_role_permissions`. As colunas OWNER/ADMIN/MEMBER abaixo mostram o **padrão** com que uma empresa nasce — o conjunto do MEMBER pode ser alterado depois, por empresa.
 
 Legenda: ✅ concedida por padrão · ❌ não concedida · **Endpoint** = endpoint que exige a permissão (— = código cadastrado mas ainda não usado por nenhuma rota).
 
@@ -864,12 +896,12 @@ Legenda: ✅ concedida por padrão · ❌ não concedida · **Endpoint** = endpo
 | Código | Descrição | OWNER | ADMIN | MEMBER | Endpoint |
 |--------|-----------|:-----:|:-----:|:------:|----------|
 | `users.list` | Listar usuários | ✅ | ✅ | ✅ | `GET /memberships` |
-| `users.create` | Criar novo usuário | ✅ | ❌ | ✅ | `POST /memberships`, `POST /users`, `POST /users/:id/memberships` |
+| `users.create` | Criar novo usuário | ✅ | ✅ | ❌ | `POST /memberships`, `POST /users`, `POST /users/:id/memberships` |
 | `users.read` | Ler dados do usuário | ✅ | ✅ | ❌ | — |
 | `users.edit` | Editar dados do usuário | ✅ | ✅ | ❌ | — |
 | `users.delete` | Deletar usuário | ✅ | ✅ | ❌ | — |
 
-> ⚠️ ADMIN **não** recebe `users.create` por padrão, enquanto MEMBER recebe. Ver [Pontos de atenção](#pontos-de-atenção-conhecidos).
+> Mesmo com `users.create`, o papel atribuído obedece à [hierarquia de papéis](#hierarquia-de-papéis).
 
 ### Estabelecimentos (`establishments`)
 
@@ -879,7 +911,7 @@ Legenda: ✅ concedida por padrão · ❌ não concedida · **Endpoint** = endpo
 | `establishments.create` | Criar estabelecimento | ✅ | ✅ | ❌ | `POST /establishments` |
 | `establishments.read` | Ler dados do estabelecimento | ✅ | ✅ | ✅ | `GET /establishments/:id` |
 | `establishments.edit` | Editar estabelecimento | ✅ | ✅ | ❌ | `PATCH /establishments/:id` |
-| `establishments.delete` | Deletar estabelecimento | ✅ | ✅ | ❌ | — (o DELETE exige papel OWNER) |
+| `establishments.delete` | Deletar estabelecimento | ✅ | ✅ | ❌ | `DELETE /establishments/:id` |
 
 ### Produtos (`products`)
 
@@ -901,7 +933,7 @@ Legenda: ✅ concedida por padrão · ❌ não concedida · **Endpoint** = endpo
 | `purchases.edit` | Editar compra | ✅ | ✅ | ✅ | `PATCH /purchases/:id` |
 | `purchases.confirm` | Confirmar compra | ✅ | ✅ | ✅ | `POST /purchases/:id/confirm` |
 | `purchases.cancel` | Cancelar compra | ✅ | ✅ | ❌ | `POST /purchases/:id/cancel` |
-| `purchases.delete` | Deletar compra | ❌ | ❌ | ❌ | `DELETE /purchases/:id` — **código inexistente na tabela `permissions`** |
+| `purchases.delete` | Deletar compra | ✅ | ✅ | ❌ | `DELETE /purchases/:id` |
 
 ### Estoque (`stock`)
 
@@ -929,19 +961,31 @@ O módulo de vendas foi removido do código, mas os 6 códigos `sales.*` (`list`
 
 ---
 
-## Pontos de atenção conhecidos
+## Hierarquia de papéis
 
-Comportamentos reais da API que divergem do esperado — documentados para evitar surpresas no frontend:
+Vale em `POST /memberships`, `POST /users`, `POST /users/:id/memberships` e `PATCH /memberships/:id/role`:
+
+- O papel **OWNER nunca é atribuível pela API** — ele nasce com a criação da empresa (`403`)
+- Ninguém pode atribuir um papel **superior ao seu** (`403`)
+
+| Solicitante | Pode atribuir |
+|-------------|---------------|
+| OWNER | ADMIN, MEMBER |
+| ADMIN | ADMIN, MEMBER |
+| MEMBER (se receber `users.create`) | MEMBER |
+
+**Erros:**
+- `403` Não é possível atribuir o papel OWNER a um usuário
+- `403` Não é possível atribuir um papel superior ao seu
+
+---
+
+## Pontos de atenção conhecidos
 
 | # | Comportamento | Impacto |
 |---|---------------|---------|
-| 1 | **Permissões são globais, não por empresa.** `role_permissions` não tem `company_id`. Um `PATCH /permissions/MEMBER` altera o papel MEMBER de **todas as empresas** da instância. | Alto — quebra o isolamento multi-tenant na tela de permissões |
-| 2 | `POST /users` recebe `companyId` no corpo e **não valida** se é a empresa ativa do solicitante. | Alto — permite criar usuário em empresa de terceiros conhecendo o UUID |
-| 3 | `POST /memberships` e `POST /users` **não validam escalonamento de papel** — quem tem `users.create` pode criar um `OWNER`. | Alto — MEMBER possui `users.create` por padrão |
-| 4 | `purchases.delete` é exigido pelo `DELETE /purchases/:id`, mas o código não existe na tabela `permissions`. | Médio — a exclusão de compras sempre retorna `403` |
-| 5 | ADMIN não possui `users.create`; MEMBER possui. | Médio — ADMIN não consegue cadastrar membros |
-| 6 | `PATCH /companies/:id` ignora o `:id` e atualiza sempre a empresa ativa. | Baixo — enviar o ID da empresa ativa para evitar confusão |
-| 7 | Permissões `sales.*` remanescentes do módulo removido. | Baixo — ruído em `GET /permissions` |
+| 1 | `PATCH /companies/:id` ignora o `:id` e atualiza sempre a empresa ativa. | Baixo — enviar o ID da empresa ativa para evitar confusão |
+| 2 | Permissões `sales.*` remanescentes do módulo de vendas removido continuam no catálogo e são copiadas para cada empresa nova. | Baixo — ruído em `GET /permissions`; nenhum endpoint as utiliza |
 
 ---
 
@@ -972,7 +1016,7 @@ Comportamentos reais da API que divergem do esperado — documentados para evita
 4. Todos os dados retornados pertencem à empresa ativa
 5. Para trocar de empresa: `PATCH /users/active-company` com o novo `companyId`
 6. Após trocar de empresa, todas as próximas requisições usarão a nova empresa
-7. O papel na empresa ativa vem em `user.role` (login/refresh) e em `GET /users/profile`; as permissões desse papel podem ser lidas em `GET /permissions/:role` (OWNER/ADMIN) para montar o menu e habilitar/desabilitar ações
+7. O papel na empresa ativa vem em `user.role` (login/refresh) e em `GET /users/profile`; as permissões efetivas vêm de `GET /permissions/me` — chame-o após o login e a cada troca de empresa para montar o menu e habilitar/desabilitar ações
 
 ---
 
@@ -1016,11 +1060,16 @@ POST /auth/login                        → resposta traz forcePasswordChange: t
 POST /auth/change-password-first-login  → troca a senha; forcePasswordChange vira false
 ```
 
-### 7. Ajustar permissões do papel MEMBER
+### 7. Ajustar permissões do papel MEMBER (por empresa)
 ```
 GET   /permissions           → catálogo agrupado por domínio (OWNER/ADMIN)
-GET   /permissions/MEMBER    → códigos atualmente concedidos
-PATCH /permissions/MEMBER    → substitui o conjunto completo de permissões (apenas OWNER)
+GET   /permissions/MEMBER    → códigos concedidos na empresa ativa
+PATCH /permissions/MEMBER    → substitui o conjunto completo na empresa ativa (apenas OWNER)
+```
+
+### 8. Montar a interface conforme as permissões
+```
+GET /permissions/me          → códigos efetivos do usuário na empresa ativa
 ```
 
 ---

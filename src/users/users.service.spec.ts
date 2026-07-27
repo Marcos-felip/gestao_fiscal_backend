@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { MembershipRole } from '@prisma/client';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -141,20 +142,68 @@ describe('UsersService', () => {
   });
 
   describe('createUser', () => {
+    it('should throw ForbiddenException when companyId is not the active company', async () => {
+      await expect(
+        service.createUser(
+          {
+            email: 'newuser@example.com',
+            role: MembershipRole.MEMBER,
+            companyId: 'another-company',
+          },
+          'company-1',
+          MembershipRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockPrismaService.company.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('should throw ForbiddenException when assigning OWNER', async () => {
+      await expect(
+        service.createUser(
+          {
+            email: 'newuser@example.com',
+            role: MembershipRole.OWNER,
+            companyId: 'company-1',
+          },
+          'company-1',
+          MembershipRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException when MEMBER assigns ADMIN', async () => {
+      await expect(
+        service.createUser(
+          {
+            email: 'newuser@example.com',
+            role: MembershipRole.ADMIN,
+            companyId: 'company-1',
+          },
+          'company-1',
+          MembershipRole.MEMBER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
     it('should throw NotFoundException if company not found', async () => {
-      mockPrismaService.company.findUnique.mockResolvedValue(null);
+      mockPrismaService.company.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.createUser({
-          email: 'newuser@example.com',
-          role: 'MEMBER',
-          companyId: 'invalid-company',
-        }),
+        service.createUser(
+          {
+            email: 'newuser@example.com',
+            role: MembershipRole.MEMBER,
+            companyId: 'company-1',
+          },
+          'company-1',
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw ConflictException if email already exists', async () => {
-      mockPrismaService.company.findUnique.mockResolvedValue({
+      mockPrismaService.company.findFirst.mockResolvedValue({
         id: 'company-1',
         name: 'Test Company',
       });
@@ -164,11 +213,15 @@ describe('UsersService', () => {
       });
 
       await expect(
-        service.createUser({
-          email: 'existing@example.com',
-          role: 'MEMBER',
-          companyId: 'company-1',
-        }),
+        service.createUser(
+          {
+            email: 'existing@example.com',
+            role: MembershipRole.MEMBER,
+            companyId: 'company-1',
+          },
+          'company-1',
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -176,7 +229,7 @@ describe('UsersService', () => {
       const newUserId = 'new-user-123';
       const newEmail = 'newuser@example.com';
 
-      mockPrismaService.company.findUnique.mockResolvedValue({
+      mockPrismaService.company.findFirst.mockResolvedValue({
         id: 'company-1',
         name: 'Test Company',
       });
@@ -193,11 +246,15 @@ describe('UsersService', () => {
         ],
       });
 
-      const result = await service.createUser({
-        email: newEmail,
-        role: 'MEMBER',
-        companyId: 'company-1',
-      });
+      const result = await service.createUser(
+        {
+          email: newEmail,
+          role: MembershipRole.MEMBER,
+          companyId: 'company-1',
+        },
+        'company-1',
+        MembershipRole.OWNER,
+      );
 
       expect(result.id).toBe(newUserId);
       expect(result.email).toBe(newEmail);
@@ -210,7 +267,7 @@ describe('UsersService', () => {
       const newUserId = 'new-user-456';
       const newEmail = 'admin@example.com';
 
-      mockPrismaService.company.findUnique.mockResolvedValue({
+      mockPrismaService.company.findFirst.mockResolvedValue({
         id: 'company-1',
         name: 'Test Company',
       });
@@ -227,11 +284,15 @@ describe('UsersService', () => {
         ],
       });
 
-      const result = await service.createUser({
-        email: newEmail,
-        role: 'ADMIN',
-        companyId: 'company-1',
-      });
+      const result = await service.createUser(
+        {
+          email: newEmail,
+          role: MembershipRole.ADMIN,
+          companyId: 'company-1',
+        },
+        'company-1',
+        MembershipRole.OWNER,
+      );
 
       expect(result.id).toBe(newUserId);
       expect(result.email).toBe(newEmail);
@@ -241,7 +302,7 @@ describe('UsersService', () => {
     it('should call user.create with correct structure', async () => {
       const newEmail = 'test@example.com';
 
-      mockPrismaService.company.findUnique.mockResolvedValue({
+      mockPrismaService.company.findFirst.mockResolvedValue({
         id: 'company-1',
       });
       mockPrismaService.user.findUnique.mockResolvedValue(null);
@@ -252,11 +313,15 @@ describe('UsersService', () => {
         memberships: [{ role: 'MEMBER', companyId: 'company-1' }],
       });
 
-      await service.createUser({
-        email: newEmail,
-        role: 'MEMBER',
-        companyId: 'company-1',
-      });
+      await service.createUser(
+        {
+          email: newEmail,
+          role: MembershipRole.MEMBER,
+          companyId: 'company-1',
+        },
+        'company-1',
+        MembershipRole.OWNER,
+      );
 
       expect(mockPrismaService.user.create).toHaveBeenCalledWith({
         data: {
@@ -313,9 +378,12 @@ describe('UsersService', () => {
         createdAt: new Date(),
       });
 
-      const result = await service.addMembership(userId, companyId, {
-        role: 'MEMBER',
-      });
+      const result = await service.addMembership(
+        userId,
+        companyId,
+        { role: MembershipRole.MEMBER },
+        MembershipRole.OWNER,
+      );
 
       expect(result.id).toBe('membership-1');
       expect(result.userId).toBe(userId);
@@ -327,7 +395,12 @@ describe('UsersService', () => {
       mockPrismaService.user.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.addMembership('unknown-user', 'company-1', { role: 'MEMBER' }),
+        service.addMembership(
+          'unknown-user',
+          'company-1',
+          { role: MembershipRole.MEMBER },
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -340,7 +413,12 @@ describe('UsersService', () => {
       mockPrismaService.company.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.addMembership('user-1', 'unknown-company', { role: 'MEMBER' }),
+        service.addMembership(
+          'user-1',
+          'unknown-company',
+          { role: MembershipRole.MEMBER },
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -363,7 +441,12 @@ describe('UsersService', () => {
       });
 
       await expect(
-        service.addMembership('user-1', 'company-1', { role: 'MEMBER' }),
+        service.addMembership(
+          'user-1',
+          'company-1',
+          { role: MembershipRole.MEMBER },
+          MembershipRole.OWNER,
+        ),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -387,11 +470,38 @@ describe('UsersService', () => {
         createdAt: new Date(),
       });
 
-      const result = await service.addMembership('user-2', 'company-1', {
-        role: 'ADMIN',
-      });
+      const result = await service.addMembership(
+        'user-2',
+        'company-1',
+        { role: MembershipRole.ADMIN },
+        MembershipRole.OWNER,
+      );
 
       expect(result.role).toBe('ADMIN');
+    });
+
+    it('should reject adding a membership as OWNER', async () => {
+      await expect(
+        service.addMembership(
+          'user-2',
+          'company-1',
+          { role: MembershipRole.OWNER },
+          MembershipRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockPrismaService.membership.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject a MEMBER adding an ADMIN', async () => {
+      await expect(
+        service.addMembership(
+          'user-2',
+          'company-1',
+          { role: MembershipRole.ADMIN },
+          MembershipRole.MEMBER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

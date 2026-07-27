@@ -73,7 +73,7 @@ Por permissão:  JwtAuthGuard → CompanyTenantGuard → RequirePermissionGuard
 - `JwtAuthGuard`: valida o Bearer token, popula `request.user = { id, email }`
 - `CompanyTenantGuard`: carrega o usuário, valida membership na empresa ativa, popula `request.companyId` e `request.membership`
 - `RolesGuard`: verifica se `request.membership.role` está nos papéis permitidos pelo `@Roles()`
-- `RequirePermissionGuard`: consulta `role_permissions` pelo `request.membership.role` e verifica o código exigido pelo `@RequirePermission()`. Sem `@RequirePermission()` no handler, o guard libera o acesso
+- `RequirePermissionGuard`: **libera OWNER sem consultar o banco**; para os demais papéis consulta `company_role_permissions` por `(companyId, role, permissionCode)`. Sem `@RequirePermission()` no handler, o guard libera o acesso
 
 ### Uso nos controllers
 
@@ -99,11 +99,23 @@ Por permissão:  JwtAuthGuard → CompanyTenantGuard → RequirePermissionGuard
 
 ## Sistema de permissões
 
-- Códigos no formato `dominio.acao` (ex: `purchases.confirm`), na tabela `permissions`
-- Vínculo papel → permissão na tabela `role_permissions` (PK composta `role + permission_code`)
-- **Seed é feito por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, adicione uma migration com `INSERT ... ON CONFLICT DO NOTHING` para os códigos e para os vínculos de OWNER/ADMIN/MEMBER
-- `PATCH /permissions/:role` só aceita `MEMBER`; OWNER e ADMIN têm conjuntos fixos
-- ⚠️ **`role_permissions` não tem `company_id`** — as permissões são globais da instância, não por tenant. Alterar MEMBER afeta todas as empresas
+Três tabelas:
+
+| Tabela | Papel no sistema |
+|--------|------------------|
+| `permissions` | Catálogo global de códigos `dominio.acao` + descrição |
+| `role_permissions` | **Template padrão** por papel. Não é lido em runtime — é copiado ao criar a empresa |
+| `company_role_permissions` | Conjunto **efetivo** por empresa. É o que o guard consulta |
+
+- **OWNER tem acesso total**: o guard nunca o barra. Não é preciso conceder nada a OWNER
+- **ADMIN** recebe todas as permissões por padrão; o que o separa do OWNER são endpoints travados por papel
+- **MEMBER** é o único papel editável (`PATCH /permissions/:role` rejeita OWNER/ADMIN com `400`), e a edição vale **só na empresa ativa**
+- `GET /permissions/me` devolve as permissões efetivas do usuário — é o endpoint que o frontend usa
+- **Seed por migration SQL.** Um módulo novo precisa de: `INSERT` no catálogo, `INSERT` no template
+  e **backfill em `company_role_permissions` para as empresas existentes** — o passo 3 é o que
+  costuma ser esquecido e causa `403`. Exemplo pronto em [BANCO_DE_DADOS.md](./BANCO_DE_DADOS.md#migrations)
+- Hierarquia de papéis: `assertCanAssignRole` em `src/common/utils/role-hierarchy.ts` — OWNER nunca é
+  atribuível pela API e ninguém atribui papel acima do seu
 - Catálogo completo e matriz padrão: [API.md](./API.md#catálogo-de-permissões)
 
 ## Decorators disponíveis
@@ -111,6 +123,7 @@ Por permissão:  JwtAuthGuard → CompanyTenantGuard → RequirePermissionGuard
 ```typescript
 @CurrentUser()                        // Retorna { id, email } do request.user
 @CurrentCompany()                     // Retorna o companyId do request.companyId
+@CurrentMembership()                  // Retorna { id, role, companyId } do request.membership
 @Roles(...roles)                      // Papéis aceitos (lido pelo RolesGuard)
 @RequirePermission('products.create') // Permissão exigida (lida pelo RequirePermissionGuard)
 @TenantProtected(...roles)            // Atalho: JWT + tenant + papéis + @ApiBearerAuth
@@ -156,7 +169,7 @@ Padrão de resposta paginada:
 3. Criar pasta `dto/` com DTOs usando `class-validator`
 4. No service: sempre filtrar por `companyId` e `deletedAt: null`
 5. No controller: usar `@CurrentCompany()` + `@UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)` com `@RequirePermission('nome-modulo.acao')` (ou `@TenantProtected(...)` quando o controle for por papel)
-6. Criar migration que insere os códigos de permissão do módulo em `permissions` e os vincula aos papéis em `role_permissions` — **sem isso o endpoint retorna 403 para todos**
+6. Criar migration com os 3 passos de permissão: catálogo (`permissions`), template (`role_permissions`) e **backfill das empresas existentes** (`company_role_permissions`) — sem o backfill o endpoint retorna 403 para todos menos OWNER
 7. Registrar o módulo em `src/app.module.ts`
 8. Criar `nome-modulo.service.spec.ts` com testes unitários
 
@@ -187,9 +200,9 @@ src/
 ## Transações críticas
 
 As seguintes operações **obrigatoriamente** usam `prisma.$transaction()`:
-- Criar empresa (company + membership + update user)
+- Criar empresa (company + membership + update user + cópia das permissões padrão)
 - Criar membro (create user + create membership)
-- Atualizar permissões de um papel (deleteMany + createMany em `role_permissions`)
+- Atualizar permissões de um papel (deleteMany + createMany em `company_role_permissions`)
 - Onboarding (update company + create establishment)
 - Confirmar compra (criar StockMovements + atualizar currentStock + confirmar purchase)
 - Cancelar compra confirmada (reverter StockMovements + atualizar currentStock)

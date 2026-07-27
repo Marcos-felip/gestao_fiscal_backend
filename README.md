@@ -146,10 +146,13 @@ src/
 - **Autenticação:** JWT Bearer — access token de 15 min e refresh token de 7 dias (hasheado no banco)
 - **Multi-tenancy:** toda operação roda no contexto da *empresa ativa* (`companyActiveId`) do usuário
 - **Autorização:** duas camadas
-  - **Papel** (`OWNER` / `ADMIN` / `MEMBER`) para operações estruturais — onboarding, gestão de papéis e de permissões, exclusão de estabelecimento
-  - **Permissão granular** (`products.create`, `purchases.confirm`, …) para a maioria dos CRUDs, armazenada nas tabelas `permissions` e `role_permissions`
+  - **Papel** (`OWNER` / `ADMIN` / `MEMBER`) para operações estruturais — onboarding, gestão de papéis e de permissões, remoção de membros
+  - **Permissão granular** (`products.create`, `purchases.confirm`, …) para a maioria dos CRUDs
+- **OWNER tem acesso total** por definição; **ADMIN** recebe todas as permissões por padrão; **MEMBER** é o papel configurável
+- As permissões são **por empresa** (`company_role_permissions`): cada empresa recebe uma cópia do padrão ao ser criada e evolui de forma independente
 - Somente o OWNER pode alterar permissões, e apenas as do papel MEMBER (`PATCH /permissions/MEMBER`)
-- As permissões são semeadas por **migration SQL** — um módulo novo precisa de uma migration inserindo seus códigos, senão os endpoints retornam `403`
+- O frontend lê as permissões efetivas do usuário em `GET /permissions/me`
+- As permissões são semeadas por **migration SQL** — um módulo novo precisa inserir os códigos no catálogo, no template e fazer backfill das empresas existentes, senão os endpoints retornam `403`
 
 Detalhes e matriz completa: [API.md](./API.md#catálogo-de-permissões) e [REGRAS_DE_NEGOCIO.md](./REGRAS_DE_NEGOCIO.md).
 

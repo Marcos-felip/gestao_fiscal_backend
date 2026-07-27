@@ -39,6 +39,19 @@ export class CompaniesService {
         data: { companyActiveId: company.id },
       });
 
+      // Copia o conjunto padrão de permissões para a nova empresa
+      const defaults = await tx.rolePermission.findMany();
+      if (defaults.length > 0) {
+        await tx.companyRolePermission.createMany({
+          data: defaults.map((d) => ({
+            companyId: company.id,
+            role: d.role,
+            permissionCode: d.permissionCode,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
       return { company, membership };
     });
   }

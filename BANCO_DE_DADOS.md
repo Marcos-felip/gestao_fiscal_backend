@@ -65,15 +65,22 @@
                   │ deleted_at    │
                   └───────────────┘
 
-  ── Autorização (tabelas GLOBAIS, sem company_id) ──
+  ── Autorização ──
 
       ┌──────────────────┐          ┌────────────────────────┐
-      │   permissions    │────1:N──<│    role_permissions    │
+      │   permissions    │────1:N──<│    role_permissions    │  (template padrão)
       │──────────────────│          │────────────────────────│
       │ code (PK)        │          │ role (PK, enum)        │
       │ description      │          │ permission_code (PK,FK)│
-      └──────────────────┘          └────────────────────────┘
-                                     role = OWNER/ADMIN/MEMBER
+      └────────┬─────────┘          └────────────────────────┘
+               │
+               │            ┌──────────────────────────────┐
+               └────1:N────<│  company_role_permissions    │  (efetivo, por empresa)
+                            │──────────────────────────────│
+                            │ company_id (PK, FK companies)│
+                            │ role (PK, enum)              │
+                            │ permission_code (PK, FK)     │
+                            └──────────────────────────────┘
 ```
 
 ## Modelos
@@ -215,18 +222,34 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 - Populada por migration (seed em SQL), não por código da aplicação
 - Domínios atuais: `company`, `users`, `establishments`, `products`, `purchases`, `stock`, `partners` e `sales` (legado, módulo removido)
 
-### `role_permissions` — Permissões por papel
+### `role_permissions` — Conjunto padrão por papel (template)
 
 | Coluna | Tipo | Obrig. | Descrição |
 |--------|------|--------|-----------|
 | `role` | ENUM `MembershipRole` | ✅ | OWNER, ADMIN ou MEMBER |
-| `permission_code` | TEXT (FK → `permissions.code`) | ✅ | Permissão concedida |
+| `permission_code` | TEXT (FK → `permissions.code`) | ✅ | Permissão concedida por padrão |
 
 - **PK composta:** `(role, permission_code)`
 - **FK:** `permission_code → permissions(code)` com `ON DELETE CASCADE ON UPDATE CASCADE`
 - Tabela **global** e **sem soft delete**
-- ⚠️ Não há `company_id`: o conjunto de permissões de um papel é o mesmo em **todas as empresas** da instância. Alterar as permissões de MEMBER via `PATCH /permissions/MEMBER` afeta todos os tenants.
-- A atualização é feita por substituição total (`deleteMany` + `createMany` dentro de `$transaction`)
+- **Não é consultada em tempo de requisição.** Serve apenas de molde: é copiada para
+  `company_role_permissions` quando uma empresa é criada (`CompaniesService.create`, dentro da transação)
+
+### `company_role_permissions` — Permissões efetivas por empresa
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `company_id` | TEXT (FK → `companies.id`) | ✅ | Empresa dona do conjunto |
+| `role` | ENUM `MembershipRole` | ✅ | OWNER, ADMIN ou MEMBER |
+| `permission_code` | TEXT (FK → `permissions.code`) | ✅ | Permissão concedida |
+
+- **PK composta:** `(company_id, role, permission_code)` · **Índice:** `(company_id, role)`
+- **FKs:** `company_id → companies(id)` e `permission_code → permissions(code)`, ambas `ON DELETE CASCADE ON UPDATE CASCADE`
+- Sem soft delete
+- É **esta** tabela que o `RequirePermissionGuard` consulta. O papel OWNER não é verificado aqui:
+  tem acesso total por definição
+- A atualização é feita por substituição total (`deleteMany` + `createMany` dentro de `$transaction`),
+  sempre filtrando por `company_id`
 
 ---
 
@@ -269,12 +292,16 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 | `permissions` | PK | `code` |
 | `role_permissions` | PK | `(role, permission_code)` |
 | `role_permissions` | FK CASCADE | `permission_code → permissions(code)` |
+| `company_role_permissions` | PK | `(company_id, role, permission_code)` |
+| `company_role_permissions` | INDEX | `(company_id, role)` |
+| `company_role_permissions` | FK CASCADE | `company_id → companies(id)` |
+| `company_role_permissions` | FK CASCADE | `permission_code → permissions(code)` |
 
 ---
 
 ## Soft Delete
 
-Todas as tabelas de negócio (exceto `purchase_items`, `permissions` e `role_permissions`) possuem o campo `deleted_at TIMESTAMP NULL`.
+Todas as tabelas de negócio (exceto `purchase_items`, `permissions`, `role_permissions` e `company_role_permissions`) possuem o campo `deleted_at TIMESTAMP NULL`.
 
 - Registros ativos: `deleted_at IS NULL`
 - Registros excluídos: `deleted_at IS NOT NULL`
@@ -296,8 +323,28 @@ As migrations ficam em `prisma/migrations/`.
 | `20260426130000_add_establishments_permissions` | Seed das permissões `establishments.*` para OWNER, ADMIN e MEMBER |
 | `20260516000000_remove_sales_module` | Remove as tabelas `sales` / `sale_items` e o enum `SaleStatus` (as permissões `sales.*` **não** foram removidas) |
 | `20260525191254` | Recria a FK de `role_permissions` com `ON UPDATE CASCADE` |
+| `20260727120000_company_scoped_permissions` | Cria `company_role_permissions`; adiciona `purchases.delete` ao catálogo; concede `users.create` e `purchases.delete` ao ADMIN no padrão; faz o backfill do padrão para todas as empresas existentes |
 
-> As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, adicione uma migration que insira os códigos (`INSERT ... ON CONFLICT DO NOTHING`) e os vincule aos papéis.
+> As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
+>
+> ```sql
+> -- 1. registrar os códigos no catálogo
+> INSERT INTO "permissions" ("code", "description") VALUES ('nfe.emit', 'Emitir NF-e')
+> ON CONFLICT ("code") DO NOTHING;
+>
+> -- 2. incluir no padrão (vale para empresas criadas dali em diante)
+> INSERT INTO "role_permissions" ("role", "permission_code") VALUES ('ADMIN', 'nfe.emit')
+> ON CONFLICT DO NOTHING;
+>
+> -- 3. propagar para as empresas que já existem
+> INSERT INTO "company_role_permissions" ("company_id", "role", "permission_code")
+> SELECT c."id", 'ADMIN', 'nfe.emit' FROM "companies" c
+> ON CONFLICT DO NOTHING;
+> ```
+>
+> Sem o passo 3 as empresas existentes ficam sem a permissão e o endpoint retorna `403`.
+> O passo 2 sozinho não afeta ninguém, porque `role_permissions` não é lida em runtime.
+> OWNER não precisa de nenhum dos passos: tem acesso total por definição.
 
 ```bash
 # Criar nova migration

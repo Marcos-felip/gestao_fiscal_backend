@@ -14,6 +14,8 @@ const mockTx = {
   membership: { create: jest.fn() },
   user: { update: jest.fn() },
   establishment: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+  rolePermission: { findMany: jest.fn() },
+  companyRolePermission: { createMany: jest.fn() },
 };
 
 const mockPrismaService = {
@@ -60,6 +62,12 @@ describe('CompaniesService', () => {
           mockTx.company.create.mockResolvedValue(mockCompany);
           mockTx.membership.create.mockResolvedValue(mockMembership);
           mockTx.user.update.mockResolvedValue({});
+          mockTx.rolePermission.findMany.mockResolvedValue([
+            { role: MembershipRole.MEMBER, permissionCode: 'products.list' },
+          ]);
+          mockTx.companyRolePermission.createMany.mockResolvedValue({
+            count: 1,
+          });
           return cb(mockTx);
         },
       );
@@ -83,6 +91,16 @@ describe('CompaniesService', () => {
       expect(mockTx.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
         data: { companyActiveId: 'company-1' },
+      });
+      expect(mockTx.companyRolePermission.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            companyId: 'company-1',
+            role: MembershipRole.MEMBER,
+            permissionCode: 'products.list',
+          },
+        ],
+        skipDuplicates: true,
       });
       expect(result).toEqual({
         company: mockCompany,

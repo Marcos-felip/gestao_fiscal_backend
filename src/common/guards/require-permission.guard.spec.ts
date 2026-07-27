@@ -36,8 +36,8 @@ describe('RequirePermissionGuard', () => {
         {
           provide: PrismaService,
           useValue: {
-            rolePermission: {
-              findMany: jest.fn(),
+            companyRolePermission: {
+              findFirst: jest.fn(),
             },
           },
         },
@@ -73,14 +73,14 @@ describe('RequirePermissionGuard', () => {
     );
   });
 
-  it('should allow OWNER to create users', async () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('users.create');
+  it('should allow OWNER without querying the database', async () => {
     jest
-      .spyOn(prismaService.rolePermission, 'findMany')
-      .mockResolvedValue([
-        { permissionCode: 'users.create' },
-        { permissionCode: 'users.list' },
-      ] as any);
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue('purchases.delete');
+    const findFirstSpy = jest.spyOn(
+      prismaService.companyRolePermission,
+      'findFirst',
+    );
 
     const context = createMockContext({
       id: 'membership-1',
@@ -89,17 +89,16 @@ describe('RequirePermissionGuard', () => {
     });
 
     const result = await guard.canActivate(context);
+
     expect(result).toBe(true);
+    expect(findFirstSpy).not.toHaveBeenCalled();
   });
 
-  it('should allow ADMIN to create users', async () => {
+  it('should allow ADMIN when the permission is granted in the company', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('users.create');
     jest
-      .spyOn(prismaService.rolePermission, 'findMany')
-      .mockResolvedValue([
-        { permissionCode: 'users.create' },
-        { permissionCode: 'users.list' },
-      ] as any);
+      .spyOn(prismaService.companyRolePermission, 'findFirst')
+      .mockResolvedValue({ permissionCode: 'users.create' } as any);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -111,14 +110,11 @@ describe('RequirePermissionGuard', () => {
     expect(result).toBe(true);
   });
 
-  it('should deny MEMBER from creating users', async () => {
+  it('should deny MEMBER when the permission is not granted', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('users.create');
     jest
-      .spyOn(prismaService.rolePermission, 'findMany')
-      .mockResolvedValue([
-        { permissionCode: 'users.list' },
-        { permissionCode: 'products.read' },
-      ] as any);
+      .spyOn(prismaService.companyRolePermission, 'findFirst')
+      .mockResolvedValue(null);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -136,8 +132,8 @@ describe('RequirePermissionGuard', () => {
       .spyOn(reflector, 'getAllAndOverride')
       .mockReturnValue('products.delete');
     jest
-      .spyOn(prismaService.rolePermission, 'findMany')
-      .mockResolvedValue([{ permissionCode: 'products.list' }] as any);
+      .spyOn(prismaService.companyRolePermission, 'findFirst')
+      .mockResolvedValue(null);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -150,11 +146,11 @@ describe('RequirePermissionGuard', () => {
     );
   });
 
-  it('should query rolePermission with correct role', async () => {
+  it('should scope the lookup to the active company and role', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('users.list');
-    const findManySpy = jest
-      .spyOn(prismaService.rolePermission, 'findMany')
-      .mockResolvedValue([{ permissionCode: 'users.list' }] as any);
+    const findFirstSpy = jest
+      .spyOn(prismaService.companyRolePermission, 'findFirst')
+      .mockResolvedValue({ permissionCode: 'users.list' } as any);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -164,8 +160,12 @@ describe('RequirePermissionGuard', () => {
 
     await guard.canActivate(context);
 
-    expect(findManySpy).toHaveBeenCalledWith({
-      where: { role: MembershipRole.ADMIN },
+    expect(findFirstSpy).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company-1',
+        role: MembershipRole.ADMIN,
+        permissionCode: 'users.list',
+      },
       select: { permissionCode: true },
     });
   });

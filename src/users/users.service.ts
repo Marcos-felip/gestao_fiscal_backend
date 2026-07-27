@@ -12,6 +12,7 @@ import { AddUserToCompanyMembershipDto } from './dto/add-membership.dto';
 import { MembershipRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
+import { assertCanAssignRole } from '../common/utils/role-hierarchy';
 
 @Injectable()
 export class UsersService {
@@ -103,10 +104,23 @@ export class UsersService {
     });
   }
 
-  async createUser(dto: CreateUserDto) {
+  async createUser(
+    dto: CreateUserDto,
+    companyId: string,
+    actorRole: MembershipRole,
+  ) {
+    // Só é possível criar usuários dentro da própria empresa ativa
+    if (dto.companyId !== companyId) {
+      throw new ForbiddenException(
+        'Não é possível criar usuários em outra empresa',
+      );
+    }
+
+    assertCanAssignRole(actorRole, dto.role);
+
     // Verificar se a empresa existe
-    const company = await this.prisma.company.findUnique({
-      where: { id: dto.companyId },
+    const company = await this.prisma.company.findFirst({
+      where: { id: dto.companyId, deletedAt: null },
     });
 
     if (!company) {
@@ -187,7 +201,10 @@ export class UsersService {
     userId: string,
     companyId: string,
     dto: AddUserToCompanyMembershipDto,
+    actorRole: MembershipRole,
   ) {
+    assertCanAssignRole(actorRole, dto.role);
+
     // Verificar se o usuário existe
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
