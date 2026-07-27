@@ -3,7 +3,7 @@
 ## Sobre o projeto
 
 Sistema SaaS multi-tenant de gestão fiscal para empresas brasileiras.
-Stack: **NestJS 10 + Prisma 7 + PostgreSQL 16 + Passport JWT**.
+Stack: **NestJS 11 + Prisma 7 + PostgreSQL 16 + Passport JWT**.
 
 O sistema permite que múltiplas empresas (tenants) compartilhem a mesma infraestrutura com isolamento total de dados por `company_id`.
 
@@ -63,35 +63,57 @@ super({ adapter });
 
 ## Cadeia de guards
 
+Existem **duas cadeias**, conforme o tipo de autorização:
+
 ```
-JwtAuthGuard → CompanyTenantGuard → RolesGuard
+Por papel:      JwtAuthGuard → CompanyTenantGuard → RolesGuard
+Por permissão:  JwtAuthGuard → CompanyTenantGuard → RequirePermissionGuard
 ```
 
 - `JwtAuthGuard`: valida o Bearer token, popula `request.user = { id, email }`
 - `CompanyTenantGuard`: carrega o usuário, valida membership na empresa ativa, popula `request.companyId` e `request.membership`
 - `RolesGuard`: verifica se `request.membership.role` está nos papéis permitidos pelo `@Roles()`
+- `RequirePermissionGuard`: consulta `role_permissions` pelo `request.membership.role` e verifica o código exigido pelo `@RequirePermission()`. Sem `@RequirePermission()` no handler, o guard libera o acesso
 
 ### Uso nos controllers
 
 ```typescript
-// Qualquer membro autenticado com empresa ativa:
+// Autorização por PERMISSÃO (padrão para CRUD):
+@UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+@RequirePermission('products.create')
+
+// Autorização por PAPEL — qualquer membro autenticado com empresa ativa:
 @TenantProtected()
 
 // Apenas OWNER e ADMIN:
 @TenantProtected(MembershipRole.OWNER, MembershipRole.ADMIN)
 
-// Apenas OWNER:
+// Apenas OWNER (onboarding, gestão de papéis, permissões, excluir estabelecimento):
 @TenantProtected(MembershipRole.OWNER)
 
-// Somente JWT sem tenant (ex: criar empresa):
+// Somente JWT sem tenant (ex: criar empresa, listar empresas do usuário):
 @UseGuards(JwtAuthGuard)
 ```
+
+> `@TenantProtected()` **não** aplica o `RequirePermissionGuard`. Para exigir permissão, declare os guards explicitamente com `@UseGuards(...)`.
+
+## Sistema de permissões
+
+- Códigos no formato `dominio.acao` (ex: `purchases.confirm`), na tabela `permissions`
+- Vínculo papel → permissão na tabela `role_permissions` (PK composta `role + permission_code`)
+- **Seed é feito por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, adicione uma migration com `INSERT ... ON CONFLICT DO NOTHING` para os códigos e para os vínculos de OWNER/ADMIN/MEMBER
+- `PATCH /permissions/:role` só aceita `MEMBER`; OWNER e ADMIN têm conjuntos fixos
+- ⚠️ **`role_permissions` não tem `company_id`** — as permissões são globais da instância, não por tenant. Alterar MEMBER afeta todas as empresas
+- Catálogo completo e matriz padrão: [API.md](./API.md#catálogo-de-permissões)
 
 ## Decorators disponíveis
 
 ```typescript
-@CurrentUser()      // Retorna { id, email } do request.user
-@CurrentCompany()   // Retorna o companyId do request.companyId
+@CurrentUser()                        // Retorna { id, email } do request.user
+@CurrentCompany()                     // Retorna o companyId do request.companyId
+@Roles(...roles)                      // Papéis aceitos (lido pelo RolesGuard)
+@RequirePermission('products.create') // Permissão exigida (lida pelo RequirePermissionGuard)
+@TenantProtected(...roles)            // Atalho: JWT + tenant + papéis + @ApiBearerAuth
 ```
 
 ## Paginação
@@ -133,9 +155,10 @@ Padrão de resposta paginada:
 2. Criar `nome-modulo.module.ts`, `nome-modulo.controller.ts`, `nome-modulo.service.ts`
 3. Criar pasta `dto/` com DTOs usando `class-validator`
 4. No service: sempre filtrar por `companyId` e `deletedAt: null`
-5. No controller: usar `@TenantProtected()` e `@CurrentCompany()`
-6. Registrar o módulo em `src/app.module.ts`
-7. Criar `nome-modulo.service.spec.ts` com testes unitários
+5. No controller: usar `@CurrentCompany()` + `@UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)` com `@RequirePermission('nome-modulo.acao')` (ou `@TenantProtected(...)` quando o controle for por papel)
+6. Criar migration que insere os códigos de permissão do módulo em `permissions` e os vincula aos papéis em `role_permissions` — **sem isso o endpoint retorna 403 para todos**
+7. Registrar o módulo em `src/app.module.ts`
+8. Criar `nome-modulo.service.spec.ts` com testes unitários
 
 ## Estrutura de módulos
 
@@ -149,10 +172,11 @@ src/
 │   ├── validators/  @IsCpf, @IsCnpj, @IsCpfOrCnpj
 │   ├── dto/         PaginationDto
 │   └── types/       Express.d.ts
-├── auth/            Registro, login, refresh, logout
-├── users/           Perfil, troca de empresa ativa
+├── auth/            Registro, login, refresh, logout, troca de senha obrigatória
+├── users/           Perfil, troca de empresa ativa, criação de usuário + membership
 ├── companies/       CRUD de empresas + onboarding
-├── memberships/     Convite, papéis, remoção de membros
+├── memberships/     Criação de membros, papéis, remoção
+├── permissions/     Catálogo de permissões e vínculo papel → permissão
 ├── establishments/  CRUD de estabelecimentos (MATRIZ/FILIAL)
 ├── products/        CRUD de produtos com paginação
 ├── partners/        CRUD de parceiros (clientes/fornecedores)
@@ -164,6 +188,8 @@ src/
 
 As seguintes operações **obrigatoriamente** usam `prisma.$transaction()`:
 - Criar empresa (company + membership + update user)
+- Criar membro (create user + create membership)
+- Atualizar permissões de um papel (deleteMany + createMany em `role_permissions`)
 - Onboarding (update company + create establishment)
 - Confirmar compra (criar StockMovements + atualizar currentStock + confirmar purchase)
 - Cancelar compra confirmada (reverter StockMovements + atualizar currentStock)

@@ -34,8 +34,10 @@ Frontend: Angular 19+ (standalone, signals) + Tailwind CSS + PrimeNG (unstyled) 
 - Multi-tenant: toda query de negocio com `where: { companyId, deletedAt: null }`
 - Soft delete manual: `update({ data: { deletedAt: new Date() } })`
 - Transacoes criticas com `prisma.$transaction()`
-- Cadeia de guards: `JwtAuthGuard -> CompanyTenantGuard -> RolesGuard`
-- Decorators: `@CurrentUser()`, `@CurrentCompany()`, `@TenantProtected()`
+- Cadeia de guards por papel: `JwtAuthGuard -> CompanyTenantGuard -> RolesGuard`
+- Cadeia de guards por permissao: `JwtAuthGuard -> CompanyTenantGuard -> RequirePermissionGuard`
+- Decorators: `@CurrentUser()`, `@CurrentCompany()`, `@TenantProtected()`, `@RequirePermission('dominio.acao')`
+- Modulo novo exige migration que insira os codigos em `permissions` e os vincule em `role_permissions`
 - Mensagens de erro em PT-BR
 - Paginacao: `PaginationDto` com resposta `{ data, total, page, limit }`
 
@@ -49,11 +51,13 @@ Frontend: Angular 19+ (standalone, signals) + Tailwind CSS + PrimeNG (unstyled) 
 
 1. Multi-tenant: toda operacao no contexto da empresa ativa
 2. Refresh token: interceptor faz refresh silencioso em 401
-3. Permissoes: OWNER > ADMIN > MEMBER
-4. Workflow compras: DRAFT -> CONFIRMED -> CANCELLED
-5. Estoque nunca negativo; confirmacao baixa, cancelamento estorna
-6. Soft delete: frontend so chama DELETE, backend faz exclusao logica
-7. Validacoes brasileiras: CPF, CNPJ, CEP, telefone
+3. Papeis: OWNER > ADMIN > MEMBER — mas o acesso real vem das permissoes granulares (`dominio.acao`) em `role_permissions`; ADMIN nao tem `users.create` e MEMBER tem
+4. Permissoes sao globais por papel (nao ha `company_id` em `role_permissions`) e so o OWNER altera as do papel MEMBER
+5. Primeiro acesso: usuario criado por admin recebe senha provisoria e `forcePasswordChange: true` — frontend conduz a `POST /auth/change-password-first-login`
+6. Workflow compras: DRAFT -> CONFIRMED -> CANCELLED
+7. Estoque nunca negativo; confirmacao baixa, cancelamento estorna
+8. Soft delete: frontend so chama DELETE, backend faz exclusao logica
+9. Validacoes brasileiras: CPF, CNPJ, CEP, telefone
 
 ## Comandos de qualidade
 

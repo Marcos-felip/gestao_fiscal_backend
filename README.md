@@ -7,7 +7,7 @@ API backend do sistema SaaS de gestão fiscal e operacional para empresas brasil
 | Tecnologia     | Versão | Uso                         |
 | -------------- | ------ | --------------------------- |
 | Node.js        | 20+    | Runtime                     |
-| NestJS         | 10     | Framework backend           |
+| NestJS         | 11     | Framework backend           |
 | Prisma         | 7      | ORM                         |
 | PostgreSQL     | 16     | Banco de dados              |
 | Passport / JWT | —      | Autenticação                |
@@ -127,10 +127,11 @@ Esse comando atualiza apenas a linha `Frontend:` em `.github/copilot-instruction
 
 ```
 src/
-├── auth/              # Autenticação JWT (access + refresh token)
-├── users/             # Perfil do usuário
+├── auth/              # Autenticação JWT (access + refresh token) e troca de senha obrigatória
+├── users/             # Perfil do usuário e criação de usuários da empresa
 ├── companies/         # Empresas (tenant principal)
 ├── memberships/       # Vínculo usuário-empresa com papéis
+├── permissions/       # Catálogo de permissões e vínculo papel → permissão
 ├── establishments/    # Estabelecimentos (matriz e filiais)
 ├── products/          # Cadastro de produtos
 ├── partners/          # Clientes e fornecedores
@@ -139,6 +140,18 @@ src/
 ├── prisma/            # Serviço global do Prisma ORM
 └── common/            # Guards, decorators, filtros, validators
 ```
+
+## Autenticação e autorização
+
+- **Autenticação:** JWT Bearer — access token de 15 min e refresh token de 7 dias (hasheado no banco)
+- **Multi-tenancy:** toda operação roda no contexto da *empresa ativa* (`companyActiveId`) do usuário
+- **Autorização:** duas camadas
+  - **Papel** (`OWNER` / `ADMIN` / `MEMBER`) para operações estruturais — onboarding, gestão de papéis e de permissões, exclusão de estabelecimento
+  - **Permissão granular** (`products.create`, `purchases.confirm`, …) para a maioria dos CRUDs, armazenada nas tabelas `permissions` e `role_permissions`
+- Somente o OWNER pode alterar permissões, e apenas as do papel MEMBER (`PATCH /permissions/MEMBER`)
+- As permissões são semeadas por **migration SQL** — um módulo novo precisa de uma migration inserindo seus códigos, senão os endpoints retornam `403`
+
+Detalhes e matriz completa: [API.md](./API.md#catálogo-de-permissões) e [REGRAS_DE_NEGOCIO.md](./REGRAS_DE_NEGOCIO.md).
 
 ## Documentação da API
 

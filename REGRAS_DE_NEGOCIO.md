@@ -5,6 +5,7 @@
 O sistema é um SaaS (Software as a Service) de gestão fiscal e operacional para empresas brasileiras. Ele permite:
 
 - Gerenciar múltiplas empresas com usuários compartilhados
+- Controlar acesso por papéis e permissões granulares
 - Controlar estoque de produtos
 - Registrar e controlar compras
 - Manter cadastro de clientes e fornecedores
@@ -63,42 +64,76 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 
 ## 4. Papéis e Permissões
 
+A autorização acontece em **duas camadas**:
+
+1. **Papel (`MembershipRole`)** — `OWNER`, `ADMIN` ou `MEMBER`, definido no membership do usuário naquela empresa. Usado diretamente em operações estruturais (onboarding, gestão de papéis, exclusão de estabelecimento, gestão de permissões).
+2. **Permissão granular (`dominio.acao`)** — códigos como `products.create`, guardados na tabela `permissions` e vinculados aos papéis em `role_permissions`. Usado na maioria dos endpoints de CRUD.
+
+Na prática o papel não concede acesso por si só: ele define **qual conjunto de permissões** o usuário carrega.
+
 ### OWNER
-- Controle total da empresa
-- Pode criar membros (ADMIN ou MEMBER) e remover membros
-- Pode alterar papéis de outros membros (exceto de outros OWNERs)
+- Controle total da empresa; possui **todas** as permissões
+- Único que pode: fazer o onboarding, alterar papéis, remover membros, excluir estabelecimentos e gerenciar permissões
 - **Não pode ser removido da empresa**
 - **Não pode ter seu papel alterado**
 
 ### ADMIN
-- Acesso operacional completo
-- Pode criar novos membros (apenas papel MEMBER)
-- Pode criar e gerenciar estabelecimentos
+- Acesso operacional completo (CRUD de produtos, parceiros, estoque, compras, estabelecimentos)
 - Pode confirmar e cancelar compras
+- **Não possui `users.create` por padrão** — logo, não cadastra novos membros
 
 ### MEMBER
-- Acesso básico de leitura e operação
-- Pode criar compras (status RASCUNHO)
-- Não pode cancelar operações confirmadas
-- Com permissão `users.create`, pode criar apenas MEMBER
+- Acesso operacional restrito, totalmente configurável pelo OWNER
+- Por padrão: cria compras e as confirma, mas **não pode cancelá-las**; lê estabelecimentos mas não os cria/edita; não edita dados da empresa
+- Por padrão **possui `users.create`**, ou seja, cadastra novos membros
 
-### Tabela resumida
+### Tabela resumida (configuração padrão)
 
-| Ação | OWNER | ADMIN | MEMBER |
-|------|-------|-------|--------|
-| Criar membros | ✅ | ✅ | ✅* |
-| Remover membros | ✅ | ❌ | ❌ |
-| Alterar papéis | ✅ | ❌ | ❌ |
+| Ação | OWNER | ADMIN | MEMBER | Controlado por |
+|------|:-----:|:-----:|:------:|----------------|
+| Configurar empresa (onboarding) | ✅ | ❌ | ❌ | Papel |
+| Editar dados da empresa | ✅ | ✅ | ❌ | `company.edit` |
+| Criar membros | ✅ | ❌ | ✅ | `users.create` |
+| Listar membros | ✅ | ✅ | ✅ | `users.list` |
+| Alterar papéis | ✅ | ❌ | ❌ | Papel |
+| Remover membros | ✅ | ❌ | ❌ | Papel |
+| Gerenciar permissões | ✅ | somente leitura | ❌ | Papel |
+| Criar/editar estabelecimentos | ✅ | ✅ | ❌ | `establishments.create` / `.edit` |
+| Excluir estabelecimento | ✅ | ❌ | ❌ | Papel |
+| CRUD de produtos | ✅ | ✅ | ✅ | `products.*` |
+| CRUD de parceiros | ✅ | ✅ | ✅ | `partners.*` |
+| Criar/editar compras (rascunho) | ✅ | ✅ | ✅ | `purchases.create` / `.edit` |
+| Confirmar compras | ✅ | ✅ | ✅ | `purchases.confirm` |
+| Cancelar compras | ✅ | ✅ | ❌ | `purchases.cancel` |
+| Movimentação manual de estoque | ✅ | ✅ | ✅ | `stock.create` |
 
-> *MEMBER com permissão `users.create` pode criar apenas membros com papel MEMBER. OWNER pode criar ADMIN ou MEMBER. ADMIN pode criar apenas MEMBER.
-| Configurar empresa (onboarding) | ✅ | ❌ | ❌ |
-| Criar/editar estabelecimentos | ✅ | ✅ | ❌ |
-| CRUD de produtos | ✅ | ✅ | ✅ |
-| CRUD de parceiros | ✅ | ✅ | ✅ |
-| Criar compras (rascunho) | ✅ | ✅ | ✅ |
-| Confirmar compras | ✅ | ✅ | ✅ |
-| Cancelar compras | ✅ | ✅ | ❌ |
-| Movimentação manual de estoque | ✅ | ✅ | ✅ |
+> A lista completa de códigos está no [API.md](./API.md#catálogo-de-permissões).
+
+### Gestão de permissões
+
+- Apenas o **OWNER** pode alterar permissões, e **somente as do papel MEMBER** — as de OWNER e ADMIN são fixas (`400` ao tentar alterá-las)
+- A atualização é uma **substituição total**: o conjunto enviado passa a ser o único conjunto do papel
+- Códigos inexistentes na tabela `permissions` são rejeitados com `404`
+- ⚠️ **As permissões são globais, não por empresa.** `role_permissions` não tem `company_id`, então alterar o papel MEMBER afeta todas as empresas da instância. Enquanto isso não mudar, trate a tela de permissões como configuração de plataforma, não de tenant.
+
+### Vinculação de usuários
+
+- `POST /memberships` cria usuário + membership na empresa ativa (senha provisória interna)
+- `POST /users` cria usuário + membership e devolve a senha provisória em `temporaryPassword`
+- `POST /users/:id/memberships` vincula um usuário já existente à empresa ativa
+- Um usuário não pode ter dois memberships ativos na mesma empresa (`409`)
+- ⚠️ O papel informado na criação **não é validado contra o papel de quem cria** — hoje qualquer usuário com `users.create` consegue criar um `OWNER`
+
+---
+
+## 4.1. Senha provisória e primeiro acesso
+
+- Usuários criados por um administrador (via `POST /memberships` ou `POST /users` sem `password`) recebem uma **senha provisória de 12 caracteres** e nascem com `force_password_change = true`
+- O login desses usuários é bem-sucedido, mas a resposta traz `forcePasswordChange: true` — cabe ao frontend bloquear a navegação e conduzir à troca de senha
+- A nova senha exige: mínimo 8 caracteres, ao menos uma maiúscula, uma minúscula e um dígito
+- A nova senha **não pode ser igual à atual**, e `newPassword` deve conferir com `confirmPassword`
+- Após a troca: `force_password_change = false` e `password_changed_at` recebe a data/hora
+- Usuários que se auto-registram (`POST /auth/register`) nascem com `force_password_change = false`
 
 ---
 
@@ -183,7 +218,7 @@ RASCUNHO → CANCELADO
 - Não pode mais ser alterado
 
 ### Regras adicionais
-- Apenas compras em RASCUNHO ou CANCELADO podem ser excluídas (soft delete)
+- Apenas compras em RASCUNHO ou CANCELADO podem ser excluídas (soft delete) — ⚠️ na prática o endpoint `DELETE /purchases/:id` exige a permissão `purchases.delete`, que não existe na tabela `permissions`, então a exclusão está indisponível para todos os papéis
 - Número da compra (`purchase_number`) é único por empresa e sequencial
 - Total calculado automaticamente: `Σ (quantidade × preço_unitário)`
 - Itens: mínimo 1 item por compra

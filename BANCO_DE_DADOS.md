@@ -64,6 +64,16 @@
                   │ endereco...   │
                   │ deleted_at    │
                   └───────────────┘
+
+  ── Autorização (tabelas GLOBAIS, sem company_id) ──
+
+      ┌──────────────────┐          ┌────────────────────────┐
+      │   permissions    │────1:N──<│    role_permissions    │
+      │──────────────────│          │────────────────────────│
+      │ code (PK)        │          │ role (PK, enum)        │
+      │ description      │          │ permission_code (PK,FK)│
+      └──────────────────┘          └────────────────────────┘
+                                     role = OWNER/ADMIN/MEMBER
 ```
 
 ## Modelos
@@ -78,6 +88,8 @@
 | `password_hash` | VARCHAR | ✅ | Senha hasheada (bcrypt) |
 | `refresh_token` | VARCHAR | ❌ | Refresh token hasheado (nulo após logout) |
 | `company_active_id` | UUID (FK) | ❌ | Empresa ativa |
+| `force_password_change` | BOOLEAN | ✅ | Exige troca de senha no próximo acesso (default `false`; `true` para usuários criados por administradores) |
+| `password_changed_at` | TIMESTAMP | ❌ | Data da última troca de senha |
 | `created_at` | TIMESTAMP | ✅ | Data de criação |
 | `updated_at` | TIMESTAMP | ✅ | Data de atualização |
 | `deleted_at` | TIMESTAMP | ❌ | Soft delete |
@@ -192,6 +204,30 @@
 
 Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_id` (fornecedor, opcional).
 
+### `permissions` — Catálogo de permissões
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `code` | TEXT (PK) | ✅ | Código no formato `dominio.acao` (ex: `products.create`) |
+| `description` | TEXT | ✅ | Descrição legível em PT-BR |
+
+- Tabela **global** (não possui `company_id`) e **sem soft delete**
+- Populada por migration (seed em SQL), não por código da aplicação
+- Domínios atuais: `company`, `users`, `establishments`, `products`, `purchases`, `stock`, `partners` e `sales` (legado, módulo removido)
+
+### `role_permissions` — Permissões por papel
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `role` | ENUM `MembershipRole` | ✅ | OWNER, ADMIN ou MEMBER |
+| `permission_code` | TEXT (FK → `permissions.code`) | ✅ | Permissão concedida |
+
+- **PK composta:** `(role, permission_code)`
+- **FK:** `permission_code → permissions(code)` com `ON DELETE CASCADE ON UPDATE CASCADE`
+- Tabela **global** e **sem soft delete**
+- ⚠️ Não há `company_id`: o conjunto de permissões de um papel é o mesmo em **todas as empresas** da instância. Alterar as permissões de MEMBER via `PATCH /permissions/MEMBER` afeta todos os tenants.
+- A atualização é feita por substituição total (`deleteMany` + `createMany` dentro de `$transaction`)
+
 ---
 
 ## Enums
@@ -230,12 +266,15 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 | `purchases` | INDEX | `company_id` |
 | `purchase_items` | INDEX | `purchase_id` |
 | `establishments` | INDEX | `company_id` |
+| `permissions` | PK | `code` |
+| `role_permissions` | PK | `(role, permission_code)` |
+| `role_permissions` | FK CASCADE | `permission_code → permissions(code)` |
 
 ---
 
 ## Soft Delete
 
-Todas as tabelas (exceto `purchase_items`) possuem o campo `deleted_at TIMESTAMP NULL`.
+Todas as tabelas de negócio (exceto `purchase_items`, `permissions` e `role_permissions`) possuem o campo `deleted_at TIMESTAMP NULL`.
 
 - Registros ativos: `deleted_at IS NULL`
 - Registros excluídos: `deleted_at IS NOT NULL`
@@ -247,6 +286,18 @@ Todas as tabelas (exceto `purchase_items`) possuem o campo `deleted_at TIMESTAMP
 ## Migrations
 
 As migrations ficam em `prisma/migrations/`.
+
+| Migration | O que faz |
+|-----------|-----------|
+| `20260403201053_init` | Esquema inicial (users, companies, memberships, establishments, products, partners, stock, purchases, sales) |
+| `20260422110000_add_business_segment_technical_attributes` | `companies.business_segment` e `products.technical_attributes` |
+| `20260424082316_add_permissions_table` | Cria `permissions` e `role_permissions` + seed dos códigos e da matriz padrão por papel |
+| `20260426120000_add_force_password_change_fields` | `users.force_password_change` e `users.password_changed_at` |
+| `20260426130000_add_establishments_permissions` | Seed das permissões `establishments.*` para OWNER, ADMIN e MEMBER |
+| `20260516000000_remove_sales_module` | Remove as tabelas `sales` / `sale_items` e o enum `SaleStatus` (as permissões `sales.*` **não** foram removidas) |
+| `20260525191254` | Recria a FK de `role_permissions` com `ON UPDATE CASCADE` |
+
+> As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, adicione uma migration que insira os códigos (`INSERT ... ON CONFLICT DO NOTHING`) e os vincule aos papéis.
 
 ```bash
 # Criar nova migration
