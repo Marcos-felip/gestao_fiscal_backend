@@ -81,10 +81,15 @@ export class MembershipsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @TenantProtected(MembershipRole.OWNER)
-  @ApiOperation({ summary: 'Remover membro da empresa (apenas OWNER)' })
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('users.delete')
+  @ApiOperation({ summary: 'Remover membro da empresa ativa' })
   @ApiResponse({ status: 204 })
-  remove(@Param('id') id: string, @CurrentCompany() companyId: string) {
-    return this.membershipsService.remove(id, companyId);
+  remove(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+    @CurrentMembership() membership: CurrentMembershipData,
+  ) {
+    return this.membershipsService.remove(id, companyId, membership.role);
   }
 }

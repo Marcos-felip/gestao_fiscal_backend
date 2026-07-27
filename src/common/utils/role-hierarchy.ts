@@ -33,3 +33,21 @@ export function assertCanAssignRole(
     );
   }
 }
+
+/**
+ * Valida se `actorRole` pode gerenciar (editar ou remover) um membro cujo
+ * papel é `targetRole`.
+ *
+ * Regra: ninguém gerencia um usuário de papel superior ao seu.
+ * Papéis de mesmo nível podem se gerenciar (ex: ADMIN remove ADMIN).
+ */
+export function assertCanManageMember(
+  actorRole: MembershipRole,
+  targetRole: MembershipRole,
+): void {
+  if (ROLE_RANK[targetRole] > ROLE_RANK[actorRole]) {
+    throw new ForbiddenException(
+      'Não é possível gerenciar um usuário de papel superior ao seu',
+    );
+  }
+}

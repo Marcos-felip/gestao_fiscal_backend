@@ -8,7 +8,10 @@ import { MembershipRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertCanAssignRole } from '../common/utils/role-hierarchy';
+import {
+  assertCanAssignRole,
+  assertCanManageMember,
+} from '../common/utils/role-hierarchy';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
@@ -124,7 +127,7 @@ export class MembershipsService {
     });
   }
 
-  async remove(id: string, companyId: string) {
+  async remove(id: string, companyId: string, actorRole: MembershipRole) {
     const membership = await this.prisma.membership.findFirst({
       where: { id, companyId, deletedAt: null },
     });
@@ -138,6 +141,8 @@ export class MembershipsService {
         'Não é possível remover o OWNER da empresa',
       );
     }
+
+    assertCanManageMember(actorRole, membership.role);
 
     await this.prisma.membership.update({
       where: { id },

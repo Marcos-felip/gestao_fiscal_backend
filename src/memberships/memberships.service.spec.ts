@@ -325,9 +325,9 @@ describe('MembershipsService', () => {
     it('should throw NotFoundException if membership not found', async () => {
       mockPrismaService.membership.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove('m1', 'company-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.remove('m1', 'company-1', MembershipRole.OWNER),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException when trying to remove OWNER', async () => {
@@ -336,9 +336,9 @@ describe('MembershipsService', () => {
         role: MembershipRole.OWNER,
       });
 
-      await expect(service.remove('m1', 'company-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.remove('m1', 'company-1', MembershipRole.OWNER),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should soft delete membership for non-owner', async () => {
@@ -348,7 +348,7 @@ describe('MembershipsService', () => {
       });
       mockPrismaService.membership.update.mockResolvedValue({});
 
-      await service.remove('m1', 'company-1');
+      await service.remove('m1', 'company-1', MembershipRole.OWNER);
 
       expect(mockPrismaService.membership.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -356,6 +356,56 @@ describe('MembershipsService', () => {
           data: expect.objectContaining({ deletedAt: expect.any(Date) }),
         }),
       );
+    });
+
+    it('should let an ADMIN remove a MEMBER', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        id: 'm1',
+        role: MembershipRole.MEMBER,
+      });
+      mockPrismaService.membership.update.mockResolvedValue({});
+
+      await service.remove('m1', 'company-1', MembershipRole.ADMIN);
+
+      expect(mockPrismaService.membership.update).toHaveBeenCalled();
+    });
+
+    it('should let an ADMIN remove another ADMIN', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        id: 'm1',
+        role: MembershipRole.ADMIN,
+      });
+      mockPrismaService.membership.update.mockResolvedValue({});
+
+      await service.remove('m1', 'company-1', MembershipRole.ADMIN);
+
+      expect(mockPrismaService.membership.update).toHaveBeenCalled();
+    });
+
+    it('should block an ADMIN from removing the OWNER', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        id: 'm1',
+        role: MembershipRole.OWNER,
+      });
+
+      await expect(
+        service.remove('m1', 'company-1', MembershipRole.ADMIN),
+      ).rejects.toThrow('Não é possível remover o OWNER da empresa');
+
+      expect(mockPrismaService.membership.update).not.toHaveBeenCalled();
+    });
+
+    it('should block a MEMBER from removing an ADMIN', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        id: 'm1',
+        role: MembershipRole.ADMIN,
+      });
+
+      await expect(
+        service.remove('m1', 'company-1', MembershipRole.MEMBER),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockPrismaService.membership.update).not.toHaveBeenCalled();
     });
   });
 });
