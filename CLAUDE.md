@@ -88,7 +88,7 @@ Por permissão:  JwtAuthGuard → CompanyTenantGuard → RequirePermissionGuard
 // Apenas OWNER e ADMIN:
 @TenantProtected(MembershipRole.OWNER, MembershipRole.ADMIN)
 
-// Apenas OWNER (onboarding, gestão de papéis, permissões, excluir estabelecimento):
+// Apenas OWNER (onboarding, gestão de papéis, gestão de permissões):
 @TenantProtected(MembershipRole.OWNER)
 
 // Somente JWT sem tenant (ex: criar empresa, listar empresas do usuário):
@@ -114,8 +114,9 @@ Três tabelas:
 - **Seed por migration SQL.** Um módulo novo precisa de: `INSERT` no catálogo, `INSERT` no template
   e **backfill em `company_role_permissions` para as empresas existentes** — o passo 3 é o que
   costuma ser esquecido e causa `403`. Exemplo pronto em [BANCO_DE_DADOS.md](./BANCO_DE_DADOS.md#migrations)
-- Hierarquia de papéis: `assertCanAssignRole` em `src/common/utils/role-hierarchy.ts` — OWNER nunca é
-  atribuível pela API e ninguém atribui papel acima do seu
+- Hierarquia de papéis em `src/common/utils/role-hierarchy.ts`:
+  - `assertCanAssignRole` — ao **atribuir** papel: OWNER nunca é atribuível pela API e ninguém atribui papel acima do seu
+  - `assertCanManageMember` — ao **editar/remover** usuário: ninguém gerencia quem tem papel acima do seu (o OWNER continua não removível)
 - Catálogo completo e matriz padrão: [API.md](./API.md#catálogo-de-permissões)
 
 ## Decorators disponíveis

@@ -146,7 +146,7 @@ src/
 - **Autenticação:** JWT Bearer — access token de 15 min e refresh token de 7 dias (hasheado no banco)
 - **Multi-tenancy:** toda operação roda no contexto da *empresa ativa* (`companyActiveId`) do usuário
 - **Autorização:** duas camadas
-  - **Papel** (`OWNER` / `ADMIN` / `MEMBER`) para operações estruturais — onboarding, gestão de papéis e de permissões, remoção de membros
+  - **Papel** (`OWNER` / `ADMIN` / `MEMBER`) para operações estruturais — onboarding, gestão de papéis e de permissões
   - **Permissão granular** (`products.create`, `purchases.confirm`, …) para a maioria dos CRUDs
 - **OWNER tem acesso total** por definição; **ADMIN** recebe todas as permissões por padrão; **MEMBER** é o papel configurável
 - As permissões são **por empresa** (`company_role_permissions`): cada empresa recebe uma cópia do padrão ao ser criada e evolui de forma independente

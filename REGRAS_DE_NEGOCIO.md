@@ -73,14 +73,15 @@ Na prática o papel não concede acesso por si só: ele define **qual conjunto d
 
 ### OWNER
 - **Acesso total por definição** — o guard de permissões nunca barra um OWNER, independentemente do que está cadastrado
-- Único que pode: fazer o onboarding, alterar papéis, remover membros e gerenciar permissões
+- Único que pode: fazer o onboarding, alterar papéis e gerenciar permissões
 - **Não pode alterar as próprias permissões** (nem as do ADMIN) — só as do MEMBER são editáveis
 - **Não pode ser removido da empresa** e **não pode ter seu papel alterado**
 - Não existe exclusão de empresa na API
 
 ### ADMIN
 - Recebe **todas as permissões** por padrão: opera tudo abaixo do OWNER
-- O que o separa do OWNER são as operações travadas por papel: onboarding, alterar papéis, remover membros e gerenciar permissões
+- Cadastra, edita e remove usuários da empresa — **exceto o OWNER**
+- O que o separa do OWNER são as operações travadas por papel: onboarding, alterar papéis e gerenciar permissões
 - Suas permissões são fixas, como as do OWNER
 
 ### MEMBER
@@ -95,8 +96,9 @@ Na prática o papel não concede acesso por si só: ele define **qual conjunto d
 | Editar dados da empresa | ✅ | ✅ | ❌ | `company.edit` |
 | Criar membros | ✅ | ✅ | ❌ | `users.create` |
 | Listar membros | ✅ | ✅ | ✅ | `users.list` |
+| Editar dados de outro usuário | ✅ | ✅ (menos o OWNER) | ❌ | `users.edit` |
+| Remover membros | ✅ | ✅ (menos o OWNER) | ❌ | `users.delete` |
 | Alterar papéis | ✅ | ❌ | ❌ | Papel |
-| Remover membros | ✅ | ❌ | ❌ | Papel |
 | Gerenciar permissões | ✅ | somente leitura | ❌ | Papel |
 | Ver as próprias permissões | ✅ | ✅ | ✅ | — (`GET /permissions/me`) |
 | Criar/editar estabelecimentos | ✅ | ✅ | ❌ | `establishments.create` / `.edit` |
@@ -121,10 +123,17 @@ Na prática o papel não concede acesso por si só: ele define **qual conjunto d
 
 ### Hierarquia de papéis
 
-Vale em toda criação ou alteração de vínculo (`POST /memberships`, `POST /users`, `POST /users/:id/memberships`, `PATCH /memberships/:id/role`):
+**Ao atribuir papel** (`POST /memberships`, `POST /users`, `POST /users/:id/memberships`, `PATCH /memberships/:id/role`):
 
 - O papel **OWNER nunca é atribuível pela API** — ele nasce com a criação da empresa
 - Ninguém pode atribuir um papel **superior ao seu**: OWNER atribui ADMIN/MEMBER, ADMIN atribui ADMIN/MEMBER, MEMBER (se receber `users.create`) atribui apenas MEMBER
+
+**Ao editar ou remover usuário** (`PATCH /users/:id`, `DELETE /memberships/:id`):
+
+- Ninguém gerencia um usuário de papel **superior ao seu** — um ADMIN não edita nem remove o OWNER
+- Papéis de mesmo nível podem se gerenciar (ADMIN edita/remove outro ADMIN)
+- O **OWNER continua não removível** por ninguém, nem por outro OWNER
+- A edição altera apenas dados cadastrais (nome e e-mail); o papel continua sendo alterado só em `PATCH /memberships/:id/role`, exclusivo do OWNER
 
 ### Vinculação de usuários
 

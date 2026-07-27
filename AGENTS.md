@@ -53,7 +53,7 @@ Frontend: Angular 19+ (standalone, signals) + Tailwind CSS + PrimeNG (unstyled) 
 2. Refresh token: interceptor faz refresh silencioso em 401
 3. Papeis: OWNER faz tudo (guard nunca o barra); ADMIN recebe todas as permissoes por padrao; MEMBER e o papel configuravel
 4. Permissoes sao POR EMPRESA (`company_role_permissions`); `role_permissions` e so o template copiado na criacao da empresa; so o OWNER altera as do papel MEMBER
-5. Hierarquia: OWNER nunca e atribuivel pela API e ninguem atribui papel acima do seu (`assertCanAssignRole`)
+5. Hierarquia: ninguem atribui papel acima do seu e OWNER nunca e atribuivel (`assertCanAssignRole`); ninguem edita/remove usuario de papel acima do seu (`assertCanManageMember`) e o OWNER nao e removivel
 6. Frontend le as proprias permissoes em `GET /permissions/me`
 7. Primeiro acesso: usuario criado por admin recebe senha provisoria e `forcePasswordChange: true` — frontend conduz a `POST /auth/change-password-first-login`
 8. Workflow compras: DRAFT -> CONFIRMED -> CANCELLED

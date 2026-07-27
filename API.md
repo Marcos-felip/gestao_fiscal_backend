@@ -12,13 +12,13 @@ A API combina dois mecanismos:
 
 | Mecanismo | Como é aplicado | Onde é usado |
 |-----------|-----------------|--------------|
-| **Papel (role)** | `@TenantProtected(OWNER, ADMIN, ...)` — compara `membership.role` | Onboarding, gestão de papéis, remoção de membros, gestão de permissões |
+| **Papel (role)** | `@TenantProtected(OWNER, ADMIN, ...)` — compara `membership.role` | Onboarding, gestão de papéis, gestão de permissões |
 | **Permissão granular** | `@RequirePermission('products.create')` — consulta `company_role_permissions` da empresa ativa | Maioria dos endpoints de CRUD |
 
 Três regras valem para todo o sistema:
 
 1. **OWNER tem acesso total.** O papel OWNER nunca é barrado por permissão — o guard o libera sem consultar o banco. Ele só não faz o que a API não oferece (não existe exclusão de empresa) e não pode alterar as próprias permissões.
-2. **ADMIN opera tudo abaixo do OWNER.** Recebe todas as permissões por padrão; o que o separa do OWNER são os endpoints travados por papel (onboarding, alterar papel, remover membro, gerenciar permissões).
+2. **ADMIN opera tudo abaixo do OWNER.** Recebe todas as permissões por padrão — inclusive editar e remover usuários, exceto o OWNER. O que o separa do OWNER são os endpoints travados por papel (onboarding, alterar papel, gerenciar permissões).
 3. **MEMBER é configurável.** É o único papel cujas permissões o OWNER pode editar, e a configuração vale **apenas dentro da empresa ativa**.
 
 O erro de permissão granular retorna:
@@ -270,6 +270,43 @@ Cria o usuário e o membership em uma única chamada. Se `password` não for inf
 
 ---
 
+### PATCH /users/:id — Editar usuário da empresa ativa
+
+> **Permissão:** `users.edit` (por padrão OWNER e ADMIN) · requer empresa ativa
+
+Edita os dados cadastrais de outro usuário. **Não altera o papel** — para isso use `PATCH /memberships/:id/role`.
+
+O usuário precisa ser membro da empresa ativa, e não é possível editar quem tem papel **superior** ao do solicitante (um ADMIN não edita o OWNER).
+
+**Body (todos opcionais):**
+```json
+{
+  "name": "string (min 2)",
+  "email": "string (e-mail válido)"
+}
+```
+
+**Resposta 200:**
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "email": "string",
+  "forcePasswordChange": "boolean",
+  "createdAt": "ISO8601",
+  "updatedAt": "ISO8601"
+}
+```
+
+**Erros:**
+- `400` Nome deve ter no mínimo 2 caracteres · `400` E-mail inválido
+- `403` Sem permissão para acessar: users.edit
+- `403` Não é possível gerenciar um usuário de papel superior ao seu
+- `404` Usuário não encontrado nesta empresa
+- `409` E-mail já cadastrado
+
+---
+
 ## Empresas
 
 ### POST /companies — Criar nova empresa
@@ -475,13 +512,19 @@ Cria usuário + membership na **empresa ativa** em uma transação atômica. A s
 
 ---
 
-### DELETE /memberships/:id — Remover membro (apenas OWNER)
+### DELETE /memberships/:id — Remover membro da empresa ativa
 
-> **Papel:** OWNER · soft delete do membership
+> **Permissão:** `users.delete` (por padrão OWNER e ADMIN) · soft delete do membership
+
+O OWNER nunca pode ser removido, e não é possível remover quem tem papel **superior** ao do solicitante. Papéis de mesmo nível podem se remover (um ADMIN remove outro ADMIN).
 
 **Resposta 204:** sem corpo
 
-**Erros:** `404` Associação não encontrada · `400` Não é possível remover o OWNER da empresa
+**Erros:**
+- `404` Associação não encontrada
+- `400` Não é possível remover o OWNER da empresa
+- `403` Sem permissão para acessar: users.delete
+- `403` Não é possível gerenciar um usuário de papel superior ao seu
 
 ---
 
@@ -898,10 +941,11 @@ Legenda: ✅ concedida por padrão · ❌ não concedida · **Endpoint** = endpo
 | `users.list` | Listar usuários | ✅ | ✅ | ✅ | `GET /memberships` |
 | `users.create` | Criar novo usuário | ✅ | ✅ | ❌ | `POST /memberships`, `POST /users`, `POST /users/:id/memberships` |
 | `users.read` | Ler dados do usuário | ✅ | ✅ | ❌ | — |
-| `users.edit` | Editar dados do usuário | ✅ | ✅ | ❌ | — |
-| `users.delete` | Deletar usuário | ✅ | ✅ | ❌ | — |
+| `users.edit` | Editar dados do usuário | ✅ | ✅ | ❌ | `PATCH /users/:id` |
+| `users.delete` | Deletar usuário | ✅ | ✅ | ❌ | `DELETE /memberships/:id` |
 
 > Mesmo com `users.create`, o papel atribuído obedece à [hierarquia de papéis](#hierarquia-de-papéis).
+> `users.edit` e `users.delete` obedecem à mesma hierarquia: ninguém edita ou remove um usuário de papel superior ao seu.
 
 ### Estabelecimentos (`establishments`)
 
@@ -963,6 +1007,8 @@ O módulo de vendas foi removido do código, mas os 6 códigos `sales.*` (`list`
 
 ## Hierarquia de papéis
 
+### Ao atribuir papel
+
 Vale em `POST /memberships`, `POST /users`, `POST /users/:id/memberships` e `PATCH /memberships/:id/role`:
 
 - O papel **OWNER nunca é atribuível pela API** — ele nasce com a criação da empresa (`403`)
@@ -977,6 +1023,24 @@ Vale em `POST /memberships`, `POST /users`, `POST /users/:id/memberships` e `PAT
 **Erros:**
 - `403` Não é possível atribuir o papel OWNER a um usuário
 - `403` Não é possível atribuir um papel superior ao seu
+
+### Ao editar ou remover usuário
+
+Vale em `PATCH /users/:id` e `DELETE /memberships/:id`:
+
+- Ninguém edita ou remove um usuário de papel **superior ao seu** (`403`)
+- Papéis de mesmo nível podem se gerenciar (ADMIN edita/remove ADMIN)
+- O OWNER continua **não removível** por ninguém (`400`)
+
+| Solicitante | Pode editar/remover |
+|-------------|---------------------|
+| OWNER | ADMIN, MEMBER (e editar outro OWNER) |
+| ADMIN | ADMIN, MEMBER |
+| MEMBER (se receber `users.edit`/`users.delete`) | MEMBER |
+
+**Erros:**
+- `403` Não é possível gerenciar um usuário de papel superior ao seu
+- `400` Não é possível remover o OWNER da empresa
 
 ---
 
