@@ -15,6 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserByAdminDto } from './dto/update-user-by-admin.dto';
 import { UpdateActiveCompanyDto } from './dto/update-active-company.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { AddUserToCompanyMembershipDto } from './dto/add-membership.dto';
@@ -86,6 +87,27 @@ export class UsersController {
     @Body() dto: AddUserToCompanyMembershipDto,
   ) {
     return this.usersService.addMembership(
+      userId,
+      companyId,
+      dto,
+      membership.role,
+    );
+  }
+
+  // Declarada por último: as rotas estáticas (profile, active-company)
+  // precisam ser resolvidas antes deste parâmetro dinâmico.
+  @Patch(':id')
+  @UseGuards(CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('users.edit')
+  @ApiOperation({ summary: 'Editar usuário da empresa ativa' })
+  @ApiResponse({ status: 200 })
+  updateUserByAdmin(
+    @Param('id') userId: string,
+    @CurrentCompany() companyId: string,
+    @CurrentMembership() membership: CurrentMembershipData,
+    @Body() dto: UpdateUserByAdminDto,
+  ) {
+    return this.usersService.updateUserByAdmin(
       userId,
       companyId,
       dto,

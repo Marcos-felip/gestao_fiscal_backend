@@ -18,6 +18,7 @@ const mockPrismaService = {
   membership: {
     findFirst: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
   },
   company: {
     findUnique: jest.fn(),
@@ -502,6 +503,154 @@ describe('UsersService', () => {
           MembershipRole.MEMBER,
         ),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('updateUserByAdmin', () => {
+    const targetUser = {
+      id: 'user-2',
+      name: 'Maria',
+      email: 'maria@exemplo.com',
+      deletedAt: null,
+    };
+
+    it('should throw NotFoundException when the user is not a member of the company', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateUserByAdmin(
+          'user-2',
+          'company-1',
+          { name: 'Maria Souza' },
+          MembershipRole.ADMIN,
+        ),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should let an ADMIN edit a MEMBER', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        role: MembershipRole.MEMBER,
+      });
+      mockPrismaService.user.findFirst.mockResolvedValue(targetUser);
+      mockPrismaService.user.update.mockResolvedValue({
+        ...targetUser,
+        name: 'Maria Souza',
+      });
+
+      const result = await service.updateUserByAdmin(
+        'user-2',
+        'company-1',
+        { name: 'Maria Souza' },
+        MembershipRole.ADMIN,
+      );
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-2' },
+          data: { name: 'Maria Souza' },
+        }),
+      );
+      expect(result.name).toBe('Maria Souza');
+    });
+
+    it('should let an ADMIN edit another ADMIN', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        role: MembershipRole.ADMIN,
+      });
+      mockPrismaService.user.findFirst.mockResolvedValue(targetUser);
+      mockPrismaService.user.update.mockResolvedValue(targetUser);
+
+      await service.updateUserByAdmin(
+        'user-2',
+        'company-1',
+        { name: 'Outro Admin' },
+        MembershipRole.ADMIN,
+      );
+
+      expect(mockPrismaService.user.update).toHaveBeenCalled();
+    });
+
+    it('should block an ADMIN from editing the OWNER', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        role: MembershipRole.OWNER,
+      });
+
+      await expect(
+        service.updateUserByAdmin(
+          'user-2',
+          'company-1',
+          { email: 'novo@exemplo.com' },
+          MembershipRole.ADMIN,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw ConflictException when the e-mail belongs to another user', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        role: MembershipRole.MEMBER,
+      });
+      mockPrismaService.user.findFirst
+        .mockResolvedValueOnce(targetUser)
+        .mockResolvedValueOnce({ id: 'user-9', email: 'usado@exemplo.com' });
+
+      await expect(
+        service.updateUserByAdmin(
+          'user-2',
+          'company-1',
+          { email: 'usado@exemplo.com' },
+          MembershipRole.ADMIN,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should not check uniqueness when the e-mail is unchanged', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        role: MembershipRole.MEMBER,
+      });
+      mockPrismaService.user.findFirst.mockResolvedValue(targetUser);
+      mockPrismaService.user.update.mockResolvedValue(targetUser);
+
+      await service.updateUserByAdmin(
+        'user-2',
+        'company-1',
+        { email: targetUser.email },
+        MembershipRole.ADMIN,
+      );
+
+      // apenas a busca do próprio usuário
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.user.update).toHaveBeenCalled();
+    });
+
+    it('should not change the role', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        role: MembershipRole.MEMBER,
+      });
+      mockPrismaService.user.findFirst
+        .mockResolvedValueOnce(targetUser)
+        .mockResolvedValueOnce(null);
+      mockPrismaService.user.update.mockResolvedValue(targetUser);
+
+      await service.updateUserByAdmin(
+        'user-2',
+        'company-1',
+        { name: 'Maria Souza', email: 'maria2@exemplo.com' },
+        MembershipRole.ADMIN,
+      );
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-2' },
+          data: { name: 'Maria Souza', email: 'maria2@exemplo.com' },
+        }),
+      );
+      expect(mockPrismaService.membership.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -12,7 +12,11 @@ import { AddUserToCompanyMembershipDto } from './dto/add-membership.dto';
 import { MembershipRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
-import { assertCanAssignRole } from '../common/utils/role-hierarchy';
+import {
+  assertCanAssignRole,
+  assertCanManageMember,
+} from '../common/utils/role-hierarchy';
+import { UpdateUserByAdminDto } from './dto/update-user-by-admin.dto';
 
 @Injectable()
 export class UsersService {
@@ -195,6 +199,63 @@ export class UsersService {
     }
 
     return result;
+  }
+
+  /**
+   * Edição de dados cadastrais de outro usuário da empresa ativa.
+   * Não altera papel — isso continua em PATCH /memberships/:id/role.
+   */
+  async updateUserByAdmin(
+    userId: string,
+    companyId: string,
+    dto: UpdateUserByAdminDto,
+    actorRole: MembershipRole,
+  ) {
+    const membership = await this.prisma.membership.findFirst({
+      where: { userId, companyId, deletedAt: null },
+      select: { role: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException('Usuário não encontrado nesta empresa');
+    }
+
+    assertCanManageMember(actorRole, membership.role);
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    if (dto.email !== undefined && dto.email !== user.email) {
+      const existingUser = await this.prisma.user.findFirst({
+        where: { email: dto.email, id: { not: userId }, deletedAt: null },
+      });
+
+      if (existingUser) {
+        throw new ConflictException('E-mail já cadastrado');
+      }
+    }
+
+    const data: { name?: string; email?: string } = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.email !== undefined) data.email = dto.email;
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        forcePasswordChange: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
   }
 
   async addMembership(
