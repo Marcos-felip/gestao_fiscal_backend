@@ -161,9 +161,42 @@ export class MembershipsService {
 
     assertCanManageMember(actorRole, membership.role);
 
-    await this.prisma.membership.update({
-      where: { id },
-      data: { deletedAt: new Date() },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.membership.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+
+      const remaining = await tx.membership.findMany({
+        where: { userId: membership.userId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+        select: { companyId: true },
+      });
+
+      const user = await tx.user.findUnique({
+        where: { id: membership.userId },
+        select: { companyActiveId: true },
+      });
+
+      const activeCompanyStillValid = remaining.some(
+        (m) => m.companyId === user?.companyActiveId,
+      );
+
+      if (activeCompanyStillValid) {
+        return;
+      }
+
+      // A empresa ativa apontava para a empresa de onde o usuário saiu. Sem isso
+      // ele continua logando e recebe "Not a member of active company" em tudo.
+      await tx.user.update({
+        where: { id: membership.userId },
+        data: {
+          companyActiveId: remaining[0]?.companyId ?? null,
+          // Sem nenhuma empresa restante, encerra a sessão: o refresh token
+          // manteria o removido autenticado por até 7 dias
+          ...(remaining.length === 0 ? { refreshToken: null } : {}),
+        },
+      });
     });
   }
 }

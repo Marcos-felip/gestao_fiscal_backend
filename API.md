@@ -549,6 +549,18 @@ Cria usuário + membership na **empresa ativa** em uma transação atômica. A s
 
 O OWNER nunca pode ser removido, e não é possível remover quem tem papel **superior** ao do solicitante. Papéis de mesmo nível podem se remover (um ADMIN remove outro ADMIN).
 
+**Remove o vínculo, não a conta.** O usuário continua existindo e consegue fazer login — ele apenas
+deixa de ser membro da empresa. Junto com o soft delete do membership, a rota:
+
+- aponta a empresa ativa do usuário para outra empresa dele, se houver
+- ou zera a empresa ativa **e o refresh token** quando aquela era a última empresa, encerrando a sessão
+
+Assim o removido cai no estado "sem empresa" em vez de receber `403 Not a member of active company`
+em toda requisição.
+
+> Para readmitir alguém removido, use `POST /users/:id/memberships` com o `id` do usuário.
+> `POST /memberships` devolveria `409 E-mail já cadastrado`, porque a conta nunca foi apagada.
+
 **Resposta 204:** sem corpo
 
 **Erros:**

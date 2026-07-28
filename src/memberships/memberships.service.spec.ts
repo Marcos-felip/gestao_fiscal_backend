@@ -18,13 +18,20 @@ const mockTxUserCreate = jest.fn();
 const mockTxUserUpdate = jest.fn();
 const mockTxMembershipCreate = jest.fn();
 
+const mockTxUserFindUnique = jest.fn();
+const mockTxMembershipUpdate = jest.fn();
+const mockTxMembershipFindMany = jest.fn();
+
 const mockTx = {
   user: {
     create: mockTxUserCreate,
     update: mockTxUserUpdate,
+    findUnique: mockTxUserFindUnique,
   },
   membership: {
     create: mockTxMembershipCreate,
+    update: mockTxMembershipUpdate,
+    findMany: mockTxMembershipFindMany,
   },
 };
 
@@ -420,13 +427,15 @@ describe('MembershipsService', () => {
     it('should soft delete membership for non-owner', async () => {
       mockPrismaService.membership.findFirst.mockResolvedValue({
         id: 'm1',
+        userId: 'user-1',
         role: MembershipRole.MEMBER,
       });
-      mockPrismaService.membership.update.mockResolvedValue({});
+      mockTxMembershipFindMany.mockResolvedValue([]);
+      mockTxUserFindUnique.mockResolvedValue({ companyActiveId: 'company-1' });
 
       await service.remove('m1', 'company-1', MembershipRole.OWNER);
 
-      expect(mockPrismaService.membership.update).toHaveBeenCalledWith(
+      expect(mockTxMembershipUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'm1' },
           data: expect.objectContaining({ deletedAt: expect.any(Date) }),
@@ -434,28 +443,80 @@ describe('MembershipsService', () => {
       );
     });
 
+    it('should clear the active company and the session of the removed user', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        id: 'm1',
+        userId: 'user-1',
+        role: MembershipRole.MEMBER,
+      });
+      mockTxMembershipFindMany.mockResolvedValue([]);
+      mockTxUserFindUnique.mockResolvedValue({ companyActiveId: 'company-1' });
+
+      await service.remove('m1', 'company-1', MembershipRole.OWNER);
+
+      expect(mockTxUserUpdate).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { companyActiveId: null, refreshToken: null },
+      });
+    });
+
+    it('should move the active company to another company of the user', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        id: 'm1',
+        userId: 'user-1',
+        role: MembershipRole.MEMBER,
+      });
+      mockTxMembershipFindMany.mockResolvedValue([{ companyId: 'company-2' }]);
+      mockTxUserFindUnique.mockResolvedValue({ companyActiveId: 'company-1' });
+
+      await service.remove('m1', 'company-1', MembershipRole.OWNER);
+
+      expect(mockTxUserUpdate).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { companyActiveId: 'company-2' },
+      });
+    });
+
+    it('should not touch the user when the active company is another one', async () => {
+      mockPrismaService.membership.findFirst.mockResolvedValue({
+        id: 'm1',
+        userId: 'user-1',
+        role: MembershipRole.MEMBER,
+      });
+      mockTxMembershipFindMany.mockResolvedValue([{ companyId: 'company-2' }]);
+      mockTxUserFindUnique.mockResolvedValue({ companyActiveId: 'company-2' });
+
+      await service.remove('m1', 'company-1', MembershipRole.OWNER);
+
+      expect(mockTxUserUpdate).not.toHaveBeenCalled();
+    });
+
     it('should let an ADMIN remove a MEMBER', async () => {
       mockPrismaService.membership.findFirst.mockResolvedValue({
         id: 'm1',
+        userId: 'user-1',
         role: MembershipRole.MEMBER,
       });
-      mockPrismaService.membership.update.mockResolvedValue({});
+      mockTxMembershipFindMany.mockResolvedValue([]);
+      mockTxUserFindUnique.mockResolvedValue({ companyActiveId: 'company-1' });
 
       await service.remove('m1', 'company-1', MembershipRole.ADMIN);
 
-      expect(mockPrismaService.membership.update).toHaveBeenCalled();
+      expect(mockTxMembershipUpdate).toHaveBeenCalled();
     });
 
     it('should let an ADMIN remove another ADMIN', async () => {
       mockPrismaService.membership.findFirst.mockResolvedValue({
         id: 'm1',
+        userId: 'user-2',
         role: MembershipRole.ADMIN,
       });
-      mockPrismaService.membership.update.mockResolvedValue({});
+      mockTxMembershipFindMany.mockResolvedValue([]);
+      mockTxUserFindUnique.mockResolvedValue({ companyActiveId: 'company-1' });
 
       await service.remove('m1', 'company-1', MembershipRole.ADMIN);
 
-      expect(mockPrismaService.membership.update).toHaveBeenCalled();
+      expect(mockTxMembershipUpdate).toHaveBeenCalled();
     });
 
     it('should block an ADMIN from removing the OWNER', async () => {

@@ -202,6 +202,20 @@ padrão do MEMBER continua registrado em `role_permissions` e serve de base para
   vincular um usuário que já existe, a empresa ativa só é definida se ele ainda não tiver nenhuma —
   quem já opera em outra empresa não tem o contexto trocado sem pedir
 
+### Remoção de membro
+
+`DELETE /memberships/:id` remove o **vínculo**, não a conta. Conta e vínculo são coisas separadas:
+um usuário pode existir sem empresa nenhuma (é o estado de quem acabou de se registrar).
+
+- O usuário continua conseguindo fazer login — ele cai no estado "sem empresa"
+- Se a empresa removida era a ativa, o sistema aponta para outra empresa dele ou zera o campo
+- Ficando **sem nenhuma empresa**, o refresh token também é zerado: sem isso o removido seguiria
+  autenticado por até 7 dias
+- Ele nunca enxerga dados da empresa de onde saiu: `GET /companies` e o `CompanyTenantGuard` só
+  consideram memberships com `deleted_at IS NULL`
+- Para readmitir, use `POST /users/:id/memberships`. `POST /memberships` devolve `409` porque a conta
+  continua existindo com aquele e-mail
+
 ---
 
 ## 4.1. Senha provisória e primeiro acesso
