@@ -13,6 +13,9 @@ const mockPrismaService = {
     deleteMany: jest.fn(),
     createMany: jest.fn(),
   },
+  permissionProfilePermission: {
+    findMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -109,6 +112,88 @@ describe('PermissionsService', () => {
         }),
       );
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('findEffectivePermissions', () => {
+    const memberMembership = {
+      id: 'membership-1',
+      role: MembershipRole.MEMBER,
+      companyId: COMPANY_ID,
+    };
+
+    it('should union role permissions with the linked profiles', async () => {
+      mockPrismaService.companyRolePermission.findMany.mockResolvedValue([
+        { permissionCode: 'company.read' },
+        { permissionCode: 'products.list' },
+      ]);
+      mockPrismaService.permissionProfilePermission.findMany.mockResolvedValue([
+        { permissionCode: 'stock.create' },
+        { permissionCode: 'products.list' },
+      ]);
+
+      const result = await service.findEffectivePermissions(memberMembership);
+
+      expect(result).toEqual(['company.read', 'products.list', 'stock.create']);
+      expect(
+        mockPrismaService.permissionProfilePermission.findMany,
+      ).toHaveBeenCalledWith({
+        where: {
+          profile: {
+            companyId: COMPANY_ID,
+            memberships: { some: { membershipId: 'membership-1' } },
+          },
+        },
+        select: { permissionCode: true },
+      });
+    });
+
+    it('should return only the role permissions when there is no profile', async () => {
+      mockPrismaService.companyRolePermission.findMany.mockResolvedValue([
+        { permissionCode: 'company.read' },
+      ]);
+      mockPrismaService.permissionProfilePermission.findMany.mockResolvedValue(
+        [],
+      );
+
+      const result = await service.findEffectivePermissions(memberMembership);
+
+      expect(result).toEqual(['company.read']);
+    });
+
+    it('should not consider profiles for ADMIN', async () => {
+      mockPrismaService.companyRolePermission.findMany.mockResolvedValue([
+        { permissionCode: 'users.create' },
+      ]);
+
+      const result = await service.findEffectivePermissions({
+        id: 'membership-2',
+        role: MembershipRole.ADMIN,
+        companyId: COMPANY_ID,
+      });
+
+      expect(result).toEqual(['users.create']);
+      expect(
+        mockPrismaService.permissionProfilePermission.findMany,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should return the whole catalog for OWNER', async () => {
+      mockPrismaService.permission.findMany.mockResolvedValue([
+        { code: 'company.read' },
+        { code: 'permissions.manage' },
+      ]);
+
+      const result = await service.findEffectivePermissions({
+        id: 'membership-3',
+        role: MembershipRole.OWNER,
+        companyId: COMPANY_ID,
+      });
+
+      expect(result).toEqual(['company.read', 'permissions.manage']);
+      expect(
+        mockPrismaService.permissionProfilePermission.findMany,
+      ).not.toHaveBeenCalled();
     });
   });
 

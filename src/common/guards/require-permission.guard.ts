@@ -51,12 +51,31 @@ export class RequirePermissionGuard implements CanActivate {
       select: { permissionCode: true },
     });
 
-    if (!granted) {
-      throw new ForbiddenException(
-        `Sem permissão para acessar: ${requiredPermission}`,
-      );
+    if (granted) {
+      return true;
     }
 
-    return true;
+    // MEMBER acumula as permissões dos perfis vinculados a ele
+    if (membership.role === MembershipRole.MEMBER) {
+      const grantedByProfile =
+        await this.prisma.permissionProfilePermission.findFirst({
+          where: {
+            permissionCode: requiredPermission,
+            profile: {
+              companyId: membership.companyId,
+              memberships: { some: { membershipId: membership.id } },
+            },
+          },
+          select: { permissionCode: true },
+        });
+
+      if (grantedByProfile) {
+        return true;
+      }
+    }
+
+    throw new ForbiddenException(
+      `Sem permissão para acessar: ${requiredPermission}`,
+    );
   }
 }

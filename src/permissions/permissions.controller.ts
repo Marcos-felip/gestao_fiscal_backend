@@ -34,11 +34,8 @@ export class PermissionsController {
   @ApiOperation({
     summary: 'Listar as permissões do usuário autenticado na empresa ativa',
   })
-  findMine(
-    @CurrentCompany() companyId: string,
-    @CurrentMembership() membership: CurrentMembershipData,
-  ) {
-    return this.permissionsService.findByRole(companyId, membership.role);
+  findMine(@CurrentMembership() membership: CurrentMembershipData) {
+    return this.permissionsService.findEffectivePermissions(membership);
   }
 
   @Get()

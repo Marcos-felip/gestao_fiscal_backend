@@ -39,6 +39,9 @@ describe('RequirePermissionGuard', () => {
             companyRolePermission: {
               findFirst: jest.fn(),
             },
+            permissionProfilePermission: {
+              findFirst: jest.fn(),
+            },
           },
         },
       ],
@@ -115,6 +118,9 @@ describe('RequirePermissionGuard', () => {
     jest
       .spyOn(prismaService.companyRolePermission, 'findFirst')
       .mockResolvedValue(null);
+    jest
+      .spyOn(prismaService.permissionProfilePermission, 'findFirst')
+      .mockResolvedValue(null);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -134,6 +140,9 @@ describe('RequirePermissionGuard', () => {
     jest
       .spyOn(prismaService.companyRolePermission, 'findFirst')
       .mockResolvedValue(null);
+    jest
+      .spyOn(prismaService.permissionProfilePermission, 'findFirst')
+      .mockResolvedValue(null);
 
     const context = createMockContext({
       id: 'membership-1',
@@ -144,6 +153,80 @@ describe('RequirePermissionGuard', () => {
     await expect(guard.canActivate(context)).rejects.toThrow(
       new ForbiddenException('Sem permissão para acessar: products.delete'),
     );
+  });
+
+  it('should allow MEMBER when the permission comes from a linked profile', async () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('stock.create');
+    jest
+      .spyOn(prismaService.companyRolePermission, 'findFirst')
+      .mockResolvedValue(null);
+    const profileSpy = jest
+      .spyOn(prismaService.permissionProfilePermission, 'findFirst')
+      .mockResolvedValue({ permissionCode: 'stock.create' } as any);
+
+    const context = createMockContext({
+      id: 'membership-1',
+      role: MembershipRole.MEMBER,
+      companyId: 'company-1',
+    });
+
+    const result = await guard.canActivate(context);
+
+    expect(result).toBe(true);
+    expect(profileSpy).toHaveBeenCalledWith({
+      where: {
+        permissionCode: 'stock.create',
+        profile: {
+          companyId: 'company-1',
+          memberships: { some: { membershipId: 'membership-1' } },
+        },
+      },
+      select: { permissionCode: true },
+    });
+  });
+
+  it('should not look at profiles when the role already grants the permission', async () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('products.list');
+    jest
+      .spyOn(prismaService.companyRolePermission, 'findFirst')
+      .mockResolvedValue({ permissionCode: 'products.list' } as any);
+    const profileSpy = jest.spyOn(
+      prismaService.permissionProfilePermission,
+      'findFirst',
+    );
+
+    const context = createMockContext({
+      id: 'membership-1',
+      role: MembershipRole.MEMBER,
+      companyId: 'company-1',
+    });
+
+    const result = await guard.canActivate(context);
+
+    expect(result).toBe(true);
+    expect(profileSpy).not.toHaveBeenCalled();
+  });
+
+  it('should not consider profiles for ADMIN', async () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('stock.create');
+    jest
+      .spyOn(prismaService.companyRolePermission, 'findFirst')
+      .mockResolvedValue(null);
+    const profileSpy = jest.spyOn(
+      prismaService.permissionProfilePermission,
+      'findFirst',
+    );
+
+    const context = createMockContext({
+      id: 'membership-1',
+      role: MembershipRole.ADMIN,
+      companyId: 'company-1',
+    });
+
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(profileSpy).not.toHaveBeenCalled();
   });
 
   it('should scope the lookup to the active company and role', async () => {

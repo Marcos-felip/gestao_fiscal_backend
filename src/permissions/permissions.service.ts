@@ -20,6 +20,7 @@ export interface PermissionGroup {
 const DOMAIN_LABELS: Record<string, string> = {
   company: 'Empresa',
   users: 'Usuários',
+  permissions: 'Permissões',
   establishments: 'Estabelecimentos',
   products: 'Produtos',
   purchases: 'Compras',
@@ -77,6 +78,45 @@ export class PermissionsService {
     });
 
     return rolePermissions.map((rp) => rp.permissionCode);
+  }
+
+  /**
+   * Permissões efetivas de um membro específico.
+   *
+   * MEMBER soma as permissões do papel na empresa com as dos perfis vinculados;
+   * OWNER e ADMIN não usam perfis e mantêm o resultado do papel.
+   */
+  async findEffectivePermissions(membership: {
+    id: string;
+    role: MembershipRole;
+    companyId: string;
+  }): Promise<string[]> {
+    const rolePermissions = await this.findByRole(
+      membership.companyId,
+      membership.role,
+    );
+
+    if (membership.role !== MembershipRole.MEMBER) {
+      return rolePermissions;
+    }
+
+    const profilePermissions =
+      await this.prisma.permissionProfilePermission.findMany({
+        where: {
+          profile: {
+            companyId: membership.companyId,
+            memberships: { some: { membershipId: membership.id } },
+          },
+        },
+        select: { permissionCode: true },
+      });
+
+    return [
+      ...new Set([
+        ...rolePermissions,
+        ...profilePermissions.map((p) => p.permissionCode),
+      ]),
+    ].sort();
   }
 
   async updateRolePermissions(
