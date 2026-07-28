@@ -84,14 +84,24 @@ export class MembershipsService {
   }
 
   async findAll(companyId: string) {
-    return this.prisma.membership.findMany({
+    const memberships = await this.prisma.membership.findMany({
       where: { companyId, deletedAt: null },
       include: {
         user: {
           select: { id: true, name: true, email: true },
         },
+        profiles: {
+          select: { profile: { select: { id: true, name: true } } },
+          orderBy: { profile: { name: 'asc' } },
+        },
       },
     });
+
+    // Achata o vínculo N-N para a tela de usuários não precisar de uma chamada por linha
+    return memberships.map(({ profiles, ...membership }) => ({
+      ...membership,
+      profiles: profiles.map((link) => link.profile),
+    }));
   }
 
   async updateRole(

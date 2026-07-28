@@ -249,6 +249,50 @@ describe('MembershipsService', () => {
     });
   });
 
+  describe('findAll', () => {
+    it('should flatten the linked profiles of each membership', async () => {
+      mockPrismaService.membership.findMany.mockResolvedValue([
+        {
+          id: 'm1',
+          role: MembershipRole.MEMBER,
+          user: { id: 'u1', name: 'João', email: 'joao@exemplo.com' },
+          profiles: [{ profile: { id: 'profile-1', name: 'Estoquista' } }],
+        },
+      ]);
+
+      const result = await service.findAll('company-1');
+
+      expect(mockPrismaService.membership.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { companyId: 'company-1', deletedAt: null },
+        }),
+      );
+      expect(result).toEqual([
+        {
+          id: 'm1',
+          role: MembershipRole.MEMBER,
+          user: { id: 'u1', name: 'João', email: 'joao@exemplo.com' },
+          profiles: [{ id: 'profile-1', name: 'Estoquista' }],
+        },
+      ]);
+    });
+
+    it('should return an empty list of profiles when there is no link', async () => {
+      mockPrismaService.membership.findMany.mockResolvedValue([
+        {
+          id: 'm2',
+          role: MembershipRole.ADMIN,
+          user: { id: 'u2', name: 'Ana', email: 'ana@exemplo.com' },
+          profiles: [],
+        },
+      ]);
+
+      const result = await service.findAll('company-1');
+
+      expect(result[0].profiles).toEqual([]);
+    });
+  });
+
   describe('updateRole', () => {
     it('should throw NotFoundException if membership not found', async () => {
       mockPrismaService.membership.findFirst.mockResolvedValue(null);

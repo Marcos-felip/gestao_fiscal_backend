@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -28,12 +29,17 @@ import { TenantProtected } from '../common/decorators/tenant-protected.decorator
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
 import { CurrentMembership } from '../common/decorators/current-membership.decorator';
 import type { CurrentMembershipData } from '../common/decorators/current-membership.decorator';
+import { PermissionProfilesService } from '../permission-profiles/permission-profiles.service';
+import { SetMembershipProfilesDto } from '../permission-profiles/dto/set-membership-profiles.dto';
 
 @ApiTags('memberships')
 @ApiBearerAuth()
 @Controller('memberships')
 export class MembershipsController {
-  constructor(private readonly membershipsService: MembershipsService) {}
+  constructor(
+    private readonly membershipsService: MembershipsService,
+    private readonly permissionProfilesService: PermissionProfilesService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
@@ -75,6 +81,38 @@ export class MembershipsController {
       id,
       companyId,
       dto,
+      membership.role,
+    );
+  }
+
+  @Get(':id/profiles')
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('permissions.manage')
+  @ApiOperation({ summary: 'Listar perfis de permissão vinculados ao membro' })
+  @ApiResponse({ status: 200 })
+  findProfiles(@Param('id') id: string, @CurrentCompany() companyId: string) {
+    return this.permissionProfilesService.findMembershipProfiles(id, companyId);
+  }
+
+  @Put(':id/profiles')
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('permissions.manage')
+  @ApiOperation({
+    summary: 'Substituir os perfis de permissão do membro (apenas MEMBER)',
+  })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 409, description: 'Membro não tem papel MEMBER' })
+  @ApiResponse({ status: 422, description: 'Perfil de outra empresa' })
+  setProfiles(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+    @CurrentMembership() membership: CurrentMembershipData,
+    @Body() dto: SetMembershipProfilesDto,
+  ) {
+    return this.permissionProfilesService.setMembershipProfiles(
+      id,
+      companyId,
+      dto.profileIds,
       membership.role,
     );
   }
