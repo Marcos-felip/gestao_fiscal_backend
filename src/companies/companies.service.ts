@@ -39,8 +39,12 @@ export class CompaniesService {
         data: { companyActiveId: company.id },
       });
 
-      // Copia o conjunto padrão de permissões para a nova empresa
-      const defaults = await tx.rolePermission.findMany();
+      // Copia o conjunto padrão de permissões para a nova empresa.
+      // MEMBER fica de fora de propósito: nasce com baseline vazio e recebe
+      // acesso apenas pelos perfis de permissão vinculados a cada membro.
+      const defaults = await tx.rolePermission.findMany({
+        where: { role: { not: MembershipRole.MEMBER } },
+      });
       if (defaults.length > 0) {
         await tx.companyRolePermission.createMany({
           data: defaults.map((d) => ({

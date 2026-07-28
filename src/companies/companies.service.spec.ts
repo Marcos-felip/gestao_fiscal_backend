@@ -63,7 +63,7 @@ describe('CompaniesService', () => {
           mockTx.membership.create.mockResolvedValue(mockMembership);
           mockTx.user.update.mockResolvedValue({});
           mockTx.rolePermission.findMany.mockResolvedValue([
-            { role: MembershipRole.MEMBER, permissionCode: 'products.list' },
+            { role: MembershipRole.ADMIN, permissionCode: 'products.list' },
           ]);
           mockTx.companyRolePermission.createMany.mockResolvedValue({
             count: 1,
@@ -92,11 +92,14 @@ describe('CompaniesService', () => {
         where: { id: 'user-1' },
         data: { companyActiveId: 'company-1' },
       });
+      expect(mockTx.rolePermission.findMany).toHaveBeenCalledWith({
+        where: { role: { not: MembershipRole.MEMBER } },
+      });
       expect(mockTx.companyRolePermission.createMany).toHaveBeenCalledWith({
         data: [
           {
             companyId: 'company-1',
-            role: MembershipRole.MEMBER,
+            role: MembershipRole.ADMIN,
             permissionCode: 'products.list',
           },
         ],
@@ -105,6 +108,43 @@ describe('CompaniesService', () => {
       expect(result).toEqual({
         company: mockCompany,
         membership: mockMembership,
+      });
+    });
+
+    it('should not seed any MEMBER permission (baseline vazio)', async () => {
+      mockPrismaService.$transaction.mockImplementation(
+        async (cb: (tx: typeof mockTx) => Promise<unknown>) => {
+          mockTx.company.create.mockResolvedValue({ id: 'company-1' });
+          mockTx.membership.create.mockResolvedValue({ id: 'm1' });
+          mockTx.user.update.mockResolvedValue({});
+          // O filtro do serviço já exclui MEMBER, então o banco nunca devolve o papel
+          mockTx.rolePermission.findMany.mockResolvedValue([
+            { role: MembershipRole.OWNER, permissionCode: 'products.list' },
+            { role: MembershipRole.ADMIN, permissionCode: 'products.list' },
+          ]);
+          mockTx.companyRolePermission.createMany.mockResolvedValue({
+            count: 2,
+          });
+          return cb(mockTx);
+        },
+      );
+
+      await service.create('user-1', { name: 'Test Co' });
+
+      expect(mockTx.companyRolePermission.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            companyId: 'company-1',
+            role: MembershipRole.OWNER,
+            permissionCode: 'products.list',
+          },
+          {
+            companyId: 'company-1',
+            role: MembershipRole.ADMIN,
+            permissionCode: 'products.list',
+          },
+        ],
+        skipDuplicates: true,
       });
     });
   });
