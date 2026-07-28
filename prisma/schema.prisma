@@ -6,8 +6,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── ENUMS ──────────────────────────────────────────────
-
 enum MembershipRole {
   OWNER
   ADMIN
@@ -79,8 +77,6 @@ enum UnitOfMeasure {
   DZ
 }
 
-// ─── USER ───────────────────────────────────────────────
-
 model User {
   id                    String    @id @default(uuid())
   name                  String
@@ -99,8 +95,6 @@ model User {
 
   @@map("users")
 }
-
-// ─── COMPANY (TENANT) ───────────────────────────────────
 
 model Company {
   id              String           @id @default(uuid())
@@ -123,11 +117,10 @@ model Company {
   stockMovements  StockMovement[]
   purchases       Purchase[]
   rolePermissions CompanyRolePermission[]
+  profiles        PermissionProfile[]
 
   @@map("companies")
 }
-
-// ─── MEMBERSHIP ─────────────────────────────────────────
 
 model Membership {
   id        String         @id @default(uuid())
@@ -138,15 +131,14 @@ model Membership {
   updatedAt DateTime       @updatedAt @map("updated_at")
   deletedAt DateTime?      @map("deleted_at")
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company  Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profiles MembershipProfile[]
 
   @@unique([userId, companyId])
   @@index([companyId])
   @@map("memberships")
 }
-
-// ─── ESTABLISHMENT ──────────────────────────────────────
 
 model Establishment {
   id                 String            @id @default(uuid())
@@ -174,8 +166,6 @@ model Establishment {
   @@index([companyId])
   @@map("establishments")
 }
-
-// ─── PRODUCT ────────────────────────────────────────────
 
 model Product {
   id                  String        @id @default(uuid())
@@ -209,8 +199,6 @@ model Product {
   @@map("products")
 }
 
-// ─── PARTNER ────────────────────────────────────────────
-
 model Partner {
   id           String      @id @default(uuid())
   companyId    String      @map("company_id")
@@ -242,8 +230,6 @@ model Partner {
   @@map("partners")
 }
 
-// ─── STOCK MOVEMENT ─────────────────────────────────────
-
 model StockMovement {
   id          String            @id @default(uuid())
   companyId   String            @map("company_id")
@@ -263,8 +249,6 @@ model StockMovement {
   @@index([companyId, createdAt])
   @@map("stock_movements")
 }
-
-// ─── PURCHASE ───────────────────────────────────────────
 
 model Purchase {
   id              String         @id @default(uuid())
@@ -305,14 +289,13 @@ model PurchaseItem {
   @@map("purchase_items")
 }
 
-// ─── PERMISSION ─────────────────────────────────────
-
 model Permission {
   code        String @id
   description String
 
   rolePermissions        RolePermission[]
   companyRolePermissions CompanyRolePermission[]
+  profilePermissions     PermissionProfilePermission[]
 
   @@map("permissions")
 }
@@ -338,4 +321,45 @@ model CompanyRolePermission {
   @@id([companyId, role, permissionCode])
   @@index([companyId, role])
   @@map("company_role_permissions")
+}
+
+model PermissionProfile {
+  id          String    @id @default(uuid())
+  companyId   String    @map("company_id")
+  name        String
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  company     Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  permissions PermissionProfilePermission[]
+  memberships MembershipProfile[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("permission_profiles")
+}
+
+model PermissionProfilePermission {
+  profileId      String @map("profile_id")
+  permissionCode String @map("permission_code")
+
+  profile    PermissionProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  permission Permission        @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
+
+  @@id([profileId, permissionCode])
+  @@index([permissionCode])
+  @@map("permission_profile_permissions")
+}
+
+model MembershipProfile {
+  membershipId String @map("membership_id")
+  profileId    String @map("profile_id")
+
+  membership Membership        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  profile    PermissionProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, profileId])
+  @@index([profileId])
+  @@map("membership_profiles")
 }
