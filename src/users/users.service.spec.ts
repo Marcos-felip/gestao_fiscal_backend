@@ -8,6 +8,11 @@ import { MembershipRole } from '@prisma/client';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+const mockTx = {
+  user: { update: jest.fn() },
+  membership: { create: jest.fn() },
+};
+
 const mockPrismaService = {
   user: {
     findFirst: jest.fn(),
@@ -24,6 +29,7 @@ const mockPrismaService = {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
   },
+  $transaction: jest.fn(),
 };
 
 describe('UsersService', () => {
@@ -39,6 +45,9 @@ describe('UsersService', () => {
 
     service = module.get<UsersService>(UsersService);
     jest.clearAllMocks();
+    mockPrismaService.$transaction.mockImplementation(
+      (callback: (tx: typeof mockTx) => Promise<unknown>) => callback(mockTx),
+    );
   });
 
   describe('getProfile', () => {
@@ -330,6 +339,7 @@ describe('UsersService', () => {
           email: newEmail,
           passwordHash: expect.any(String),
           forcePasswordChange: true,
+          companyActiveId: 'company-1',
           memberships: {
             create: {
               companyId: 'company-1',
@@ -371,7 +381,7 @@ describe('UsersService', () => {
 
       mockPrismaService.membership.findFirst.mockResolvedValue(null);
 
-      mockPrismaService.membership.create.mockResolvedValue({
+      mockTx.membership.create.mockResolvedValue({
         id: 'membership-1',
         userId,
         companyId,
@@ -390,6 +400,53 @@ describe('UsersService', () => {
       expect(result.userId).toBe(userId);
       expect(result.companyId).toBe(companyId);
       expect(result.role).toBe('MEMBER');
+    });
+
+    it('should set the active company when the user has none', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-1',
+        email: 'user@example.com',
+        companyActiveId: null,
+      });
+      mockPrismaService.company.findFirst.mockResolvedValue({
+        id: 'company-1',
+      });
+      mockPrismaService.membership.findFirst.mockResolvedValue(null);
+      mockTx.membership.create.mockResolvedValue({ id: 'membership-1' });
+
+      await service.addMembership(
+        'user-1',
+        'company-1',
+        { role: MembershipRole.MEMBER },
+        MembershipRole.OWNER,
+      );
+
+      expect(mockTx.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { companyActiveId: 'company-1' },
+      });
+    });
+
+    it('should keep the active company of a user that already works elsewhere', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'user-1',
+        email: 'user@example.com',
+        companyActiveId: 'company-9',
+      });
+      mockPrismaService.company.findFirst.mockResolvedValue({
+        id: 'company-1',
+      });
+      mockPrismaService.membership.findFirst.mockResolvedValue(null);
+      mockTx.membership.create.mockResolvedValue({ id: 'membership-1' });
+
+      await service.addMembership(
+        'user-1',
+        'company-1',
+        { role: MembershipRole.MEMBER },
+        MembershipRole.OWNER,
+      );
+
+      expect(mockTx.user.update).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if user not found', async () => {
@@ -463,7 +520,7 @@ describe('UsersService', () => {
 
       mockPrismaService.membership.findFirst.mockResolvedValue(null);
 
-      mockPrismaService.membership.create.mockResolvedValue({
+      mockTx.membership.create.mockResolvedValue({
         id: 'membership-2',
         userId: 'user-2',
         companyId: 'company-1',
@@ -491,7 +548,7 @@ describe('UsersService', () => {
         ),
       ).rejects.toThrow(ForbiddenException);
 
-      expect(mockPrismaService.membership.create).not.toHaveBeenCalled();
+      expect(mockTx.membership.create).not.toHaveBeenCalled();
     });
 
     it('should reject a MEMBER adding an ADMIN', async () => {

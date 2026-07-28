@@ -67,6 +67,13 @@ export class MembershipsService {
 
       const createdMembership = user.memberships[0];
 
+      // Define a empresa ativa: sem isso o usuário loga mas o CompanyTenantGuard
+      // barra tudo com "No active company selected"
+      await tx.user.update({
+        where: { id: user.id },
+        data: { companyActiveId: companyId },
+      });
+
       return {
         id: createdMembership.id,
         userId: createdMembership.userId,

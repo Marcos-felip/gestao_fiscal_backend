@@ -240,6 +240,9 @@ Cria o usuário e o membership em uma única chamada. Se `password` não for inf
 }
 ```
 
+> O usuário já nasce com `companyActiveId` apontando para a empresa — ele consegue usar as rotas de
+> tenant no primeiro login, sem precisar de `PATCH /users/active-company`.
+
 **Erros:**
 - `404` Empresa não encontrada
 - `409` Email já cadastrado
@@ -271,6 +274,9 @@ Cria o usuário e o membership em uma única chamada. Se `password` não for inf
   "createdAt": "ISO8601"
 }
 ```
+
+> Se o usuário ainda não tinha empresa ativa, esta passa a ser a ativa. Quem já opera em outra
+> empresa **não** tem o contexto trocado — precisa chamar `PATCH /users/active-company`.
 
 **Erros:**
 - `404` Usuário não encontrado · `404` Empresa não encontrada
@@ -460,7 +466,7 @@ Permite atualizar dados da empresa: nome, tipo, CNPJ, inscrição estadual, tele
 
 > **Permissão:** `users.create` (por padrão OWNER e ADMIN)
 
-Cria usuário + membership na **empresa ativa** em uma transação atômica. A senha é sempre provisória (gerada internamente, não retornada) e o usuário nasce com `forcePasswordChange: true`.
+Cria usuário + membership na **empresa ativa** em uma transação atômica. A senha é sempre provisória (gerada internamente, não retornada), o usuário nasce com `forcePasswordChange: true` e com a **empresa ativa já definida**.
 
 **Body:**
 ```json

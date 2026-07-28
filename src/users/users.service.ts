@@ -161,6 +161,9 @@ export class UsersService {
         email: dto.email,
         passwordHash,
         forcePasswordChange: shouldForcePasswordChange,
+        // Já nasce com a empresa ativa definida: sem isso o usuário loga mas o
+        // CompanyTenantGuard barra tudo com "No active company selected"
+        companyActiveId: dto.companyId,
         memberships: {
           create: {
             companyId: dto.companyId,
@@ -297,20 +300,32 @@ export class UsersService {
       throw new ConflictException('Usuário já é membro da empresa');
     }
 
-    // Criar membership
-    const membership = await this.prisma.membership.create({
-      data: {
-        userId,
-        companyId,
-        role: dto.role,
-      },
-      select: {
-        id: true,
-        userId: true,
-        companyId: true,
-        role: true,
-        createdAt: true,
-      },
+    // Criar membership e, se o usuário ainda não tem empresa ativa, apontar para esta.
+    // Quem já opera em outra empresa não tem o contexto trocado por baixo.
+    const membership = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.membership.create({
+        data: {
+          userId,
+          companyId,
+          role: dto.role,
+        },
+        select: {
+          id: true,
+          userId: true,
+          companyId: true,
+          role: true,
+          createdAt: true,
+        },
+      });
+
+      if (!user.companyActiveId) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { companyActiveId: companyId },
+        });
+      }
+
+      return created;
     });
 
     return membership;

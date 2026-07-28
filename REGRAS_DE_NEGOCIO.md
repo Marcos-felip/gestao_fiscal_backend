@@ -197,6 +197,10 @@ padrão do MEMBER continua registrado em `role_permissions` e serve de base para
 - `POST /users` cria usuário + membership e devolve a senha provisória em `temporaryPassword`; o `companyId` do corpo **precisa ser a empresa ativa** (`403` caso contrário)
 - `POST /users/:id/memberships` vincula um usuário já existente à empresa ativa
 - Um usuário não pode ter dois memberships ativos na mesma empresa (`409`)
+- **Todo usuário criado já recebe a empresa ativa (`companyActiveId`)** no mesmo passo. Sem isso ele
+  faz login normalmente mas leva `403 No active company selected` em qualquer rota de tenant. Ao
+  vincular um usuário que já existe, a empresa ativa só é definida se ele ainda não tiver nenhuma —
+  quem já opera em outra empresa não tem o contexto trocado sem pedir
 
 ---
 

@@ -15,11 +15,13 @@ jest.mock('bcrypt', () => ({
 }));
 
 const mockTxUserCreate = jest.fn();
+const mockTxUserUpdate = jest.fn();
 const mockTxMembershipCreate = jest.fn();
 
 const mockTx = {
   user: {
     create: mockTxUserCreate,
+    update: mockTxUserUpdate,
   },
   membership: {
     create: mockTxMembershipCreate,
@@ -246,6 +248,36 @@ describe('MembershipsService', () => {
       ).rejects.toThrow(ForbiddenException);
 
       expect(mockTxUserCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createMember — empresa ativa', () => {
+    it('should set the active company of the new user', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+      mockTxUserCreate.mockResolvedValue({
+        id: 'user-1',
+        name: 'João Silva',
+        email: 'joao@exemplo.com',
+        memberships: [
+          {
+            id: 'membership-1',
+            userId: 'user-1',
+            companyId: 'company-1',
+            role: MembershipRole.MEMBER,
+          },
+        ],
+      });
+
+      await service.createMember(
+        'company-1',
+        { name: 'João Silva', email: 'joao@exemplo.com' },
+        MembershipRole.OWNER,
+      );
+
+      expect(mockTxUserUpdate).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { companyActiveId: 'company-1' },
+      });
     });
   });
 
