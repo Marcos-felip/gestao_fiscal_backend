@@ -132,6 +132,7 @@ src/
 ├── companies/         # Empresas (tenant principal)
 ├── memberships/       # Vínculo usuário-empresa com papéis
 ├── permissions/       # Catálogo de permissões e vínculo papel → permissão
+├── permission-profiles/ # Perfis de permissão e vínculo membro → perfil
 ├── establishments/    # Estabelecimentos (matriz e filiais)
 ├── products/          # Cadastro de produtos
 ├── partners/          # Clientes e fornecedores
@@ -148,9 +149,9 @@ src/
 - **Autorização:** duas camadas
   - **Papel** (`OWNER` / `ADMIN` / `MEMBER`) para operações estruturais — onboarding, gestão de papéis e de permissões
   - **Permissão granular** (`products.create`, `purchases.confirm`, …) para a maioria dos CRUDs
-- **OWNER tem acesso total** por definição; **ADMIN** recebe todas as permissões por padrão; **MEMBER** é o papel configurável
-- As permissões são **por empresa** (`company_role_permissions`): cada empresa recebe uma cópia do padrão ao ser criada e evolui de forma independente
-- Somente o OWNER pode alterar permissões, e apenas as do papel MEMBER (`PATCH /permissions/MEMBER`)
+- **OWNER tem acesso total** por definição; **ADMIN** recebe todas as permissões por padrão; **MEMBER nasce sem nenhuma permissão**
+- As permissões são **por empresa** (`company_role_permissions`): cada empresa recebe uma cópia do padrão ao ser criada e evolui de forma independente — a cópia exclui o papel MEMBER
+- **Perfis de permissão** (`/permission-profiles`) são o **único** caminho de acesso de um MEMBER: sem perfil vinculado, ele não consegue fazer nada. Gerenciá-los exige `permissions.manage`
 - O frontend lê as permissões efetivas do usuário em `GET /permissions/me`
 - As permissões são semeadas por **migration SQL** — um módulo novo precisa inserir os códigos no catálogo, no template e fazer backfill das empresas existentes, senão os endpoints retornam `403`
 

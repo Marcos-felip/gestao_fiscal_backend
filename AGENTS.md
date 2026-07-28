@@ -51,8 +51,10 @@ Frontend: Angular 19+ (standalone, signals) + Tailwind CSS + PrimeNG (unstyled) 
 
 1. Multi-tenant: toda operacao no contexto da empresa ativa
 2. Refresh token: interceptor faz refresh silencioso em 401
-3. Papeis: OWNER faz tudo (guard nunca o barra); ADMIN recebe todas as permissoes por padrao; MEMBER e o papel configuravel
-4. Permissoes sao POR EMPRESA (`company_role_permissions`); `role_permissions` e so o template copiado na criacao da empresa; so o OWNER altera as do papel MEMBER
+3. Papeis: OWNER faz tudo (guard nunca o barra); ADMIN recebe todas as permissoes por padrao; MEMBER nasce SEM NENHUMA permissao
+4. Permissoes sao POR EMPRESA (`company_role_permissions`); `role_permissions` e so o template copiado na criacao da empresa, e a copia EXCLUI o papel MEMBER
+4.1. Todo o acesso de um MEMBER vem dos perfis vinculados: `efetivas(MEMBER) = perfis vinculados`. SEM PERFIL = SEM ACESSO. So MEMBER aceita perfil; gerenciar/vincular exige `permissions.manage`
+4.2. `PATCH /permissions/:role` e legado (so OWNER, so MEMBER): preencheria o baseline de todos os MEMBERs. Nao usar para conceder acesso
 5. Hierarquia: ninguem atribui papel acima do seu e OWNER nunca e atribuivel (`assertCanAssignRole`); ninguem edita/remove usuario de papel acima do seu (`assertCanManageMember`) e o OWNER nao e removivel
 6. Frontend le as proprias permissoes em `GET /permissions/me`
 7. Primeiro acesso: usuario criado por admin recebe senha provisoria e `forcePasswordChange: true` — frontend conduz a `POST /auth/change-password-first-login`

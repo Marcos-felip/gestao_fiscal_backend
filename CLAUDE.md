@@ -99,17 +99,25 @@ Por permissão:  JwtAuthGuard → CompanyTenantGuard → RequirePermissionGuard
 
 ## Sistema de permissões
 
-Três tabelas:
+Seis tabelas:
 
 | Tabela | Papel no sistema |
 |--------|------------------|
 | `permissions` | Catálogo global de códigos `dominio.acao` + descrição |
 | `role_permissions` | **Template padrão** por papel. Não é lido em runtime — é copiado ao criar a empresa |
-| `company_role_permissions` | Conjunto **efetivo** por empresa. É o que o guard consulta |
+| `company_role_permissions` | Conjunto **efetivo** por papel, por empresa. É a primeira consulta do guard |
+| `permission_profiles` | Perfil = conjunto nomeado de permissões, escopado por empresa (`name` único por empresa) |
+| `permission_profile_permissions` | Permissões que compõem cada perfil |
+| `membership_profiles` | Vínculo N-N membro ↔ perfil. É a segunda consulta do guard, só para MEMBER |
 
 - **OWNER tem acesso total**: o guard nunca o barra. Não é preciso conceder nada a OWNER
 - **ADMIN** recebe todas as permissões por padrão; o que o separa do OWNER são endpoints travados por papel
-- **MEMBER** é o único papel editável (`PATCH /permissions/:role` rejeita OWNER/ADMIN com `400`), e a edição vale **só na empresa ativa**
+- **MEMBER nasce sem nenhuma permissão** — a cópia do template exclui o papel de propósito. Todo o
+  acesso dele vem dos perfis: `efetivas(MEMBER) = company_role_permissions[MEMBER] ∪ perfis vinculados`,
+  com o primeiro termo vazio por padrão. **Sem perfil = sem acesso**
+- Só MEMBER aceita perfil (`409` para OWNER/ADMIN); gerenciar e vincular exige `permissions.manage`
+- `PATCH /permissions/:role` continua existindo (só OWNER, só MEMBER) mas é **legado** — não usar para
+  conceder acesso; ele preencheria o baseline de todos os MEMBERs de uma vez
 - `GET /permissions/me` devolve as permissões efetivas do usuário — é o endpoint que o frontend usa
 - **Seed por migration SQL.** Um módulo novo precisa de: `INSERT` no catálogo, `INSERT` no template
   e **backfill em `company_role_permissions` para as empresas existentes** — o passo 3 é o que
@@ -191,6 +199,7 @@ src/
 ├── companies/       CRUD de empresas + onboarding
 ├── memberships/     Criação de membros, papéis, remoção
 ├── permissions/     Catálogo de permissões e vínculo papel → permissão
+├── permission-profiles/ Perfis de permissão e vínculo membro → perfil
 ├── establishments/  CRUD de estabelecimentos (MATRIZ/FILIAL)
 ├── products/        CRUD de produtos com paginação
 ├── partners/        CRUD de parceiros (clientes/fornecedores)
@@ -204,6 +213,8 @@ As seguintes operações **obrigatoriamente** usam `prisma.$transaction()`:
 - Criar empresa (company + membership + update user + cópia das permissões padrão)
 - Criar membro (create user + create membership)
 - Atualizar permissões de um papel (deleteMany + createMany em `company_role_permissions`)
+- Atualizar as permissões de um perfil (deleteMany + createMany em `permission_profile_permissions`)
+- Substituir os perfis de um membro (deleteMany + createMany em `membership_profiles`)
 - Onboarding (update company + create establishment)
 - Confirmar compra (criar StockMovements + atualizar currentStock + confirmar purchase)
 - Cancelar compra confirmada (reverter StockMovements + atualizar currentStock)

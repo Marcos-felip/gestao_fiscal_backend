@@ -64,17 +64,25 @@ O sistema exige um fluxo obrigatório de 3 etapas para que o usuário possa oper
 
 ## 4. Papéis e Permissões
 
-A autorização acontece em **duas camadas**:
+A autorização acontece em **três camadas**:
 
 1. **Papel (`MembershipRole`)** — `OWNER`, `ADMIN` ou `MEMBER`, definido no membership do usuário naquela empresa. Usado diretamente em operações estruturais (onboarding, gestão de papéis, exclusão de estabelecimento, gestão de permissões).
 2. **Permissão granular (`dominio.acao`)** — códigos como `products.create`, guardados na tabela `permissions` e vinculados aos papéis **de cada empresa** em `company_role_permissions`. Usado na maioria dos endpoints de CRUD.
+3. **Perfil de permissão** — conjunto nomeado de permissões vinculado a um membro específico. É o **único** caminho de acesso do papel MEMBER.
 
 Na prática o papel não concede acesso por si só: ele define **qual conjunto de permissões** o usuário carrega.
+
+```
+efetivas(OWNER)  = catálogo completo (o guard nem consulta o banco)
+efetivas(ADMIN)  = company_role_permissions[ADMIN]      → todas, por padrão
+efetivas(MEMBER) = company_role_permissions[MEMBER] ∪ perfis vinculados
+                   └── vazio por padrão ──┘
+```
 
 ### OWNER
 - **Acesso total por definição** — o guard de permissões nunca barra um OWNER, independentemente do que está cadastrado
 - Único que pode: fazer o onboarding, alterar papéis e gerenciar permissões
-- **Não pode alterar as próprias permissões** (nem as do ADMIN) — só as do MEMBER são editáveis
+- **Não pode alterar as próprias permissões** (nem as do ADMIN) — o que ele configura são os perfis dos MEMBERs
 - **Não pode ser removido da empresa** e **não pode ter seu papel alterado**
 - Não existe exclusão de empresa na API
 
@@ -85,41 +93,89 @@ Na prática o papel não concede acesso por si só: ele define **qual conjunto d
 - Suas permissões são fixas, como as do OWNER
 
 ### MEMBER
-- Único papel **configurável**, e é para isso que existe o módulo de permissões
-- Por padrão: opera produtos, parceiros, estoque e compras; confirma compras mas **não as cancela nem exclui**; lê estabelecimentos mas não os cria/edita; não edita dados da empresa; **não cadastra usuários**
+- **Nasce sem nenhuma permissão.** A empresa nova não recebe nenhuma linha de `company_role_permissions` para o papel MEMBER
+- **Sem perfil vinculado = sem acesso a nada.** Todo endpoint protegido por permissão devolve `403`, e `GET /permissions/me` devolve `[]`
+- Único papel que aceita **perfis de permissão** — é assim que se define o que cada membro pode fazer
+- Dois MEMBERs da mesma empresa podem ter acessos completamente diferentes, conforme os perfis de cada um
 
-### Tabela resumida (configuração padrão)
+### Tabela resumida (empresa recém-criada)
 
-| Ação | OWNER | ADMIN | MEMBER | Controlado por |
-|------|:-----:|:-----:|:------:|----------------|
-| Configurar empresa (onboarding) | ✅ | ❌ | ❌ | Papel |
-| Editar dados da empresa | ✅ | ✅ | ❌ | `company.edit` |
-| Criar membros | ✅ | ✅ | ❌ | `users.create` |
-| Listar membros | ✅ | ✅ | ✅ | `users.list` |
-| Editar dados de outro usuário | ✅ | ✅ (menos o OWNER) | ❌ | `users.edit` |
-| Remover membros | ✅ | ✅ (menos o OWNER) | ❌ | `users.delete` |
-| Alterar papéis | ✅ | ❌ | ❌ | Papel |
-| Gerenciar permissões | ✅ | somente leitura | ❌ | Papel |
-| Ver as próprias permissões | ✅ | ✅ | ✅ | — (`GET /permissions/me`) |
-| Criar/editar estabelecimentos | ✅ | ✅ | ❌ | `establishments.create` / `.edit` |
-| Excluir estabelecimento | ✅ | ✅ | ❌ | `establishments.delete` |
-| CRUD de produtos | ✅ | ✅ | ✅ | `products.*` |
-| CRUD de parceiros | ✅ | ✅ | ✅ | `partners.*` |
-| Criar/editar compras (rascunho) | ✅ | ✅ | ✅ | `purchases.create` / `.edit` |
-| Confirmar compras | ✅ | ✅ | ✅ | `purchases.confirm` |
-| Cancelar compras | ✅ | ✅ | ❌ | `purchases.cancel` |
-| Excluir compras | ✅ | ✅ | ❌ | `purchases.delete` |
-| Movimentação manual de estoque | ✅ | ✅ | ✅ | `stock.create` |
+A coluna MEMBER é **❌ em todas as linhas** e por isso foi omitida: o papel nasce sem nenhuma
+permissão. O que um MEMBER pode fazer depende exclusivamente dos perfis vinculados a ele — qualquer
+linha desta tabela vira ✅ para um MEMBER específico se algum perfil dele contiver o código.
 
-> A lista completa de códigos está no [API.md](./API.md#catálogo-de-permissões).
+| Ação | OWNER | ADMIN | Controlado por |
+|------|:-----:|:-----:|----------------|
+| Configurar empresa (onboarding) | ✅ | ❌ | Papel |
+| Editar dados da empresa | ✅ | ✅ | `company.edit` |
+| Criar membros | ✅ | ✅ | `users.create` |
+| Listar membros | ✅ | ✅ | `users.list` |
+| Editar dados de outro usuário | ✅ | ✅ (menos o OWNER) | `users.edit` |
+| Remover membros | ✅ | ✅ (menos o OWNER) | `users.delete` |
+| Alterar papéis | ✅ | ❌ | Papel |
+| Gerenciar o baseline do papel MEMBER (legado) | ✅ | somente leitura | Papel |
+| Gerenciar perfis de permissão | ✅ | ✅ | `permissions.manage` |
+| Vincular perfis a um membro | ✅ | ✅ | `permissions.manage` |
+| Ver as próprias permissões | ✅ | ✅ | — (`GET /permissions/me`, aberto a qualquer membro) |
+| Criar/editar estabelecimentos | ✅ | ✅ | `establishments.create` / `.edit` |
+| Excluir estabelecimento | ✅ | ✅ | `establishments.delete` |
+| CRUD de produtos | ✅ | ✅ | `products.*` |
+| CRUD de parceiros | ✅ | ✅ | `partners.*` |
+| Criar/editar compras (rascunho) | ✅ | ✅ | `purchases.create` / `.edit` |
+| Confirmar compras | ✅ | ✅ | `purchases.confirm` |
+| Cancelar compras | ✅ | ✅ | `purchases.cancel` |
+| Excluir compras | ✅ | ✅ | `purchases.delete` |
+| Movimentação manual de estoque | ✅ | ✅ | `stock.create` |
+
+> A lista completa de códigos está no [API.md](./API.md#catálogo-de-permissões), com os códigos que
+> compunham o antigo padrão do MEMBER marcados como sugestão para o primeiro perfil.
 
 ### Gestão de permissões
 
 - As permissões são **por empresa**: cada empresa recebe uma cópia do conjunto padrão do sistema no momento em que é criada, e passa a evoluir de forma independente
-- Apenas o **OWNER** pode alterar permissões, e **somente as do papel MEMBER** — as de OWNER e ADMIN são fixas (`400` ao tentar alterá-las)
-- A atualização é uma **substituição total**: o conjunto enviado passa a ser o único conjunto do papel naquela empresa
-- Códigos inexistentes na tabela `permissions` são rejeitados com `404`
+- A cópia **exclui o papel MEMBER de propósito** — ele nasce vazio e é servido pelos perfis
 - Qualquer membro consulta as próprias permissões em `GET /permissions/me` — é assim que o frontend decide o que exibir
+
+**Baseline do papel MEMBER (legado).** `PATCH /permissions/:role` continua existindo e ainda permite
+ao OWNER gravar um conjunto para o papel MEMBER, que valeria para **todos** os membros da empresa,
+inclusive os sem perfil. O frontend não usa mais esse caminho e o conjunto fica vazio por padrão;
+ele foi mantido apenas como escotilha de emergência. Regras dele:
+
+- Apenas o **OWNER** pode alterar, e **somente o papel MEMBER** — OWNER e ADMIN são fixos (`400`)
+- A atualização é uma **substituição total** dentro da empresa ativa
+- Códigos inexistentes na tabela `permissions` são rejeitados com `404`
+
+### Perfis de permissão
+
+Um **perfil** é um conjunto nomeado de permissões (ex: "Estoquista", "Comprador"). Como o papel
+MEMBER nasce vazio, o perfil é o **único** mecanismo que dá acesso a um MEMBER.
+
+- Perfis são **da empresa**: o `name` é único por empresa e só é possível vincular perfis da própria empresa
+- Um membro pode ter **vários perfis ao mesmo tempo** (N-N)
+- **Só se aplicam a MEMBER.** Vincular perfil a OWNER ou ADMIN é rejeitado com `409` — eles já têm
+  acesso amplo e fixo, então um perfil não mudaria nada
+- Gerenciar e vincular perfis exige a permissão `permissions.manage` (por padrão OWNER e ADMIN)
+- Vincular perfis obedece à mesma hierarquia de gerenciar usuário: ninguém mexe em quem tem papel superior ao seu
+- Atualizar as permissões de um perfil, ou os perfis de um membro, é sempre **substituição total** da lista
+- Excluir um perfil é **definitivo** (não é soft delete) e o desvincula de todos os membros
+- Códigos inexistentes no catálogo são rejeitados com `422`
+
+**Permissões efetivas de um MEMBER:**
+
+```
+efetivas(MEMBER) = company_role_permissions[MEMBER] ∪ (permissões de todos os perfis vinculados)
+                   └──── vazio por padrão ────┘
+```
+
+Na prática, com o baseline vazio, isso é simplesmente a união dos perfis. A fórmula preserva o
+baseline como termo porque o `PATCH /permissions/MEMBER` legado ainda pode preenchê-lo; o perfil
+sempre **soma** acesso, nunca tira. OWNER (catálogo completo) e ADMIN (conjunto do papel) não passam
+por essa etapa.
+
+**Consequência operacional:** um MEMBER recém-criado — ou qualquer MEMBER que existia antes da
+migration `20260728150000_empty_member_baseline` — não consegue fazer **nada** até receber um perfil.
+Ao cadastrar um membro, vincular o perfil faz parte do fluxo, não é opcional. O conjunto que era o
+padrão do MEMBER continua registrado em `role_permissions` e serve de base para o primeiro perfil.
 
 ### Hierarquia de papéis
 
@@ -128,7 +184,7 @@ Na prática o papel não concede acesso por si só: ele define **qual conjunto d
 - O papel **OWNER nunca é atribuível pela API** — ele nasce com a criação da empresa
 - Ninguém pode atribuir um papel **superior ao seu**: OWNER atribui ADMIN/MEMBER, ADMIN atribui ADMIN/MEMBER, MEMBER (se receber `users.create`) atribui apenas MEMBER
 
-**Ao editar ou remover usuário** (`PATCH /users/:id`, `DELETE /memberships/:id`):
+**Ao editar ou remover usuário** (`PATCH /users/:id`, `DELETE /memberships/:id`, `PUT /memberships/:id/profiles`):
 
 - Ninguém gerencia um usuário de papel **superior ao seu** — um ADMIN não edita nem remove o OWNER
 - Papéis de mesmo nível podem se gerenciar (ADMIN edita/remove outro ADMIN)
@@ -248,6 +304,8 @@ RASCUNHO → CANCELADO
 - Registros "excluídos" **não são apagados do banco** — recebem `deleted_at = data/hora`
 - Registros com `deleted_at != null` **não aparecem em nenhuma consulta**
 - Permite auditoria e recuperação de dados históricos
+- Vale para dados de **negócio**. As tabelas de autorização (permissões, perfis e vínculos) são
+  configuração e usam exclusão física
 
 ### O que NÃO pode ser excluído
 | Entidade | Restrição |
