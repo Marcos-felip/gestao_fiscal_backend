@@ -212,7 +212,7 @@ describe('UsersService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ConflictException if email already exists', async () => {
+    it('should throw ConflictException if user is already a member of the company', async () => {
       mockPrismaService.company.findFirst.mockResolvedValue({
         id: 'company-1',
         name: 'Test Company',
@@ -220,6 +220,7 @@ describe('UsersService', () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         id: 'user-1',
         email: 'existing@example.com',
+        memberships: [{ companyId: 'company-1', role: 'MEMBER' }],
       });
 
       await expect(
@@ -233,6 +234,43 @@ describe('UsersService', () => {
           MembershipRole.OWNER,
         ),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('vincula usuário existente de outra empresa em vez de barrar', async () => {
+      mockPrismaService.company.findFirst.mockResolvedValue({
+        id: 'company-1',
+        name: 'Test Company',
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        name: 'Karol',
+        email: 'karol@example.com',
+        createdAt: new Date(),
+        forcePasswordChange: false,
+        memberships: [{ companyId: 'company-2', role: 'ADMIN' }],
+      });
+      mockPrismaService.membership.create.mockResolvedValue({
+        id: 'm-new',
+        companyId: 'company-1',
+        role: 'ADMIN',
+      });
+
+      const result = await service.createUser(
+        {
+          email: 'karol@example.com',
+          role: MembershipRole.ADMIN,
+          companyId: 'company-1',
+        },
+        'company-1',
+        MembershipRole.OWNER,
+      );
+
+      expect(mockPrismaService.membership.create).toHaveBeenCalledWith({
+        data: { userId: 'user-1', companyId: 'company-1', role: 'ADMIN' },
+      });
+      expect(result.id).toBe('user-1');
+      expect(result.temporaryPassword).toBeUndefined();
+      expect(mockPrismaService.user.create).not.toHaveBeenCalled();
     });
 
     it('should create user with MEMBER role successfully', async () => {

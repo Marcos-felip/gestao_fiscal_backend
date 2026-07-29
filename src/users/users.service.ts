@@ -131,13 +131,36 @@ export class UsersService {
       throw new NotFoundException('Empresa não encontrada');
     }
 
-    // Verificar se o e-mail já existe
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
+      include: { memberships: { where: { deletedAt: null } } },
     });
 
     if (existingUser) {
-      throw new ConflictException('Email já cadastrado');
+      const alreadyMember = existingUser.memberships.some(
+        (m) => m.companyId === dto.companyId,
+      );
+      if (alreadyMember) {
+        throw new ConflictException('Usuário já é membro desta empresa');
+      }
+
+      const membership = await this.prisma.membership.create({
+        data: {
+          userId: existingUser.id,
+          companyId: dto.companyId,
+          role: dto.role,
+        },
+      });
+
+      return {
+        id: existingUser.id,
+        name: existingUser.name,
+        email: existingUser.email,
+        role: membership.role,
+        companyId: membership.companyId,
+        createdAt: existingUser.createdAt,
+        forcePasswordChange: existingUser.forcePasswordChange,
+      };
     }
 
     const shouldForcePasswordChange = dto.forcePasswordChange ?? true;
