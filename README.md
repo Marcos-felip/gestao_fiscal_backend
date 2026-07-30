@@ -139,6 +139,7 @@ src/
 ├── stock/             # Movimentações de estoque
 ├── purchases/         # Pedidos de compra
 ├── sales/             # Vendas e orçamentos (PDV)
+├── receivables/       # Contas a receber
 ├── prisma/            # Serviço global do Prisma ORM
 └── common/            # Guards, decorators, filtros, validators
 ```

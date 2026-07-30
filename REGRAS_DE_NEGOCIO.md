@@ -12,8 +12,10 @@ O sistema é um SaaS (Software as a Service) de gestão fiscal e operacional par
 - Manter cadastro de clientes e fornecedores
 - Preparar a base para emissão fiscal (NF-e)
 
-> As tabelas de **contas a pagar e a receber** (`financial_entries`, `financial_payments`) já existem
-> no banco, mas ainda **não têm regras nem endpoints**. Ver [BANCO_DE_DADOS.md](./BANCO_DE_DADOS.md#financial_entries--contas-a-receber-e-a-pagar).
+- Controlar contas a receber, com títulos gerados pelas vendas a prazo
+
+> **Contas a pagar** compartilha a mesma tabela (`financial_entries` com `type: PAGAR`), mas ainda
+> **não tem regras nem endpoints**.
 
 ---
 
@@ -133,6 +135,10 @@ linha desta tabela vira ✅ para um MEMBER específico se algum perfil dele cont
 | Finalizar vendas | ✅ | ✅ | `sales.confirm` |
 | Cancelar vendas | ✅ | ✅ | `sales.cancel` |
 | Excluir vendas | ✅ | ✅ | `sales.delete` |
+| Listar/ler contas a receber | ✅ | ✅ | `receivables.list` / `.read` |
+| Criar título manual | ✅ | ✅ | `receivables.create` |
+| Registrar baixa | ✅ | ✅ | `receivables.pay` |
+| Cancelar título | ✅ | ✅ | `receivables.cancel` |
 | Movimentação manual de estoque | ✅ | ✅ | `stock.create` |
 
 > A lista completa de códigos está no [API.md](./API.md#catálogo-de-permissões), com os códigos que
@@ -369,7 +375,37 @@ ORCAMENTO → CANCELADA
 - Se veio de `CONCLUIDA`: estoque **estornado** (movimentação `ENTRADA` por item)
 - Se veio de orçamento: nada acontece com o estoque, porque nada tinha saído
 - Se o pagamento estava `APROVADO`: passa a `ESTORNADO`
+- Os títulos gerados pela venda passam a `CANCELADO`
+- **Bloqueado se alguma parcela já foi recebida** (ver [Condição de pagamento](#condição-de-pagamento-e-geração-dos-títulos))
 - Não pode mais ser alterada
+
+### Condição de pagamento e geração dos títulos
+
+A venda declara como será paga. Quem decide se nasce título é essa condição, não a forma de pagamento:
+
+| `paymentCondition` | Ao finalizar | `paymentStatus` |
+|--------------------|--------------|-----------------|
+| `A_VISTA` (default) | **nenhum título** | `APROVADO` |
+| `A_PRAZO` | `installments` títulos `RECEBER`, status `ABERTO` | `PENDENTE` |
+
+O raciocínio: contas a receber guarda **o que ficou em aberto**. Uma venda de balcão paga na hora não
+deixa nada a receber — criar um título e quitá-lo no mesmo instante só poluiria o relatório.
+
+Cada parcela vira uma linha com `dueDate = firstDueDate + intervalDays × (i-1)`, descrição
+`"Venda #<n> (i/N)"` e o cliente da venda como parceiro. **O resto dos centavos vai todo na última
+parcela** — R$ 100,00 em 3× dá 33,33 + 33,33 + **33,34**, senão a soma dos títulos ficaria um centavo
+abaixo da venda para sempre.
+
+Se `firstDueDate` não for informado, o 1º vencimento é **hoje + `intervalDays`** no momento da
+finalização (não da criação) — um orçamento parado por semanas não nasce vencido.
+
+### Cancelar venda com parcela já recebida
+
+**Bloqueado**, com `Venda possui parcelas recebidas; estorne o financeiro antes`.
+
+A alternativa seria estornar os recebimentos automaticamente, e ela foi recusada: apagar uma baixa em
+silêncio destrói histórico de caixa que alguém conferiu. O caminho é explícito — cancele ou estorne os
+títulos primeiro, depois cancele a venda.
 
 ### Quando a disponibilidade de estoque é verificada
 
@@ -407,6 +443,53 @@ conceder as três abriria os menus de cadastro para quem só deveria vender.
 - O desconto **não pode ser maior que o subtotal**
 - Cliente é opcional — venda de balcão pode não ter cliente identificado
 - Itens: mínimo 1 item por venda; enviar `items` no `PATCH` substitui a lista inteira
+- `sale_number` **não é reaproveitado**: a numeração considera até as vendas excluídas, porque o
+  índice único do banco também as considera
+
+---
+
+## 9.2. Contas a receber
+
+Um título é uma parcela a receber. Chega por dois caminhos: **automático**, na finalização de uma
+venda `A_PRAZO`, ou **manual**, para o que não passou pelo módulo de vendas (serviço avulso, acerto
+de cliente).
+
+### Ciclo de vida
+
+```
+ABERTO → PARCIAL → PAGO
+ABERTO → CANCELADO
+PARCIAL → CANCELADO
+```
+
+| Status | Quando |
+|--------|--------|
+| `ABERTO` | Nenhuma baixa registrada |
+| `PARCIAL` | `0 < paidAmount < amount` |
+| `PAGO` | `paidAmount >= amount` |
+| `CANCELADO` | Cancelado manualmente ou junto com a venda de origem |
+
+### VENCIDO é derivado, não gravado
+
+O enum tem `VENCIDO`, mas **nenhum título recebe esse status**. O vencimento é calculado na leitura:
+`dueDate` no passado e status em `ABERTO` ou `PARCIAL`, exposto como `isOverdue`.
+
+Gravar exigiria um job diário e, entre duas execuções, a tabela estaria mentindo — um título vencido
+às 00h01 só apareceria como vencido na próxima rodada. Derivar não tem esse buraco e dispensa
+agendador.
+
+### Baixa (recebimento)
+
+- Suporta **baixa parcial**: chamar de novo com o resto quita o título
+- Cada baixa é uma linha em `financial_payments` — o histórico fica, mesmo depois de quitado
+- `paidAmount` do título é recalculado a cada baixa, e o status junto
+- **Bloqueios:** valor acima do saldo (`amount - paidAmount`), título `CANCELADO`, título já quitado
+- Tudo em transação: ou grava a baixa e atualiza o título, ou nada
+
+### Cancelamento
+
+- Título `PAGO` **não pode ser cancelado** — quitado é fato consumado
+- Cancelar a venda de origem cancela os títulos em bloco, desde que nenhum tenha baixa
 
 ---
 
@@ -425,3 +508,5 @@ conceder as três abriria os menus de cadastro para quem só deveria vender.
 | Establishment MATRIZ | Não pode ser excluído |
 | Compra CONFIRMADA | Não pode ser excluída (apenas cancelada) |
 | Venda CONCLUIDA | Não pode ser excluída nem editada (apenas cancelada) |
+| Venda com parcela recebida | Não pode ser cancelada até o financeiro ser estornado |
+| Título PAGO | Não pode ser cancelado |
