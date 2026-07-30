@@ -1131,6 +1131,180 @@ Os mesmos códigos estão marcados com 🔹 na coluna **Perfil sugerido** do [ca
 
 ---
 
+## Vendas (PDV)
+
+Uma venda tem **três eixos de status independentes**. Só o primeiro é movido por este módulo:
+
+| Campo | Valores | Quem move |
+|-------|---------|-----------|
+| `status` | `ORCAMENTO`, `EM_ABERTO`, `CONCLUIDA`, `CANCELADA` | este módulo |
+| `paymentStatus` | `PENDENTE`, `APROVADO`, `RECUSADO`, `ESTORNADO` | módulo financeiro (nasce `PENDENTE`) |
+| `fiscalStatus` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` | módulo fiscal (nasce `NAO_EMITIDO`) |
+
+A única exceção: **cancelar uma venda com `paymentStatus: APROVADO` muda o pagamento para `ESTORNADO`**.
+
+**A venda nasce como `ORCAMENTO` e não toca no estoque.** A baixa acontece só na finalização —
+um orçamento pode ficar dias parado e o estoque mudar nesse meio-tempo, então a validação de saldo
+roda no `confirm`, nunca na criação.
+
+---
+
+### GET /sales/context — Dados para montar a venda
+
+> **Permissão:** `sales.create`
+
+Devolve, numa chamada só, tudo que a tela do PDV precisa para montar uma venda: estabelecimentos,
+clientes e o catálogo de produtos ativos.
+
+**Existe para que o vendedor precise apenas de `sales.*`.** Sem ele, a tela de venda dependeria de
+`establishments.list`, `partners.list` e `products.list` — e conceder essas três permissões abriria os
+menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas continuam gated em `.list`.
+
+**Resposta 200:**
+```json
+{
+  "establishments": [
+    { "id": "uuid", "name": "Matriz" }
+  ],
+  "customers": [
+    { "id": "uuid", "name": "João da Silva" }
+  ],
+  "products": [
+    {
+      "id": "uuid",
+      "name": "Caneta azul",
+      "sku": "CAN-001",
+      "barcode": "7891234567890",
+      "unit": "UN",
+      "salePrice": "9.9",
+      "currentStock": "12"
+    }
+  ]
+}
+```
+
+- **Sem paginação** — é catálogo para busca client-side no balcão. Se crescer demais, o passo natural
+  é um `?search=`, não paginar
+- `customers` traz os parceiros de tipo `CLIENT` e `BOTH`; quem é só `SUPPLIER` fica de fora
+- `products` traz apenas os ativos (`isActive: true`)
+- `salePrice` e `currentStock` são `Decimal` e vêm como **string** (padrão do Prisma). A string **não
+  é zero-padded**: um preço de 9,90 chega como `"9.9"`, não `"9.90"` — formate no frontend. `salePrice`
+  pode ser `null` quando o produto não tem preço cadastrado
+- Tudo escopado na empresa ativa e ordenado por `name`
+
+---
+
+### POST /sales — Criar venda
+
+> **Permissão:** `sales.create`
+
+**Body:**
+```json
+{
+  "establishmentId": "uuid (obrigatório)",
+  "customerId": "uuid (opcional)",
+  "items": [
+    {
+      "productId": "uuid",
+      "quantity": "number > 0",
+      "unitPrice": "number > 0"
+    }
+  ],
+  "discount": "number >= 0 (opcional, default 0)",
+  "paymentMethod": "DINHEIRO | CARTAO_CREDITO | CARTAO_DEBITO | PIX | BOLETO | OUTRO (opcional)",
+  "notes": "string (opcional)",
+  "saleDate": "ISO8601 (opcional)",
+  "confirm": "boolean (opcional, default false)"
+}
+```
+
+- `subtotal` = soma de `quantity × unitPrice` dos itens; `totalAmount` = `subtotal - discount`
+- **`confirm: true` finaliza a venda na mesma chamada** — é o caminho do PDV: cria, dá baixa no
+  estoque e devolve a venda já `CONCLUIDA`. Se faltar estoque, **nada é gravado** (tudo roda numa
+  transação única)
+- `saleNumber` é sequencial **por empresa**
+
+**Erros:**
+- `404` Estabelecimento não encontrado · Cliente não encontrado · Produto não encontrado: `<id>`
+- `400` O desconto não pode ser maior que o subtotal da venda
+- `400` Estoque insuficiente para o produto `<nome>` (só com `confirm: true`)
+
+---
+
+### GET /sales — Listar vendas
+
+> **Permissão:** `sales.list`
+
+**Query params:** `page`, `limit`, `status`, `paymentStatus`, `fiscalStatus`, `customerId`, `establishmentId`, `startDate`, `endDate`
+
+---
+
+### GET /sales/:id — Detalhar venda
+
+> **Permissão:** `sales.read` · retorna itens (com produto), estabelecimento e cliente.
+
+---
+
+### PATCH /sales/:id — Atualizar venda
+
+> **Permissão:** `sales.edit`
+> Apenas vendas em **ORCAMENTO** ou **EM_ABERTO** podem ser editadas.
+
+**Body (todos opcionais):**
+```json
+{
+  "customerId": "uuid",
+  "items": [{ "productId": "uuid", "quantity": 2, "unitPrice": 10.5 }],
+  "discount": 5,
+  "paymentMethod": "PIX",
+  "notes": "string",
+  "saleDate": "ISO8601",
+  "status": "ORCAMENTO | EM_ABERTO"
+}
+```
+
+- Enviar `items` **substitui a lista inteira** e recalcula os totais
+- `status` aqui só promove o orçamento a venda em aberto (ou volta atrás). Finalizar e cancelar têm rotas próprias
+
+**Erros:** `400` Apenas vendas em ORCAMENTO ou EM_ABERTO podem ser editadas
+
+---
+
+### POST /sales/:id/confirm — Finalizar venda
+
+> **Permissão:** `sales.confirm` · dá **saída** no estoque de cada item.
+
+Em transação única: valida o saldo de cada produto, cria as movimentações `SAIDA`, desconta o
+`currentStock` e marca a venda como `CONCLUIDA`. Não mexe em `paymentStatus` nem em `fiscalStatus`.
+
+**Erros:**
+- `400` Venda já finalizada
+- `400` Não é possível finalizar uma venda cancelada
+- `400` Estoque insuficiente para o produto `<nome>`
+
+---
+
+### POST /sales/:id/cancel — Cancelar venda
+
+> **Permissão:** `sales.cancel` (por padrão OWNER e ADMIN)
+
+- Se a venda estava **CONCLUIDA**: estorna o estoque (movimentação `ENTRADA`) na mesma transação
+- Se `paymentStatus` era `APROVADO`: passa a `ESTORNADO`
+- Orçamento cancelado não mexe em estoque (nunca deu baixa)
+
+**Erros:** `400` Venda já cancelada
+
+---
+
+### DELETE /sales/:id — Excluir venda
+
+> **Permissão:** `sales.delete` (por padrão OWNER e ADMIN) · **Resposta 204** sem corpo
+> Só vendas em **ORCAMENTO** ou **CANCELADA**. Soft delete.
+
+**Erros:** `400` Apenas vendas em ORCAMENTO ou CANCELADAS podem ser excluídas
+
+---
+
 ## Paginação
 
 Todos os endpoints de listagem suportam paginação:
@@ -1248,9 +1422,23 @@ compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao mo
 | `partners.edit` | Editar parceiro | ✅ | ✅ | 🔹 | `PATCH /partners/:id` |
 | `partners.delete` | Deletar parceiro | ✅ | ✅ | 🔹 | `DELETE /partners/:id` |
 
-### Vendas (`sales`) — legado
+### Vendas (`sales`)
 
-O módulo de vendas foi removido do código, mas os 6 códigos `sales.*` (`list`, `create`, `read`, `edit`, `confirm`, `cancel`) **permanecem** na tabela `permissions` e continuam concedidos a OWNER e ADMIN. Consequência: `GET /permissions` retorna um grupo `sales` (sem label traduzido) que o frontend deve ignorar até a limpeza ser feita por migration.
+| Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
+|--------|-----------|:-----:|:-----:|:---------------:|----------|
+| `sales.list` | Listar vendas | ✅ | ✅ | 🔹 | `GET /sales` |
+| `sales.create` | Criar venda | ✅ | ✅ | 🔹 | `POST /sales`, `GET /sales/context` |
+| `sales.read` | Ler dados da venda | ✅ | ✅ | 🔹 | `GET /sales/:id` |
+| `sales.edit` | Editar venda | ✅ | ✅ | 🔹 | `PATCH /sales/:id` |
+| `sales.confirm` | Confirmar venda | ✅ | ✅ | 🔹 | `POST /sales/:id/confirm` |
+| `sales.cancel` | Cancelar venda | ✅ | ✅ | | `POST /sales/:id/cancel` |
+| `sales.delete` | Deletar venda | ✅ | ✅ | | `DELETE /sales/:id` |
+
+> Um perfil de **caixa** fecha com `sales.create` sozinho: ele já cobre `GET /sales/context` (montar a
+> tela) e `POST /sales` com `confirm: true` (finalizar). Acrescente `sales.list` e `sales.read` se o
+> vendedor precisar consultar vendas anteriores, e `sales.edit` + `sales.confirm` se ele trabalhar com
+> orçamento antes de fechar. Cancelar e excluir ficam de fora de propósito — são as duas ações que
+> desfazem movimento de estoque.
 
 ---
 
@@ -1299,8 +1487,9 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 |---|---------------|---------|
 | 0 | **A migration `20260728150000_empty_member_baseline` apagou o baseline do papel MEMBER de todas as empresas.** Todo MEMBER que já existia ficou **sem acesso a nada** até receber um perfil. | **Alto** — ver [Migração para o modelo de perfis](#migração-para-o-modelo-de-perfis) |
 | 1 | `PATCH /companies/:id` ignora o `:id` e atualiza sempre a empresa ativa. | Baixo — enviar o ID da empresa ativa para evitar confusão |
-| 2 | Permissões `sales.*` remanescentes do módulo de vendas removido continuam no catálogo e são copiadas para cada empresa nova. | Baixo — ruído em `GET /permissions`; nenhum endpoint as utiliza |
-| 3 | Código de permissão inexistente devolve `404` em `PATCH /permissions/:role` e `422` nos perfis. | Baixo — tratar os dois status ao validar o formulário de permissões |
+| 2 | `POST /sales` com `confirm: true` exige apenas `sales.create` — quem pode criar a venda pode finalizá-la pelo caminho do PDV, mesmo sem `sales.confirm`. | Médio — se quiser separar quem lança de quem finaliza, não conceda `sales.create` a esse perfil |
+| 3 | As tabelas `financial_entries`, `financial_payments` e a relação `sales.financialEntries` **já existem no banco**, mas ainda não têm endpoint. | Nenhum — contas a pagar/receber entram em entrega própria |
+| 4 | Código de permissão inexistente devolve `404` em `PATCH /permissions/:role` e `422` nos perfis. | Baixo — tratar os dois status ao validar o formulário de permissões |
 
 ---
 
@@ -1318,6 +1507,12 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | `UnitOfMeasure` | `UN`, `KG`, `LT`, `MT`, `CX`, `PC`, `PCT`, `DZ` |
 | `StockMovementType` | `ENTRADA`, `SAIDA`, `AJUSTE` |
 | `PurchaseStatus` | `DRAFT`, `CONFIRMED`, `CANCELLED` |
+| `SaleStatus` | `ORCAMENTO`, `EM_ABERTO`, `CONCLUIDA`, `CANCELADA` |
+| `PaymentStatus` | `PENDENTE`, `APROVADO`, `RECUSADO`, `ESTORNADO` |
+| `FiscalStatus` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` |
+| `PaymentMethod` | `DINHEIRO`, `CARTAO_CREDITO`, `CARTAO_DEBITO`, `PIX`, `BOLETO`, `OUTRO` |
+| `FinancialType` | `RECEBER`, `PAGAR` (tabelas criadas, sem endpoint ainda) |
+| `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` (idem) |
 
 > Códigos de permissão **não** são um enum: são valores livres da tabela `permissions`, consultáveis em `GET /permissions`. Ver [Catálogo de permissões](#catálogo-de-permissões).
 
@@ -1354,6 +1549,19 @@ POST /partners               → cadastrar clientes e fornecedores
 ```
 POST /purchases              → criar compra em RASCUNHO
 POST /purchases/:id/confirm  → confirmar (estoque aumenta)
+```
+
+### 3.1. Fluxo de venda — balcão (PDV, uma chamada)
+```
+POST /sales { confirm: true } → cria e finaliza (estoque diminui na hora)
+```
+
+### 3.2. Fluxo de venda — orçamento que vira venda
+```
+POST /sales                  → criar orçamento (não mexe no estoque)
+PATCH /sales/:id             → ajustar itens/desconto enquanto negocia
+POST /sales/:id/confirm      → finalizar (valida saldo e dá baixa no estoque)
+POST /sales/:id/cancel       → cancelar (estorna o estoque se já estava CONCLUIDA)
 ```
 
 ### 4. Renovar token

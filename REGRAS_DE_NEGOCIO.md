@@ -8,8 +8,12 @@ O sistema é um SaaS (Software as a Service) de gestão fiscal e operacional par
 - Controlar acesso por papéis e permissões granulares
 - Controlar estoque de produtos
 - Registrar e controlar compras
+- Registrar vendas e orçamentos (PDV)
 - Manter cadastro de clientes e fornecedores
 - Preparar a base para emissão fiscal (NF-e)
+
+> As tabelas de **contas a pagar e a receber** (`financial_entries`, `financial_payments`) já existem
+> no banco, mas ainda **não têm regras nem endpoints**. Ver [BANCO_DE_DADOS.md](./BANCO_DE_DADOS.md#financial_entries--contas-a-receber-e-a-pagar).
 
 ---
 
@@ -125,6 +129,10 @@ linha desta tabela vira ✅ para um MEMBER específico se algum perfil dele cont
 | Confirmar compras | ✅ | ✅ | `purchases.confirm` |
 | Cancelar compras | ✅ | ✅ | `purchases.cancel` |
 | Excluir compras | ✅ | ✅ | `purchases.delete` |
+| Criar/editar vendas e orçamentos | ✅ | ✅ | `sales.create` / `.edit` |
+| Finalizar vendas | ✅ | ✅ | `sales.confirm` |
+| Cancelar vendas | ✅ | ✅ | `sales.cancel` |
+| Excluir vendas | ✅ | ✅ | `sales.delete` |
 | Movimentação manual de estoque | ✅ | ✅ | `stock.create` |
 
 > A lista completa de códigos está no [API.md](./API.md#catálogo-de-permissões), com os códigos que
@@ -278,7 +286,7 @@ um usuário pode existir sem empresa nenhuma (é o estado de quem acabou de se r
 ### Regras
 - **Estoque não pode ficar negativo**: tentativa de SAIDA com quantidade maior que o estoque atual retorna erro
 - Movimentações manuais de estoque são registradas com motivo (opcional)
-- Movimentações automáticas (geradas por compras confirmadas) têm o `reference_id` preenchido com o ID da compra
+- Movimentações automáticas têm o `reference_id` preenchido com o ID do documento que as gerou — a compra (ENTRADA na confirmação, SAIDA no cancelamento) ou a venda (SAIDA na finalização, ENTRADA no cancelamento)
 - Toda movimentação é registrada de forma permanente (histórico completo)
 - A operação de criação de movimentação e atualização do estoque é **atômica** (transação)
 
@@ -317,6 +325,91 @@ RASCUNHO → CANCELADO
 
 ---
 
+## 9.1. Vendas (PDV)
+
+### Três eixos de status
+
+Uma venda não tem um estado só. São três colunas independentes, e o módulo de vendas move apenas a primeira:
+
+| Eixo | Coluna | Valores | Quem move |
+|------|--------|---------|-----------|
+| Comercial | `status` | `ORCAMENTO`, `EM_ABERTO`, `CONCLUIDA`, `CANCELADA` | módulo de vendas |
+| Financeiro | `payment_status` | `PENDENTE`, `APROVADO`, `RECUSADO`, `ESTORNADO` | módulo financeiro |
+| Fiscal | `fiscal_status` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` | módulo fiscal |
+
+**Única exceção:** cancelar uma venda cujo `payment_status` era `APROVADO` o leva a `ESTORNADO` —
+o dinheiro não pode continuar aprovado numa venda desfeita.
+
+Finalizar uma venda **não** aprova o pagamento nem emite documento fiscal. Uma venda pode estar
+`CONCLUIDA` com pagamento `PENDENTE` e nota `NAO_EMITIDO`, e isso é o estado normal hoje.
+
+### Ciclo de vida
+
+```
+ORCAMENTO → EM_ABERTO → CONCLUIDA → CANCELADA
+ORCAMENTO → CONCLUIDA
+ORCAMENTO → CANCELADA
+```
+
+### ORCAMENTO (estado inicial)
+- **Não afeta o estoque.** Não há baixa nem reserva
+- Pode ser editada por completo (itens, cliente, desconto, forma de pagamento)
+- Pode ser promovida a `EM_ABERTO`, finalizada, cancelada ou excluída
+
+### EM_ABERTO
+- Venda em negociação, ainda sem baixa de estoque
+- Mesmas permissões de edição do orçamento
+
+### CONCLUIDA
+- Estoque **diminuído** automaticamente (movimentação `SAIDA` por item)
+- Numeração sequencial por empresa (`sale_number`)
+- **Não pode ser editada nem excluída** — só cancelada
+
+### CANCELADA
+- Se veio de `CONCLUIDA`: estoque **estornado** (movimentação `ENTRADA` por item)
+- Se veio de orçamento: nada acontece com o estoque, porque nada tinha saído
+- Se o pagamento estava `APROVADO`: passa a `ESTORNADO`
+- Não pode mais ser alterada
+
+### Quando a disponibilidade de estoque é verificada
+
+**Na finalização, nunca na criação.** Um orçamento pode ficar dias parado e o estoque muda nesse
+intervalo — validar na criação daria uma garantia falsa. Consequência prática: é possível criar um
+orçamento de 100 unidades tendo 3 em estoque; o erro aparece ao tentar finalizar.
+
+A finalização inteira roda em **uma transação**: se um único item não tiver saldo, nada é gravado —
+nem movimentação, nem baixa, nem mudança de status. A mensagem nomeia o produto que faltou
+(`Estoque insuficiente para o produto <nome>`).
+
+Quando o mesmo produto aparece em mais de um item da venda, as quantidades **se acumulam** na
+validação: 6 + 6 unidades de um produto com saldo 10 é recusado, não aprovado duas vezes contra o
+mesmo saldo.
+
+### Venda de balcão (PDV)
+
+`POST /sales` com `confirm: true` cria e finaliza na mesma chamada — um clique no caixa, sem passar
+pelo orçamento. É o mesmo caminho de código da finalização, com as mesmas validações e a mesma
+transação.
+
+> **Efeito colateral de autorização:** esse caminho exige apenas `sales.create`. Quem pode lançar
+> uma venda pode finalizá-la pelo PDV mesmo sem `sales.confirm`. Se a operação precisar separar quem
+> lança de quem finaliza, o perfil de quem só lança **não** pode ter `sales.create`.
+
+`GET /sales/context` devolve estabelecimentos, clientes e produtos ativos numa chamada só, também sob
+`sales.create`. É o que permite que o perfil do vendedor tenha **apenas `sales.*`**: sem esse
+endpoint, a tela do PDV dependeria de `establishments.list`, `partners.list` e `products.list`, e
+conceder as três abriria os menus de cadastro para quem só deveria vender.
+
+### Regras adicionais
+- Apenas vendas em `ORCAMENTO` ou `CANCELADA` podem ser excluídas (soft delete) — exige `sales.delete`, concedida por padrão a OWNER e ADMIN
+- Número da venda (`sale_number`) é único por empresa e sequencial
+- `subtotal` = `Σ (quantidade × preço_unitário)`; `total_amount` = `subtotal - discount`
+- O desconto **não pode ser maior que o subtotal**
+- Cliente é opcional — venda de balcão pode não ter cliente identificado
+- Itens: mínimo 1 item por venda; enviar `items` no `PATCH` substitui a lista inteira
+
+---
+
 ## 10. Soft Delete
 
 - Registros "excluídos" **não são apagados do banco** — recebem `deleted_at = data/hora`
@@ -331,3 +424,4 @@ RASCUNHO → CANCELADO
 | Membership OWNER | Não pode ser removido da empresa |
 | Establishment MATRIZ | Não pode ser excluído |
 | Compra CONFIRMADA | Não pode ser excluída (apenas cancelada) |
+| Venda CONCLUIDA | Não pode ser excluída nem editada (apenas cancelada) |
