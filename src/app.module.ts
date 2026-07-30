@@ -12,6 +12,7 @@ import { PartnersModule } from './partners/partners.module';
 import { StockModule } from './stock/stock.module';
 
 import { PurchasesModule } from './purchases/purchases.module';
+import { SalesModule } from './sales/sales.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PermissionProfilesModule } from './permission-profiles/permission-profiles.module';
 
@@ -29,6 +30,7 @@ import { PermissionProfilesModule } from './permission-profiles/permission-profi
     PartnersModule,
     StockModule,
     PurchasesModule,
+    SalesModule,
     PermissionsModule,
     PermissionProfilesModule,
   ],

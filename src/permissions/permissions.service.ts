@@ -23,6 +23,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   permissions: 'Permissões',
   establishments: 'Estabelecimentos',
   products: 'Produtos',
+  sales: 'Vendas',
   purchases: 'Compras',
   stock: 'Estoque',
   partners: 'Parceiros',
