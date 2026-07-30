@@ -66,6 +66,50 @@ enum PurchaseStatus {
   CANCELLED
 }
 
+enum SaleStatus {
+  ORCAMENTO
+  EM_ABERTO
+  CONCLUIDA
+  CANCELADA
+}
+
+enum PaymentStatus {
+  PENDENTE
+  APROVADO
+  RECUSADO
+  ESTORNADO
+}
+
+enum FiscalStatus {
+  NAO_EMITIDO
+  PROCESSANDO
+  AUTORIZADO
+  REJEITADO
+  CANCELADO
+}
+
+enum PaymentMethod {
+  DINHEIRO
+  CARTAO_CREDITO
+  CARTAO_DEBITO
+  PIX
+  BOLETO
+  OUTRO
+}
+
+enum FinancialType {
+  RECEBER
+  PAGAR
+}
+
+enum FinancialStatus {
+  ABERTO
+  PARCIAL
+  PAGO
+  VENCIDO
+  CANCELADO
+}
+
 enum UnitOfMeasure {
   UN
   KG
@@ -78,17 +122,17 @@ enum UnitOfMeasure {
 }
 
 model User {
-  id                    String    @id @default(uuid())
-  name                  String
-  email                 String    @unique
-  passwordHash          String    @map("password_hash")
-  refreshToken          String?   @map("refresh_token")
-  companyActiveId       String?   @map("company_active_id")
-  forcePasswordChange   Boolean   @default(false) @map("force_password_change")
-  passwordChangedAt     DateTime? @map("password_changed_at")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  deletedAt             DateTime? @map("deleted_at")
+  id                  String    @id @default(uuid())
+  name                String
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  refreshToken        String?   @map("refresh_token")
+  companyActiveId     String?   @map("company_active_id")
+  forcePasswordChange Boolean   @default(false) @map("force_password_change")
+  passwordChangedAt   DateTime? @map("password_changed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
 
   companyActive Company?     @relation("ActiveCompany", fields: [companyActiveId], references: [id])
   memberships   Membership[]
@@ -109,15 +153,17 @@ model Company {
   updatedAt       DateTime         @updatedAt @map("updated_at")
   deletedAt       DateTime?        @map("deleted_at")
 
-  activeUsers     User[]                  @relation("ActiveCompany")
-  memberships     Membership[]
-  establishments  Establishment[]
-  products        Product[]
-  partners        Partner[]
-  stockMovements  StockMovement[]
-  purchases       Purchase[]
-  rolePermissions CompanyRolePermission[]
-  profiles        PermissionProfile[]
+  activeUsers      User[]                  @relation("ActiveCompany")
+  memberships      Membership[]
+  establishments   Establishment[]
+  products         Product[]
+  partners         Partner[]
+  stockMovements   StockMovement[]
+  purchases        Purchase[]
+  sales            Sale[]
+  financialEntries FinancialEntry[]
+  rolePermissions  CompanyRolePermission[]
+  profiles         PermissionProfile[]
 
   @@map("companies")
 }
@@ -160,8 +206,10 @@ model Establishment {
   updatedAt          DateTime          @updatedAt @map("updated_at")
   deletedAt          DateTime?         @map("deleted_at")
 
-  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  purchases Purchase[]
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  purchases        Purchase[]
+  sales            Sale[]
+  financialEntries FinancialEntry[]
 
   @@index([companyId])
   @@map("establishments")
@@ -192,6 +240,7 @@ model Product {
   company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
   purchaseItems  PurchaseItem[]
+  saleItems      SaleItem[]
 
   @@unique([companyId, sku])
   @@unique([companyId, barcode])
@@ -222,8 +271,10 @@ model Partner {
   updatedAt    DateTime    @updatedAt @map("updated_at")
   deletedAt    DateTime?   @map("deleted_at")
 
-  company             Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company             Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   purchasesAsSupplier Purchase[]
+  salesAsCustomer     Sale[]           @relation("SaleCustomer")
+  financialEntries    FinancialEntry[]
 
   @@index([companyId])
   @@index([companyId, type])
@@ -264,10 +315,11 @@ model Purchase {
   updatedAt       DateTime       @updatedAt @map("updated_at")
   deletedAt       DateTime?      @map("deleted_at")
 
-  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  establishment Establishment  @relation(fields: [establishmentId], references: [id])
-  supplier      Partner?       @relation(fields: [supplierId], references: [id])
-  items         PurchaseItem[]
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  establishment    Establishment    @relation(fields: [establishmentId], references: [id])
+  supplier         Partner?         @relation(fields: [supplierId], references: [id])
+  items            PurchaseItem[]
+  financialEntries FinancialEntry[]
 
   @@unique([companyId, purchaseNumber])
   @@index([companyId])
@@ -287,6 +339,103 @@ model PurchaseItem {
 
   @@index([purchaseId])
   @@map("purchase_items")
+}
+
+model Sale {
+  id              String         @id @default(uuid())
+  companyId       String         @map("company_id")
+  establishmentId String         @map("establishment_id")
+  customerId      String?        @map("customer_id")
+  status          SaleStatus     @default(ORCAMENTO)
+  paymentStatus   PaymentStatus  @default(PENDENTE) @map("payment_status")
+  fiscalStatus    FiscalStatus   @default(NAO_EMITIDO) @map("fiscal_status")
+  saleNumber      Int            @map("sale_number")
+  subtotal        Decimal        @db.Decimal(12, 2)
+  discount        Decimal        @default(0) @db.Decimal(12, 2)
+  totalAmount     Decimal        @map("total_amount") @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod? @map("payment_method")
+  notes           String?
+  saleDate        DateTime       @default(now()) @map("sale_date")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  establishment    Establishment    @relation(fields: [establishmentId], references: [id])
+  customer         Partner?         @relation("SaleCustomer", fields: [customerId], references: [id])
+  items            SaleItem[]
+  financialEntries FinancialEntry[]
+
+  @@unique([companyId, saleNumber])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, saleDate])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  saleId    String  @map("sale_id")
+  productId String  @map("product_id")
+  quantity  Decimal @db.Decimal(12, 4)
+  unitPrice Decimal @map("unit_price") @db.Decimal(12, 4)
+  total     Decimal @db.Decimal(12, 2)
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+model FinancialEntry {
+  id                String          @id @default(uuid())
+  companyId         String          @map("company_id")
+  establishmentId   String?         @map("establishment_id")
+  type              FinancialType
+  status            FinancialStatus @default(ABERTO)
+  partnerId         String?         @map("partner_id")
+  saleId            String?         @map("sale_id")
+  purchaseId        String?         @map("purchase_id")
+  category          String?
+  description       String
+  amount            Decimal         @db.Decimal(12, 2)
+  paidAmount        Decimal         @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  issueDate         DateTime        @default(now()) @map("issue_date")
+  dueDate           DateTime        @map("due_date")
+  installmentNumber Int             @default(1) @map("installment_number")
+  installmentTotal  Int             @default(1) @map("installment_total")
+  paymentMethod     PaymentMethod?  @map("payment_method")
+  notes             String?
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  deletedAt         DateTime?       @map("deleted_at")
+
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  establishment Establishment?     @relation(fields: [establishmentId], references: [id])
+  partner       Partner?           @relation(fields: [partnerId], references: [id])
+  sale          Sale?              @relation(fields: [saleId], references: [id])
+  purchase      Purchase?          @relation(fields: [purchaseId], references: [id])
+  payments      FinancialPayment[]
+
+  @@index([companyId, type, status])
+  @@index([companyId, dueDate])
+  @@map("financial_entries")
+}
+
+model FinancialPayment {
+  id        String         @id @default(uuid())
+  entryId   String         @map("entry_id")
+  amount    Decimal        @db.Decimal(12, 2)
+  paidAt    DateTime       @default(now()) @map("paid_at")
+  method    PaymentMethod?
+  notes     String?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
+  @@map("financial_payments")
 }
 
 model Permission {
@@ -324,12 +473,12 @@ model CompanyRolePermission {
 }
 
 model PermissionProfile {
-  id          String    @id @default(uuid())
-  companyId   String    @map("company_id")
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
   name        String
   description String?
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   company     Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   permissions PermissionProfilePermission[]
