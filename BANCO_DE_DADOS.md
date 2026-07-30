@@ -65,6 +65,54 @@
                   │ deleted_at    │
                   └───────────────┘
 
+  ── Vendas ──
+
+                  ┌────────────────────────┐
+                  │         sales          │
+                  │────────────────────────│
+                  │ id (PK)                │
+                  │ company_id (FK)        │
+                  │ establishment_id (FK)  │
+                  │ customer_id (FK part.) │
+                  │ status                 │  ORCAMENTO/EM_ABERTO/CONCLUIDA/CANCELADA
+                  │ payment_status         │  eixo do financeiro
+                  │ fiscal_status          │  eixo do fiscal
+                  │ sale_number (UQ p/ emp)│
+                  │ subtotal, discount     │
+                  │ total_amount           │
+                  │ deleted_at             │
+                  └───────┬────────────────┘
+                          │1:N
+                  ┌───────┴────────┐
+                  │   sale_items   │
+                  │ (FK: sale,     │
+                  │  FK: product)  │
+                  └────────────────┘
+
+  ── Financeiro (tabelas criadas; sem endpoints ainda) ──
+
+           ┌───────────────────────────┐
+           │     financial_entries     │  título a receber (venda) ou a pagar (compra)
+           │───────────────────────────│
+           │ id (PK)                   │
+           │ company_id (FK)           │
+           │ establishment_id (FK, opc)│
+           │ type (RECEBER/PAGAR)      │
+           │ status                    │
+           │ partner_id (FK, opc)      │
+           │ sale_id (FK, opc)         │──> sales
+           │ purchase_id (FK, opc)     │──> purchases
+           │ amount, paid_amount       │
+           │ due_date                  │
+           │ installment_number/total  │
+           │ deleted_at                │
+           └───────────┬───────────────┘
+                       │1:N
+           ┌───────────┴───────────────┐
+           │    financial_payments     │  baixas parciais ou totais
+           │ (FK: entry ON DELETE CASC)│
+           └───────────────────────────┘
+
   ── Autorização ──
 
       ┌──────────────────┐          ┌────────────────────────┐
@@ -226,13 +274,110 @@
 | `type` | ENUM | ✅ | ENTRADA, SAIDA ou AJUSTE |
 | `quantity` | DECIMAL(12,4) | ✅ | Quantidade movimentada |
 | `reason` | VARCHAR | ❌ | Motivo (movimentações manuais) |
-| `reference_id` | UUID | ❌ | ID da compra geradora |
+| `reference_id` | UUID | ❌ | ID da compra ou da venda geradora |
 | `created_at` | TIMESTAMP | ✅ | |
 | `deleted_at` | TIMESTAMP | ❌ | Soft delete |
 
 ### `purchases` e `purchase_items` — Compras
 
 Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_id` (fornecedor, opcional).
+
+### `sales` — Vendas
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Empresa |
+| `establishment_id` | UUID (FK) | ✅ | Estabelecimento que vendeu |
+| `customer_id` | UUID (FK → `partners.id`) | ❌ | Cliente (venda de balcão pode não ter) |
+| `status` | ENUM `SaleStatus` | ✅ | Default `ORCAMENTO` |
+| `payment_status` | ENUM `PaymentStatus` | ✅ | Default `PENDENTE` |
+| `fiscal_status` | ENUM `FiscalStatus` | ✅ | Default `NAO_EMITIDO` |
+| `sale_number` | INTEGER | ✅ | Numeração sequencial por empresa |
+| `subtotal` | DECIMAL(12,2) | ✅ | Soma dos itens |
+| `discount` | DECIMAL(12,2) | ✅ | Default 0; nunca maior que o subtotal |
+| `total_amount` | DECIMAL(12,2) | ✅ | `subtotal - discount` |
+| `payment_method` | ENUM `PaymentMethod` | ❌ | Forma de pagamento |
+| `notes` | TEXT | ❌ | Observações |
+| `sale_date` | TIMESTAMP | ✅ | Data da venda (default agora) |
+| `created_at` / `updated_at` | TIMESTAMP | ✅ | |
+| `deleted_at` | TIMESTAMP | ❌ | Soft delete |
+
+**Três eixos de status, independentes de propósito:**
+
+| Eixo | Coluna | Quem move |
+|------|--------|-----------|
+| Comercial | `status` | módulo de vendas (`confirm`, `cancel`) |
+| Financeiro | `payment_status` | módulo financeiro — **só o cancelamento mexe nele**, levando `APROVADO` → `ESTORNADO` |
+| Fiscal | `fiscal_status` | módulo fiscal (ainda não implementado); hoje é apenas coluna |
+
+- **UNIQUE:** `(company_id, sale_number)` · **Índices:** `company_id`, `(company_id, status)`, `(company_id, sale_date)`
+- `ORCAMENTO` **não reserva nem baixa estoque.** A validação de saldo e as movimentações `SAIDA`
+  acontecem só na finalização — um orçamento pode ficar dias parado e o estoque mudar no intervalo
+
+### `sale_items` — Itens da venda
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `sale_id` | UUID (FK) | ✅ | Venda (`ON DELETE CASCADE`) |
+| `product_id` | UUID (FK) | ✅ | Produto |
+| `quantity` | DECIMAL(12,4) | ✅ | Quantidade |
+| `unit_price` | DECIMAL(12,4) | ✅ | Preço unitário praticado |
+| `total` | DECIMAL(12,2) | ✅ | `quantity × unit_price` |
+
+- **Índice:** `sale_id` · **Sem soft delete** (segue a venda, como `purchase_items`)
+- Editar uma venda com `items` no corpo **apaga fisicamente** os itens e recria a lista
+
+### `financial_entries` — Contas a receber e a pagar
+
+> **Tabela criada, sem service nem controller.** Entra em operação na entrega dos módulos
+> financeiros. Documentada aqui porque a migration já a criou e as FKs já existem.
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Empresa |
+| `establishment_id` | UUID (FK) | ❌ | Estabelecimento |
+| `type` | ENUM `FinancialType` | ✅ | `RECEBER` ou `PAGAR` |
+| `status` | ENUM `FinancialStatus` | ✅ | Default `ABERTO` |
+| `partner_id` | UUID (FK → `partners.id`) | ❌ | Cliente (RECEBER) ou fornecedor (PAGAR) |
+| `sale_id` | UUID (FK → `sales.id`) | ❌ | Origem: venda |
+| `purchase_id` | UUID (FK → `purchases.id`) | ❌ | Origem: compra |
+| `category` | TEXT | ❌ | Agrupador para relatórios (vira plano de contas depois) |
+| `description` | TEXT | ✅ | Descrição do título |
+| `amount` | DECIMAL(12,2) | ✅ | Valor da parcela |
+| `paid_amount` | DECIMAL(12,2) | ✅ | Total já baixado (default 0) |
+| `issue_date` | TIMESTAMP | ✅ | Emissão |
+| `due_date` | TIMESTAMP | ✅ | Vencimento |
+| `installment_number` / `installment_total` | INTEGER | ✅ | Parcela X de Y (default 1 de 1) |
+| `payment_method` | ENUM `PaymentMethod` | ❌ | |
+| `notes` | TEXT | ❌ | |
+| `created_at` / `updated_at` | TIMESTAMP | ✅ | |
+| `deleted_at` | TIMESTAMP | ❌ | Soft delete |
+
+- **Índices:** `(company_id, type, status)` e `(company_id, due_date)` — os dois recortes que a tela
+  de contas e o fluxo de caixa usam
+- Uma venda parcelada gera **N linhas**, uma por parcela, todas com o mesmo `sale_id`
+
+### `financial_payments` — Baixas de um título
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `entry_id` | UUID (FK) | ✅ | Título (`ON DELETE CASCADE`) |
+| `amount` | DECIMAL(12,2) | ✅ | Valor da baixa |
+| `paid_at` | TIMESTAMP | ✅ | Data do pagamento |
+| `method` | ENUM `PaymentMethod` | ❌ | |
+| `notes` | TEXT | ❌ | |
+| `created_at` | TIMESTAMP | ✅ | |
+
+- Permite **baixa parcial**: a soma dos pagamentos alimenta `financial_entries.paid_amount` e define
+  se o título fica `PARCIAL` ou `PAGO`
+- Sem soft delete: estorno de baixa é exclusão física da linha
+
+> **Relatórios (item 4 do roadmap) não têm tabela própria.** Fluxo de caixa e faturamento são
+> agregações sobre `sales`, `financial_entries` e `financial_payments` por período e tipo.
 
 ### `permissions` — Catálogo de permissões
 
@@ -243,7 +388,7 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 
 - Tabela **global** (não possui `company_id`) e **sem soft delete**
 - Populada por migration (seed em SQL), não por código da aplicação
-- Domínios atuais: `company`, `users`, `permissions`, `establishments`, `products`, `purchases`, `stock`, `partners` e `sales` (legado, módulo removido)
+- Domínios atuais: `company`, `users`, `permissions`, `establishments`, `products`, `purchases`, `sales`, `stock` e `partners`
 
 ### `role_permissions` — Conjunto padrão por papel (template)
 
@@ -338,6 +483,12 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 | `PersonType` | `PF`, `PJ` |
 | `StockMovementType` | `ENTRADA`, `SAIDA`, `AJUSTE` |
 | `PurchaseStatus` | `DRAFT`, `CONFIRMED`, `CANCELLED` |
+| `SaleStatus` | `ORCAMENTO`, `EM_ABERTO`, `CONCLUIDA`, `CANCELADA` |
+| `PaymentStatus` | `PENDENTE`, `APROVADO`, `RECUSADO`, `ESTORNADO` |
+| `FiscalStatus` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` |
+| `PaymentMethod` | `DINHEIRO`, `CARTAO_CREDITO`, `CARTAO_DEBITO`, `PIX`, `BOLETO`, `OUTRO` |
+| `FinancialType` | `RECEBER`, `PAGAR` |
+| `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` |
 | `UnitOfMeasure` | `UN`, `KG`, `LT`, `MT`, `CX`, `PC`, `PCT`, `DZ` |
 
 ---
@@ -361,6 +512,18 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 | `purchases` | UNIQUE | `(company_id, purchase_number)` |
 | `purchases` | INDEX | `company_id` |
 | `purchase_items` | INDEX | `purchase_id` |
+| `sales` | UNIQUE | `(company_id, sale_number)` |
+| `sales` | INDEX | `company_id` |
+| `sales` | INDEX | `(company_id, status)` |
+| `sales` | INDEX | `(company_id, sale_date)` |
+| `sales` | FK CASCADE | `company_id → companies(id)` |
+| `sale_items` | INDEX | `sale_id` |
+| `sale_items` | FK CASCADE | `sale_id → sales(id)` |
+| `financial_entries` | INDEX | `(company_id, type, status)` |
+| `financial_entries` | INDEX | `(company_id, due_date)` |
+| `financial_entries` | FK CASCADE | `company_id → companies(id)` |
+| `financial_payments` | INDEX | `entry_id` |
+| `financial_payments` | FK CASCADE | `entry_id → financial_entries(id)` |
 | `establishments` | INDEX | `company_id` |
 | `permissions` | PK | `code` |
 | `role_permissions` | PK | `(role, permission_code)` |
@@ -386,7 +549,7 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 
 ## Soft Delete
 
-Todas as tabelas de negócio (exceto `purchase_items` e as tabelas de autorização — `permissions`, `role_permissions`, `company_role_permissions`, `permission_profiles`, `permission_profile_permissions` e `membership_profiles`) possuem o campo `deleted_at TIMESTAMP NULL`.
+Todas as tabelas de negócio (exceto `purchase_items`, `sale_items`, `financial_payments` e as tabelas de autorização — `permissions`, `role_permissions`, `company_role_permissions`, `permission_profiles`, `permission_profile_permissions` e `membership_profiles`) possuem o campo `deleted_at TIMESTAMP NULL`.
 
 - Registros ativos: `deleted_at IS NULL`
 - Registros excluídos: `deleted_at IS NOT NULL`
@@ -406,11 +569,12 @@ As migrations ficam em `prisma/migrations/`.
 | `20260424082316_add_permissions_table` | Cria `permissions` e `role_permissions` + seed dos códigos e da matriz padrão por papel |
 | `20260426120000_add_force_password_change_fields` | `users.force_password_change` e `users.password_changed_at` |
 | `20260426130000_add_establishments_permissions` | Seed das permissões `establishments.*` para OWNER, ADMIN e MEMBER |
-| `20260516000000_remove_sales_module` | Remove as tabelas `sales` / `sale_items` e o enum `SaleStatus` (as permissões `sales.*` **não** foram removidas) |
+| `20260516000000_remove_sales_module` | Remove as tabelas `sales` / `sale_items` e o enum `SaleStatus` (as permissões `sales.*` **não** foram removidas — foram reaproveitadas em `20260730133757`) |
 | `20260525191254` | Recria a FK de `role_permissions` com `ON UPDATE CASCADE` |
 | `20260727120000_company_scoped_permissions` | Cria `company_role_permissions`; adiciona `purchases.delete` ao catálogo; concede `users.create` e `purchases.delete` ao ADMIN no padrão; faz o backfill do padrão para todas as empresas existentes |
 | `20260728120000_permission_profiles` | Cria `permission_profiles`, `permission_profile_permissions` e `membership_profiles`; adiciona `permissions.manage` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes |
 | `20260728150000_empty_member_baseline` | **Apaga todas as linhas de `company_role_permissions` com `role = 'MEMBER'`**, em todas as empresas. A partir daqui o MEMBER só tem acesso por perfil — os MEMBERs existentes ficam sem acesso até receberem um. As linhas de MEMBER em `role_permissions` são preservadas como referência |
+| `20260730133757_sales_and_financial_modules` | Recria `sales` / `sale_items` (agora com os três eixos de status) e cria `financial_entries` / `financial_payments`; adiciona os enums `SaleStatus`, `PaymentStatus`, `FiscalStatus`, `PaymentMethod`, `FinancialType` e `FinancialStatus`; acrescenta `sales.delete` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill de todos os códigos `sales.*` para as empresas existentes (MEMBER fica de fora, o baseline dele é vazio) |
 
 > As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
 >

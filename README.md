@@ -138,6 +138,7 @@ src/
 ├── partners/          # Clientes e fornecedores
 ├── stock/             # Movimentações de estoque
 ├── purchases/         # Pedidos de compra
+├── sales/             # Vendas e orçamentos (PDV)
 ├── prisma/            # Serviço global do Prisma ORM
 └── common/            # Guards, decorators, filtros, validators
 ```
