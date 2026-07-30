@@ -1149,6 +1149,51 @@ roda no `confirm`, nunca na criação.
 
 ---
 
+### GET /sales/context — Dados para montar a venda
+
+> **Permissão:** `sales.create`
+
+Devolve, numa chamada só, tudo que a tela do PDV precisa para montar uma venda: estabelecimentos,
+clientes e o catálogo de produtos ativos.
+
+**Existe para que o vendedor precise apenas de `sales.*`.** Sem ele, a tela de venda dependeria de
+`establishments.list`, `partners.list` e `products.list` — e conceder essas três permissões abriria os
+menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas continuam gated em `.list`.
+
+**Resposta 200:**
+```json
+{
+  "establishments": [
+    { "id": "uuid", "name": "Matriz" }
+  ],
+  "customers": [
+    { "id": "uuid", "name": "João da Silva" }
+  ],
+  "products": [
+    {
+      "id": "uuid",
+      "name": "Caneta azul",
+      "sku": "CAN-001",
+      "barcode": "7891234567890",
+      "unit": "UN",
+      "salePrice": "9.9",
+      "currentStock": "12"
+    }
+  ]
+}
+```
+
+- **Sem paginação** — é catálogo para busca client-side no balcão. Se crescer demais, o passo natural
+  é um `?search=`, não paginar
+- `customers` traz os parceiros de tipo `CLIENT` e `BOTH`; quem é só `SUPPLIER` fica de fora
+- `products` traz apenas os ativos (`isActive: true`)
+- `salePrice` e `currentStock` são `Decimal` e vêm como **string** (padrão do Prisma). A string **não
+  é zero-padded**: um preço de 9,90 chega como `"9.9"`, não `"9.90"` — formate no frontend. `salePrice`
+  pode ser `null` quando o produto não tem preço cadastrado
+- Tudo escopado na empresa ativa e ordenado por `name`
+
+---
+
 ### POST /sales — Criar venda
 
 > **Permissão:** `sales.create`
@@ -1382,16 +1427,18 @@ compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao mo
 | Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
 |--------|-----------|:-----:|:-----:|:---------------:|----------|
 | `sales.list` | Listar vendas | ✅ | ✅ | 🔹 | `GET /sales` |
-| `sales.create` | Criar venda | ✅ | ✅ | 🔹 | `POST /sales` |
+| `sales.create` | Criar venda | ✅ | ✅ | 🔹 | `POST /sales`, `GET /sales/context` |
 | `sales.read` | Ler dados da venda | ✅ | ✅ | 🔹 | `GET /sales/:id` |
 | `sales.edit` | Editar venda | ✅ | ✅ | 🔹 | `PATCH /sales/:id` |
 | `sales.confirm` | Confirmar venda | ✅ | ✅ | 🔹 | `POST /sales/:id/confirm` |
 | `sales.cancel` | Cancelar venda | ✅ | ✅ | | `POST /sales/:id/cancel` |
 | `sales.delete` | Deletar venda | ✅ | ✅ | | `DELETE /sales/:id` |
 
-> Um operador de caixa precisa de `sales.create` e `sales.confirm` (o PDV usa `confirm: true` no
-> `POST /sales`, que exige apenas `sales.create`). Cancelar e excluir ficam de fora do perfil de caixa
-> de propósito — são as duas ações que desfazem movimento de estoque.
+> Um perfil de **caixa** fecha com `sales.create` sozinho: ele já cobre `GET /sales/context` (montar a
+> tela) e `POST /sales` com `confirm: true` (finalizar). Acrescente `sales.list` e `sales.read` se o
+> vendedor precisar consultar vendas anteriores, e `sales.edit` + `sales.confirm` se ele trabalhar com
+> orçamento antes de fechar. Cancelar e excluir ficam de fora de propósito — são as duas ações que
+> desfazem movimento de estoque.
 
 ---
 

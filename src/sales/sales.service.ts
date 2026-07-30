@@ -4,11 +4,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  PartnerType,
   PaymentStatus,
   Prisma,
   Sale,
   SaleStatus,
   StockMovementType,
+  UnitOfMeasure,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
@@ -28,6 +30,20 @@ interface SaleTotals {
   subtotal: number;
   discount: number;
   totalAmount: number;
+}
+
+export interface SaleContext {
+  establishments: { id: string; name: string }[];
+  customers: { id: string; name: string }[];
+  products: {
+    id: string;
+    name: string;
+    sku: string | null;
+    barcode: string | null;
+    unit: UnitOfMeasure;
+    salePrice: Prisma.Decimal | null;
+    currentStock: Prisma.Decimal;
+  }[];
 }
 
 /** Evita centavos fantasmas na soma dos itens antes de gravar em Decimal(12,2) */
@@ -152,6 +168,47 @@ export class SalesService {
     ]);
 
     return { data, total, page, limit };
+  }
+
+  /**
+   * Catálogo mínimo para montar uma venda no balcão.
+   *
+   * Vive aqui e não nos módulos de origem para que o vendedor precise apenas de
+   * `sales.*`: Estabelecimentos, Parceiros e Produtos continuam gated em `.list`.
+   */
+  async getContext(companyId: string): Promise<SaleContext> {
+    const [establishments, customers, products] = await Promise.all([
+      this.prisma.establishment.findMany({
+        where: { companyId, deletedAt: null },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      // Fornecedor puro não compra: só CLIENT e BOTH entram na lista
+      this.prisma.partner.findMany({
+        where: {
+          companyId,
+          deletedAt: null,
+          type: { not: PartnerType.SUPPLIER },
+        },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.product.findMany({
+        where: { companyId, deletedAt: null, isActive: true },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          barcode: true,
+          unit: true,
+          salePrice: true,
+          currentStock: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    return { establishments, customers, products };
   }
 
   async findOne(id: string, companyId: string): Promise<Sale> {

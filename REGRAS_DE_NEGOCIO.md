@@ -395,6 +395,11 @@ transação.
 > uma venda pode finalizá-la pelo PDV mesmo sem `sales.confirm`. Se a operação precisar separar quem
 > lança de quem finaliza, o perfil de quem só lança **não** pode ter `sales.create`.
 
+`GET /sales/context` devolve estabelecimentos, clientes e produtos ativos numa chamada só, também sob
+`sales.create`. É o que permite que o perfil do vendedor tenha **apenas `sales.*`**: sem esse
+endpoint, a tela do PDV dependeria de `establishments.list`, `partners.list` e `products.list`, e
+conceder as três abriria os menus de cadastro para quem só deveria vender.
+
 ### Regras adicionais
 - Apenas vendas em `ORCAMENTO` ou `CANCELADA` podem ser excluídas (soft delete) — exige `sales.delete`, concedida por padrão a OWNER e ADMIN
 - Número da venda (`sale_number`) é único por empresa e sequencial

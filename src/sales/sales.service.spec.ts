@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { PaymentStatus, SaleStatus, StockMovementType } from '@prisma/client';
+import {
+  PartnerType,
+  PaymentStatus,
+  SaleStatus,
+  StockMovementType,
+} from '@prisma/client';
 import { SalesService } from './sales.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -37,6 +42,15 @@ const mockPrismaService = {
     findMany: jest.fn(),
     count: jest.fn(),
     update: jest.fn(),
+  },
+  establishment: {
+    findMany: jest.fn(),
+  },
+  partner: {
+    findMany: jest.fn(),
+  },
+  product: {
+    findMany: jest.fn(),
   },
 };
 
@@ -457,6 +471,70 @@ describe('SalesService', () => {
         expect.objectContaining({
           where: { id: 'sale-1' },
           data: { deletedAt: expect.any(Date) },
+        }),
+      );
+    });
+  });
+
+  describe('getContext', () => {
+    it('should scope every query to the active company and skip suppliers', async () => {
+      mockPrismaService.establishment.findMany.mockResolvedValue([
+        { id: 'est-1', name: 'Matriz' },
+      ]);
+      mockPrismaService.partner.findMany.mockResolvedValue([
+        { id: 'part-1', name: 'Cliente A' },
+      ]);
+      mockPrismaService.product.findMany.mockResolvedValue([
+        { id: 'prod-1', name: 'Caneta' },
+      ]);
+
+      const result = await service.getContext('comp-1');
+
+      expect(mockPrismaService.establishment.findMany).toHaveBeenCalledWith({
+        where: { companyId: 'comp-1', deletedAt: null },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      expect(mockPrismaService.partner.findMany).toHaveBeenCalledWith({
+        where: {
+          companyId: 'comp-1',
+          deletedAt: null,
+          type: { not: PartnerType.SUPPLIER },
+        },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { companyId: 'comp-1', deletedAt: null, isActive: true },
+        }),
+      );
+      expect(result).toEqual({
+        establishments: [{ id: 'est-1', name: 'Matriz' }],
+        customers: [{ id: 'part-1', name: 'Cliente A' }],
+        products: [{ id: 'prod-1', name: 'Caneta' }],
+      });
+    });
+
+    it('should select only the fields the PDV search needs', async () => {
+      mockPrismaService.establishment.findMany.mockResolvedValue([]);
+      mockPrismaService.partner.findMany.mockResolvedValue([]);
+      mockPrismaService.product.findMany.mockResolvedValue([]);
+
+      await service.getContext('comp-1');
+
+      expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            barcode: true,
+            unit: true,
+            salePrice: true,
+            currentStock: true,
+          },
+          orderBy: { name: 'asc' },
         }),
       );
     });

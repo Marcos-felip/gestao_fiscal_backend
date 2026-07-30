@@ -55,6 +55,20 @@ export class SalesController {
     return this.salesService.findAll(companyId, filter);
   }
 
+  // Declarado antes de :id — o Nest resolve as rotas na ordem e 'context'
+  // cairia em findOne se viesse depois
+  @Get('context')
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('sales.create')
+  @ApiOperation({
+    summary:
+      'Dados para montar uma venda no PDV (estabelecimentos, clientes e produtos)',
+  })
+  @ApiResponse({ status: 200 })
+  getContext(@CurrentCompany() companyId: string) {
+    return this.salesService.getContext(companyId);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
   @RequirePermission('sales.read')
