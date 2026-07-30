@@ -13,6 +13,7 @@ import { StockModule } from './stock/stock.module';
 
 import { PurchasesModule } from './purchases/purchases.module';
 import { SalesModule } from './sales/sales.module';
+import { ReceivablesModule } from './receivables/receivables.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PermissionProfilesModule } from './permission-profiles/permission-profiles.module';
 
@@ -31,6 +32,7 @@ import { PermissionProfilesModule } from './permission-profiles/permission-profi
     StockModule,
     PurchasesModule,
     SalesModule,
+    ReceivablesModule,
     PermissionsModule,
     PermissionProfilesModule,
   ],
