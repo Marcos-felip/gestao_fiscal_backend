@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
+  FinancialStatus,
+  FinancialType,
   PartnerType,
+  PaymentCondition,
   PaymentStatus,
   SaleStatus,
   StockMovementType,
@@ -19,6 +22,11 @@ const mockTx = {
   saleItem: {
     findMany: jest.fn(),
     deleteMany: jest.fn(),
+  },
+  financialEntry: {
+    createMany: jest.fn(),
+    findFirst: jest.fn(),
+    updateMany: jest.fn(),
   },
   establishment: {
     findFirst: jest.fn(),
@@ -95,6 +103,12 @@ describe('SalesService', () => {
       };
       const result = await service.create('comp-1', dto as any);
 
+      // A numeração ignora o soft delete: contar só as ativas reutilizaria o
+      // número de uma venda excluída e violaria o índice único
+      expect(mockTx.sale.aggregate).toHaveBeenCalledWith({
+        where: { companyId: 'comp-1' },
+        _max: { saleNumber: true },
+      });
       expect(mockTx.sale.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -171,6 +185,7 @@ describe('SalesService', () => {
       mockTx.sale.create.mockResolvedValue({
         id: 'sale-1',
         saleNumber: 1,
+        paymentCondition: PaymentCondition.A_VISTA,
         items: [],
       });
       mockTx.saleItem.findMany.mockResolvedValue([
@@ -201,7 +216,12 @@ describe('SalesService', () => {
         expect.objectContaining({ data: { currentStock: 7 } }),
       );
       expect(mockTx.sale.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: SaleStatus.CONCLUIDA } }),
+        expect.objectContaining({
+          data: {
+            status: SaleStatus.CONCLUIDA,
+            paymentStatus: PaymentStatus.APROVADO,
+          },
+        }),
       );
       expect(result).toEqual({ id: 'sale-1', status: SaleStatus.CONCLUIDA });
     });
@@ -223,6 +243,7 @@ describe('SalesService', () => {
         id: 'sale-1',
         saleNumber: 12,
         status: SaleStatus.ORCAMENTO,
+        paymentCondition: PaymentCondition.A_VISTA,
       });
       mockTx.saleItem.findMany.mockResolvedValue([
         { productId: 'prod-1', quantity: 4 },
@@ -251,7 +272,12 @@ describe('SalesService', () => {
         expect.objectContaining({ data: { currentStock: 6 } }),
       );
       expect(mockTx.sale.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: SaleStatus.CONCLUIDA } }),
+        expect.objectContaining({
+          data: {
+            status: SaleStatus.CONCLUIDA,
+            paymentStatus: PaymentStatus.APROVADO,
+          },
+        }),
       );
       expect(result).toEqual(finalized);
     });
@@ -316,6 +342,124 @@ describe('SalesService', () => {
 
       await expect(service.confirm('sale-999', 'comp-1')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('confirm — desdobramento financeiro', () => {
+    const prazoSale = (overrides: Record<string, unknown> = {}) => ({
+      id: 'sale-1',
+      saleNumber: 30,
+      status: SaleStatus.EM_ABERTO,
+      establishmentId: 'est-1',
+      customerId: 'part-1',
+      totalAmount: 100,
+      paymentCondition: PaymentCondition.A_PRAZO,
+      installments: 3,
+      firstDueDate: new Date('2026-09-10'),
+      intervalDays: 30,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      mockTx.saleItem.findMany.mockResolvedValue([
+        { productId: 'prod-1', quantity: 1 },
+      ]);
+      mockTx.product.findFirst.mockResolvedValue({
+        id: 'prod-1',
+        name: 'Caneta',
+        currentStock: 10,
+      });
+      mockTx.sale.update.mockResolvedValue({ id: 'sale-1' });
+    });
+
+    it('should not generate any entry for a cash sale', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(
+        prazoSale({ paymentCondition: PaymentCondition.A_VISTA }),
+      );
+
+      await service.confirm('sale-1', 'comp-1');
+
+      expect(mockTx.financialEntry.createMany).not.toHaveBeenCalled();
+      expect(mockTx.sale.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            status: SaleStatus.CONCLUIDA,
+            paymentStatus: PaymentStatus.APROVADO,
+          },
+        }),
+      );
+    });
+
+    it('should generate one RECEBER entry per installment', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(prazoSale());
+
+      await service.confirm('sale-1', 'comp-1');
+
+      const rows = (
+        mockTx.financialEntry.createMany.mock.calls[0][0] as {
+          data: {
+            amount: number;
+            dueDate: Date;
+            description: string;
+            type: FinancialType;
+            status: FinancialStatus;
+            saleId: string;
+            partnerId: string;
+          }[];
+        }
+      ).data;
+
+      expect(rows).toHaveLength(3);
+      expect(rows.map((r) => r.amount)).toEqual([33.33, 33.33, 33.34]);
+      expect(rows.map((r) => r.dueDate.toISOString().slice(0, 10))).toEqual([
+        '2026-09-10',
+        '2026-10-10',
+        '2026-11-09',
+      ]);
+      expect(rows.map((r) => r.description)).toEqual([
+        'Venda #30 (1/3)',
+        'Venda #30 (2/3)',
+        'Venda #30 (3/3)',
+      ]);
+      expect(rows.every((r) => r.type === FinancialType.RECEBER)).toBe(true);
+      expect(rows.every((r) => r.status === FinancialStatus.ABERTO)).toBe(true);
+      expect(rows.every((r) => r.saleId === 'sale-1')).toBe(true);
+      expect(rows.every((r) => r.partnerId === 'part-1')).toBe(true);
+    });
+
+    it('should leave the payment PENDENTE on a credit sale', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(prazoSale());
+
+      await service.confirm('sale-1', 'comp-1');
+
+      expect(mockTx.sale.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            status: SaleStatus.CONCLUIDA,
+            paymentStatus: PaymentStatus.PENDENTE,
+          },
+        }),
+      );
+    });
+
+    it('should fall back to today + intervalDays when no first due date was set', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(
+        prazoSale({ firstDueDate: null, installments: 1, intervalDays: 15 }),
+      );
+
+      await service.confirm('sale-1', 'comp-1');
+
+      const rows = (
+        mockTx.financialEntry.createMany.mock.calls[0][0] as {
+          data: { dueDate: Date }[];
+        }
+      ).data;
+
+      const expected = new Date();
+      expected.setDate(expected.getDate() + 15);
+      expect(rows[0].dueDate.toISOString().slice(0, 10)).toBe(
+        expected.toISOString().slice(0, 10),
       );
     });
   });
@@ -394,6 +538,48 @@ describe('SalesService', () => {
       await expect(service.cancel('sale-1', 'comp-1')).rejects.toThrow(
         'Venda já cancelada',
       );
+    });
+
+    it('should cancel the receivables of a finalized sale', async () => {
+      mockTx.sale.findFirst.mockResolvedValue({
+        id: 'sale-1',
+        saleNumber: 30,
+        status: SaleStatus.CONCLUIDA,
+        paymentStatus: PaymentStatus.PENDENTE,
+        items: [],
+      });
+      mockTx.financialEntry.findFirst.mockResolvedValue(null);
+      mockTx.sale.update.mockResolvedValue({ id: 'sale-1' });
+
+      await service.cancel('sale-1', 'comp-1');
+
+      expect(mockTx.financialEntry.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            saleId: 'sale-1',
+            companyId: 'comp-1',
+          }),
+          data: { status: FinancialStatus.CANCELADO },
+        }),
+      );
+    });
+
+    it('should refuse to cancel a sale that already has a received installment', async () => {
+      mockTx.sale.findFirst.mockResolvedValue({
+        id: 'sale-1',
+        saleNumber: 30,
+        status: SaleStatus.CONCLUIDA,
+        paymentStatus: PaymentStatus.PENDENTE,
+        items: [{ productId: 'prod-1', quantity: 2 }],
+      });
+      mockTx.financialEntry.findFirst.mockResolvedValue({ id: 'entry-1' });
+
+      await expect(service.cancel('sale-1', 'comp-1')).rejects.toThrow(
+        'Venda possui parcelas recebidas; estorne o financeiro antes',
+      );
+      expect(mockTx.financialEntry.updateMany).not.toHaveBeenCalled();
+      expect(mockTx.stockMovement.create).not.toHaveBeenCalled();
+      expect(mockTx.sale.update).not.toHaveBeenCalled();
     });
   });
 

@@ -4,7 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  FinancialStatus,
+  FinancialType,
   PartnerType,
+  PaymentCondition,
   PaymentStatus,
   Prisma,
   Sale,
@@ -13,6 +16,7 @@ import {
   UnitOfMeasure,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { addDays, buildInstallments } from '../common/utils/installments';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { CreateSaleItemDto } from './dto/create-sale-item.dto';
 import { FilterSaleDto } from './dto/filter-sale.dto';
@@ -67,8 +71,12 @@ export class SalesService {
 
   async create(companyId: string, dto: CreateSaleDto): Promise<Sale> {
     return this.prisma.$transaction(async (tx) => {
+      // Sem filtrar deletedAt de propósito: o índice único (company_id,
+      // sale_number) também cobre as vendas excluídas, então ignorá-las aqui
+      // faria a numeração reutilizar o número de uma venda soft-deletada e
+      // estourar P2002 na próxima venda
       const aggregate = await tx.sale.aggregate({
-        where: { companyId, deletedAt: null },
+        where: { companyId },
         _max: { saleNumber: true },
       });
       const saleNumber = (aggregate._max.saleNumber ?? 0) + 1;
@@ -101,6 +109,12 @@ export class SalesService {
           discount: totals.discount,
           totalAmount: totals.totalAmount,
           paymentMethod: dto.paymentMethod,
+          paymentCondition: dto.paymentCondition,
+          installments: dto.installments,
+          // Guardados na venda porque o orçamento pode ser finalizado dias
+          // depois, por outra rota, e o plano de parcelas tem que sobreviver
+          firstDueDate: dto.firstDueDate ? new Date(dto.firstDueDate) : null,
+          intervalDays: dto.intervalDays,
           notes: dto.notes,
           saleDate: dto.saleDate ? new Date(dto.saleDate) : new Date(),
           items: { create: totals.items },
@@ -113,13 +127,7 @@ export class SalesService {
         return sale;
       }
 
-      await this.applyStockExit(tx, companyId, sale.id, sale.saleNumber);
-
-      return tx.sale.update({
-        where: { id: sale.id },
-        data: { status: SaleStatus.CONCLUIDA },
-        include: { items: true },
-      });
+      return this.finalize(tx, companyId, sale);
     });
   }
 
@@ -308,15 +316,71 @@ export class SalesService {
         );
       }
 
-      await this.applyStockExit(tx, companyId, sale.id, sale.saleNumber);
+      return this.finalize(tx, companyId, sale);
+    });
+  }
 
-      // paymentStatus e fiscalStatus são eixos independentes: quem os move são
-      // os módulos financeiro e fiscal, não a finalização da venda
-      return tx.sale.update({
-        where: { id },
-        data: { status: SaleStatus.CONCLUIDA },
-        include: { items: true },
-      });
+  /**
+   * Fecha a venda: baixa de estoque, status CONCLUIDA e o desdobramento
+   * financeiro. Compartilhado entre `POST /sales/:id/confirm` e o
+   * `POST /sales { confirm: true }` do PDV.
+   */
+  private async finalize(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    sale: Sale,
+  ): Promise<Sale> {
+    await this.applyStockExit(tx, companyId, sale.id, sale.saleNumber);
+
+    const isCash = sale.paymentCondition === PaymentCondition.A_VISTA;
+
+    // À vista é quitada no balcão: nada a receber depois. Contas a receber
+    // guarda só o que fica em aberto.
+    if (!isCash) {
+      await this.createReceivables(tx, companyId, sale);
+    }
+
+    // fiscalStatus é eixo independente e continua com o módulo fiscal
+    return tx.sale.update({
+      where: { id: sale.id },
+      data: {
+        status: SaleStatus.CONCLUIDA,
+        paymentStatus: isCash ? PaymentStatus.APROVADO : PaymentStatus.PENDENTE,
+      },
+      include: { items: true },
+    });
+  }
+
+  private async createReceivables(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    sale: Sale,
+  ): Promise<void> {
+    const firstDueDate =
+      sale.firstDueDate ?? addDays(new Date(), sale.intervalDays);
+
+    const installments = buildInstallments(
+      Number(sale.totalAmount),
+      sale.installments,
+      firstDueDate,
+      sale.intervalDays,
+    );
+
+    await tx.financialEntry.createMany({
+      data: installments.map((installment) => ({
+        companyId,
+        establishmentId: sale.establishmentId,
+        type: FinancialType.RECEBER,
+        status: FinancialStatus.ABERTO,
+        partnerId: sale.customerId,
+        saleId: sale.id,
+        description: `Venda #${sale.saleNumber} (${installment.installmentNumber}/${installment.installmentTotal})`,
+        amount: installment.amount,
+        dueDate: installment.dueDate,
+        installmentNumber: installment.installmentNumber,
+        installmentTotal: installment.installmentTotal,
+        paymentMethod: sale.paymentMethod,
+      })),
     });
   }
 
@@ -335,6 +399,8 @@ export class SalesService {
 
       // Só devolve ao estoque o que saiu de fato — orçamento nunca deu baixa
       if (sale.status === SaleStatus.CONCLUIDA) {
+        await this.cancelReceivables(tx, companyId, sale.id);
+
         for (const item of sale.items) {
           const product = await tx.product.findFirst({
             where: { id: item.productId, companyId, deletedAt: null },
@@ -390,6 +456,46 @@ export class SalesService {
     await this.prisma.sale.update({
       where: { id },
       data: { deletedAt: new Date() },
+    });
+  }
+
+  /**
+   * Cancela os títulos gerados pela venda.
+   *
+   * Se alguma parcela já foi recebida, **bloqueia** em vez de estornar sozinho:
+   * apagar um recebimento silenciosamente perderia histórico de caixa. O estorno
+   * do financeiro é passo manual e consciente.
+   */
+  private async cancelReceivables(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    saleId: string,
+  ): Promise<void> {
+    const paid = await tx.financialEntry.findFirst({
+      where: {
+        saleId,
+        companyId,
+        deletedAt: null,
+        status: { not: FinancialStatus.CANCELADO },
+        payments: { some: {} },
+      },
+      select: { id: true },
+    });
+
+    if (paid) {
+      throw new BadRequestException(
+        'Venda possui parcelas recebidas; estorne o financeiro antes',
+      );
+    }
+
+    await tx.financialEntry.updateMany({
+      where: {
+        saleId,
+        companyId,
+        deletedAt: null,
+        status: { not: FinancialStatus.CANCELADO },
+      },
+      data: { status: FinancialStatus.CANCELADO },
     });
   }
 
