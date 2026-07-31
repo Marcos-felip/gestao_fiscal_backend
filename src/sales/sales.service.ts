@@ -8,6 +8,7 @@ import {
   FinancialType,
   PartnerType,
   PaymentCondition,
+  PaymentMethod,
   PaymentStatus,
   Prisma,
   Sale,
@@ -17,9 +18,11 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { addDays, buildInstallments } from '../common/utils/installments';
+import { ConfirmSaleDto } from './dto/confirm-sale.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { CreateSaleItemDto } from './dto/create-sale-item.dto';
 import { FilterSaleDto } from './dto/filter-sale.dto';
+import { SalePaymentDto } from './dto/sale-payment.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
 
 interface SaleItemData {
@@ -35,6 +38,16 @@ interface SaleTotals {
   discount: number;
   totalAmount: number;
 }
+
+interface SalePaymentData {
+  method: PaymentMethod;
+  amount: number;
+  amountReceived: number | null;
+  changeGiven: number | null;
+}
+
+/** Diferença aceita entre a soma dos pagamentos e o total da venda */
+const PAYMENT_TOLERANCE = 0.01;
 
 export interface SaleContext {
   establishments: { id: string; name: string }[];
@@ -61,9 +74,13 @@ const SALE_DETAIL_INCLUDE = {
       product: { select: { id: true, name: true, unit: true } },
     },
   },
+  payments: true,
   establishment: { select: { id: true, name: true } },
   customer: { select: { id: true, name: true } },
 };
+
+/** Toda venda devolvida pela API sai com itens e pagamentos */
+const SALE_INCLUDE = { items: true, payments: true };
 
 @Injectable()
 export class SalesService {
@@ -119,7 +136,7 @@ export class SalesService {
           saleDate: dto.saleDate ? new Date(dto.saleDate) : new Date(),
           items: { create: totals.items },
         },
-        include: { items: true },
+        include: SALE_INCLUDE,
       });
 
       // PDV finaliza em uma chamada só: cria e já dá baixa no estoque
@@ -127,7 +144,7 @@ export class SalesService {
         return sale;
       }
 
-      return this.finalize(tx, companyId, sale);
+      return this.finalize(tx, companyId, sale, dto.payments);
     });
   }
 
@@ -169,6 +186,7 @@ export class SalesService {
         orderBy: { createdAt: 'desc' },
         include: {
           items: true,
+          payments: true,
           customer: { select: { id: true, name: true } },
         },
       }),
@@ -237,7 +255,7 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.findFirst({
         where: { id, companyId, deletedAt: null },
-        include: { items: true },
+        include: SALE_INCLUDE,
       });
 
       if (!sale) throw new NotFoundException('Venda não encontrada');
@@ -293,12 +311,16 @@ export class SalesService {
       return tx.sale.update({
         where: { id },
         data,
-        include: { items: true },
+        include: SALE_INCLUDE,
       });
     });
   }
 
-  async confirm(id: string, companyId: string): Promise<Sale> {
+  async confirm(
+    id: string,
+    companyId: string,
+    dto: ConfirmSaleDto = {},
+  ): Promise<Sale> {
     return this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.findFirst({
         where: { id, companyId, deletedAt: null },
@@ -316,7 +338,7 @@ export class SalesService {
         );
       }
 
-      return this.finalize(tx, companyId, sale);
+      return this.finalize(tx, companyId, sale, dto.payments);
     });
   }
 
@@ -329,14 +351,29 @@ export class SalesService {
     tx: Prisma.TransactionClient,
     companyId: string,
     sale: Sale,
+    payments?: SalePaymentDto[],
   ): Promise<Sale> {
-    await this.applyStockExit(tx, companyId, sale.id, sale.saleNumber);
-
     const isCash = sale.paymentCondition === PaymentCondition.A_VISTA;
 
-    // À vista é quitada no balcão: nada a receber depois. Contas a receber
-    // guarda só o que fica em aberto.
-    if (!isCash) {
+    // Valida antes de mexer no estoque: pagamento que não fecha o total derruba
+    // a venda inteira, e não faz sentido gastar as leituras de produto até lá
+    const settlement = isCash
+      ? this.buildPayments(Number(sale.totalAmount), payments)
+      : null;
+
+    await this.applyStockExit(tx, companyId, sale.id, sale.saleNumber);
+
+    if (settlement) {
+      await tx.salePayment.createMany({
+        data: settlement.rows.map((row) => ({
+          companyId,
+          saleId: sale.id,
+          ...row,
+        })),
+      });
+    } else {
+      // À vista é quitada no balcão: nada a receber depois. Contas a receber
+      // guarda só o que fica em aberto.
       await this.createReceivables(tx, companyId, sale);
     }
 
@@ -346,9 +383,76 @@ export class SalesService {
       data: {
         status: SaleStatus.CONCLUIDA,
         paymentStatus: isCash ? PaymentStatus.APROVADO : PaymentStatus.PENDENTE,
+        // Coluna mantida só para exibição e relatório; a verdade está em payments
+        ...(settlement ? { paymentMethod: settlement.predominant } : {}),
       },
-      include: { items: true },
+      include: SALE_INCLUDE,
     });
+  }
+
+  /**
+   * Valida as formas de pagamento de uma venda à vista.
+   *
+   * A soma tem que fechar o total com folga de um centavo — o arredondamento de
+   * um rateio no caixa não pode travar a venda, mas uma diferença maior é erro
+   * de digitação e vira 400.
+   */
+  private buildPayments(
+    totalAmount: number,
+    payments?: SalePaymentDto[],
+  ): { rows: SalePaymentData[]; predominant: PaymentMethod } {
+    if (!payments || payments.length === 0) {
+      throw new BadRequestException(
+        'Informe as formas de pagamento para finalizar uma venda à vista',
+      );
+    }
+
+    const rows = payments.map((payment) => {
+      const amount = round2(payment.amount);
+      const isCashMethod = payment.method === PaymentMethod.DINHEIRO;
+
+      // Troco só existe em dinheiro: em cartão ou PIX o valor entregue é
+      // exatamente o cobrado, e um amountReceived aqui seria ruído
+      if (!isCashMethod || payment.amountReceived === undefined) {
+        return {
+          method: payment.method,
+          amount,
+          amountReceived: null,
+          changeGiven: null,
+        };
+      }
+
+      const amountReceived = round2(payment.amountReceived);
+
+      if (amountReceived < amount) {
+        throw new BadRequestException(
+          'O valor recebido em dinheiro não pode ser menor que o valor do pagamento',
+        );
+      }
+
+      return {
+        method: payment.method,
+        amount,
+        amountReceived,
+        changeGiven: round2(amountReceived - amount),
+      };
+    });
+
+    const paid = round2(rows.reduce((sum, row) => sum + row.amount, 0));
+
+    // A diferença é arredondada antes de comparar: 100 - 99.99 dá
+    // 0.010000000000005 em ponto flutuante e escaparia da tolerância
+    if (round2(Math.abs(paid - round2(totalAmount))) > PAYMENT_TOLERANCE) {
+      throw new BadRequestException(
+        'Os pagamentos devem somar o total da venda',
+      );
+    }
+
+    const predominant = rows.reduce((biggest, row) =>
+      row.amount > biggest.amount ? row : biggest,
+    ).method;
+
+    return { rows, predominant };
   }
 
   private async createReceivables(
@@ -388,7 +492,7 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.findFirst({
         where: { id, companyId, deletedAt: null },
-        include: { items: true },
+        include: SALE_INCLUDE,
       });
 
       if (!sale) throw new NotFoundException('Venda não encontrada');
@@ -436,7 +540,7 @@ export class SalesService {
             ? { paymentStatus: PaymentStatus.ESTORNADO }
             : {}),
         },
-        include: { items: true },
+        include: SALE_INCLUDE,
       });
     });
   }
