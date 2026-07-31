@@ -26,6 +26,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   sales: 'Vendas',
   receivables: 'Contas a receber',
   purchases: 'Compras',
+  payables: 'Contas a pagar',
   stock: 'Estoque',
   partners: 'Parceiros',
 };
