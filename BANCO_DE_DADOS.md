@@ -89,7 +89,7 @@
                   │  FK: product)  │
                   └────────────────┘
 
-  ── Financeiro (tabelas criadas; sem endpoints ainda) ──
+  ── Financeiro (RECEBER → /receivables · PAGAR → /payables) ──
 
            ┌───────────────────────────┐
            │     financial_entries     │  título a receber (venda) ou a pagar (compra)
@@ -282,6 +282,21 @@
 
 Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_id` (fornecedor, opcional).
 
+Colunas de parcelamento, espelhando `sales`:
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `payment_condition` | ENUM `PaymentCondition` | ✅ | `A_VISTA` (default) ou `A_PRAZO` |
+| `installments` | INTEGER | ✅ | Número de parcelas (default 1; usado só em `A_PRAZO`) |
+| `first_due_date` | TIMESTAMP | ❌ | Vencimento da 1ª parcela; nulo = hoje + `interval_days` na confirmação |
+| `interval_days` | INTEGER | ✅ | Dias entre parcelas (default 30) |
+
+- O plano de parcelas é **gravado na compra**, não passado na confirmação: a compra nasce em RASCUNHO
+  e é confirmada depois, então o dado precisa sobreviver ao intervalo
+- Os títulos a pagar nascem **só na confirmação** — RASCUNHO ainda pode ser editado ou excluído, e o
+  financeiro não deve enxergar dívida que talvez não exista
+- ⚠️ **A numeração ignora o soft delete**, pela mesma razão descrita em `sales.sale_number`
+
 ### `sales` — Vendas
 
 | Coluna | Tipo | Obrig. | Descrição |
@@ -341,8 +356,9 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 
 ### `financial_entries` — Contas a receber e a pagar
 
-> Em operação para `type = RECEBER` (módulo `receivables`). O lado `PAGAR` tem a estrutura pronta,
-> mas ainda não tem service nem controller.
+> Uma tabela, dois módulos: `type = RECEBER` é servido por `receivables`, `type = PAGAR` por
+> `payables`. Cada service **força o próprio `type` em toda query**, então um módulo nunca enxerga
+> nem baixa título do outro.
 
 | Coluna | Tipo | Obrig. | Descrição |
 |--------|------|--------|-----------|
@@ -368,7 +384,10 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 
 - **Índices:** `(company_id, type, status)` e `(company_id, due_date)` — os dois recortes que a tela
   de contas e o fluxo de caixa usam
-- Uma venda parcelada gera **N linhas**, uma por parcela, todas com o mesmo `sale_id`
+- Uma venda parcelada gera **N linhas**, uma por parcela, todas com o mesmo `sale_id`; uma compra
+  parcelada faz o mesmo com `purchase_id`
+- Título **sem** `sale_id` nem `purchase_id` é lançamento manual (`POST /receivables` ou `POST /payables`) —
+  é o caminho para despesa que não vem de compra, como aluguel e energia
 - **`status = VENCIDO` nunca é gravado.** O enum tem o valor, mas o vencimento é derivado na leitura
   (`due_date < agora` e status em `ABERTO`/`PARCIAL`), exposto como `isOverdue`. Gravar exigiria um
   job diário e deixaria a coluna desatualizada entre duas execuções
@@ -404,7 +423,7 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 
 - Tabela **global** (não possui `company_id`) e **sem soft delete**
 - Populada por migration (seed em SQL), não por código da aplicação
-- Domínios atuais: `company`, `users`, `permissions`, `establishments`, `products`, `purchases`, `sales`, `stock` e `partners`
+- Domínios atuais: `company`, `users`, `permissions`, `establishments`, `products`, `purchases`, `sales`, `receivables`, `payables`, `stock` e `partners`
 
 ### `role_permissions` — Conjunto padrão por papel (template)
 
@@ -593,6 +612,7 @@ As migrations ficam em `prisma/migrations/`.
 | `20260728150000_empty_member_baseline` | **Apaga todas as linhas de `company_role_permissions` com `role = 'MEMBER'`**, em todas as empresas. A partir daqui o MEMBER só tem acesso por perfil — os MEMBERs existentes ficam sem acesso até receberem um. As linhas de MEMBER em `role_permissions` são preservadas como referência |
 | `20260730133757_sales_and_financial_modules` | Recria `sales` / `sale_items` (agora com os três eixos de status) e cria `financial_entries` / `financial_payments`; adiciona os enums `SaleStatus`, `PaymentStatus`, `FiscalStatus`, `PaymentMethod`, `FinancialType` e `FinancialStatus`; acrescenta `sales.delete` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill de todos os códigos `sales.*` para as empresas existentes (MEMBER fica de fora, o baseline dele é vazio) |
 | `20260730204512_sale_payment_condition_and_receivables` | Adiciona o enum `PaymentCondition` e as colunas `payment_condition`, `installments`, `first_due_date` e `interval_days` em `sales`; acrescenta os 5 códigos `receivables.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
+| `20260731132618_purchase_payment_condition_and_payables` | Adiciona as mesmas quatro colunas de parcelamento em `purchases`; acrescenta os 5 códigos `payables.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora). Nenhuma tabela nova: contas a pagar reusa `financial_entries` / `financial_payments` |
 
 > As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
 >

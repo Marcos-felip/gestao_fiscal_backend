@@ -1,6 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { PurchaseStatus, StockMovementType } from '@prisma/client';
+import {
+  FinancialStatus,
+  FinancialType,
+  PaymentCondition,
+  PurchaseStatus,
+  StockMovementType,
+} from '@prisma/client';
 import { PurchasesService } from './purchases.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -20,6 +26,11 @@ const mockTx = {
   },
   stockMovement: {
     create: jest.fn(),
+  },
+  financialEntry: {
+    createMany: jest.fn(),
+    findFirst: jest.fn(),
+    updateMany: jest.fn(),
   },
 };
 
@@ -151,6 +162,7 @@ describe('PurchasesService', () => {
         id: 'purch-1',
         purchaseNumber: 1,
         status: PurchaseStatus.DRAFT,
+        paymentCondition: PaymentCondition.A_VISTA,
         items: [{ productId: 'prod-1', quantity: 10 }],
       };
       const product = { id: 'prod-1', currentStock: 5 };
@@ -182,7 +194,94 @@ describe('PurchasesService', () => {
       expect(mockTx.purchase.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: PurchaseStatus.CONFIRMED } }),
       );
+      expect(mockTx.financialEntry.createMany).not.toHaveBeenCalled();
       expect(result).toEqual(confirmedPurchase);
+    });
+
+    it('should generate one PAGAR entry per installment when A_PRAZO', async () => {
+      const purchase = {
+        id: 'purch-1',
+        purchaseNumber: 7,
+        establishmentId: 'est-1',
+        supplierId: 'part-1',
+        status: PurchaseStatus.DRAFT,
+        paymentCondition: PaymentCondition.A_PRAZO,
+        totalAmount: 100,
+        installments: 3,
+        firstDueDate: new Date('2026-09-10'),
+        intervalDays: 30,
+        items: [{ productId: 'prod-1', quantity: 1 }],
+      };
+
+      mockTx.purchase.findFirst.mockResolvedValue(purchase);
+      mockTx.product.findFirst.mockResolvedValue({
+        id: 'prod-1',
+        currentStock: 0,
+      });
+      mockTx.purchase.update.mockResolvedValue(purchase);
+
+      await service.confirm('purch-1', 'comp-1');
+
+      const data = (
+        mockTx.financialEntry.createMany.mock.calls[0][0] as {
+          data: {
+            amount: number;
+            dueDate: Date;
+            description: string;
+            type: string;
+            partnerId: string;
+            purchaseId: string;
+          }[];
+        }
+      ).data;
+
+      expect(data.map((e) => e.amount)).toEqual([33.33, 33.33, 33.34]);
+      expect(data.map((e) => e.dueDate.toISOString().slice(0, 10))).toEqual([
+        '2026-09-10',
+        '2026-10-10',
+        '2026-11-09',
+      ]);
+      expect(data.map((e) => e.description)).toEqual([
+        'Compra #7 (1/3)',
+        'Compra #7 (2/3)',
+        'Compra #7 (3/3)',
+      ]);
+      expect(data.every((e) => e.type === FinancialType.PAGAR)).toBe(true);
+      expect(data.every((e) => e.partnerId === 'part-1')).toBe(true);
+      expect(data.every((e) => e.purchaseId === 'purch-1')).toBe(true);
+    });
+
+    it('should default the first due date to today plus intervalDays', async () => {
+      const purchase = {
+        id: 'purch-1',
+        purchaseNumber: 8,
+        establishmentId: 'est-1',
+        status: PurchaseStatus.DRAFT,
+        paymentCondition: PaymentCondition.A_PRAZO,
+        totalAmount: 50,
+        installments: 1,
+        firstDueDate: null,
+        intervalDays: 15,
+        items: [],
+      };
+
+      mockTx.purchase.findFirst.mockResolvedValue(purchase);
+      mockTx.purchase.update.mockResolvedValue(purchase);
+
+      await service.confirm('purch-1', 'comp-1');
+
+      const [first] = (
+        mockTx.financialEntry.createMany.mock.calls[0][0] as {
+          data: { dueDate: Date }[];
+        }
+      ).data;
+
+      const expected = new Date();
+      expected.setDate(expected.getDate() + 15);
+
+      expect(first.dueDate.toISOString().slice(0, 10)).toBe(
+        expected.toISOString().slice(0, 10),
+      );
     });
 
     it('should throw NotFoundException if purchase not found', async () => {
@@ -266,6 +365,55 @@ describe('PurchasesService', () => {
         expect.objectContaining({ data: { status: PurchaseStatus.CANCELLED } }),
       );
       expect(result).toEqual(cancelledPurchase);
+    });
+
+    it('should cancel the open payables along with the stock reversal', async () => {
+      const purchase = {
+        id: 'purch-1',
+        purchaseNumber: 1,
+        status: PurchaseStatus.CONFIRMED,
+        items: [],
+      };
+
+      mockTx.purchase.findFirst.mockResolvedValue(purchase);
+      mockTx.financialEntry.findFirst.mockResolvedValue(null);
+      mockTx.purchase.update.mockResolvedValue(purchase);
+
+      await service.cancel('purch-1', 'comp-1');
+
+      expect(mockTx.financialEntry.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            purchaseId: 'purch-1',
+            companyId: 'comp-1',
+            type: FinancialType.PAGAR,
+            status: { not: FinancialStatus.CANCELADO },
+          }),
+          data: { status: FinancialStatus.CANCELADO },
+        }),
+      );
+    });
+
+    it('should refuse to cancel when an installment was already paid', async () => {
+      const purchase = {
+        id: 'purch-1',
+        purchaseNumber: 1,
+        status: PurchaseStatus.CONFIRMED,
+        items: [{ productId: 'prod-1', quantity: 10 }],
+      };
+
+      mockTx.purchase.findFirst.mockResolvedValue(purchase);
+      mockTx.financialEntry.findFirst.mockResolvedValue({ id: 'entry-1' });
+
+      await expect(service.cancel('purch-1', 'comp-1')).rejects.toThrow(
+        'Compra possui parcelas pagas; estorne o financeiro antes',
+      );
+
+      // Nada pode ter sido revertido pela metade
+      expect(mockTx.stockMovement.create).not.toHaveBeenCalled();
+      expect(mockTx.product.update).not.toHaveBeenCalled();
+      expect(mockTx.financialEntry.updateMany).not.toHaveBeenCalled();
+      expect(mockTx.purchase.update).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if purchase not found', async () => {

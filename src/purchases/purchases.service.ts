@@ -3,8 +3,21 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Purchase, PurchaseStatus, StockMovementType } from '@prisma/client';
+import {
+  FinancialStatus,
+  FinancialType,
+  PaymentCondition,
+  Prisma,
+  Purchase,
+  PurchaseStatus,
+  StockMovementType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  DEFAULT_INTERVAL_DAYS,
+  addDays,
+  buildInstallments,
+} from '../common/utils/installments';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { FilterPurchaseDto } from './dto/filter-purchase.dto';
 import { UpdatePurchaseDto } from './dto/update-purchase.dto';
@@ -64,6 +77,10 @@ export class PurchasesService {
           supplierId: dto.supplierId,
           purchaseNumber,
           totalAmount,
+          paymentCondition: dto.paymentCondition ?? PaymentCondition.A_VISTA,
+          installments: dto.installments ?? 1,
+          firstDueDate: dto.firstDueDate ? new Date(dto.firstDueDate) : null,
+          intervalDays: dto.intervalDays ?? DEFAULT_INTERVAL_DAYS,
           notes: dto.notes,
           purchaseDate: dto.purchaseDate
             ? new Date(dto.purchaseDate)
@@ -154,6 +171,10 @@ export class PurchasesService {
       where: { id },
       data: {
         supplierId: dto.supplierId,
+        paymentCondition: dto.paymentCondition,
+        installments: dto.installments,
+        firstDueDate: dto.firstDueDate ? new Date(dto.firstDueDate) : undefined,
+        intervalDays: dto.intervalDays,
         notes: dto.notes,
         purchaseDate: dto.purchaseDate ? new Date(dto.purchaseDate) : undefined,
       },
@@ -205,11 +226,95 @@ export class PurchasesService {
         });
       }
 
+      if (purchase.paymentCondition === PaymentCondition.A_PRAZO) {
+        await this.createPayables(tx, companyId, purchase);
+      }
+
       return tx.purchase.update({
         where: { id },
         data: { status: PurchaseStatus.CONFIRMED },
         include: { items: true },
       });
+    });
+  }
+
+  /**
+   * Gera um título a pagar por parcela.
+   *
+   * Só roda na confirmação: a compra em RASCUNHO ainda pode ser editada ou
+   * excluída, e o financeiro não deve enxergar dívida que talvez não exista.
+   */
+  private async createPayables(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    purchase: Purchase,
+  ): Promise<void> {
+    const firstDueDate =
+      purchase.firstDueDate ?? addDays(new Date(), purchase.intervalDays);
+
+    const installments = buildInstallments(
+      Number(purchase.totalAmount),
+      purchase.installments,
+      firstDueDate,
+      purchase.intervalDays,
+    );
+
+    await tx.financialEntry.createMany({
+      data: installments.map((installment) => ({
+        companyId,
+        establishmentId: purchase.establishmentId,
+        type: FinancialType.PAGAR,
+        status: FinancialStatus.ABERTO,
+        partnerId: purchase.supplierId,
+        purchaseId: purchase.id,
+        description: `Compra #${purchase.purchaseNumber} (${installment.installmentNumber}/${installment.installmentTotal})`,
+        amount: installment.amount,
+        dueDate: installment.dueDate,
+        installmentNumber: installment.installmentNumber,
+        installmentTotal: installment.installmentTotal,
+      })),
+    });
+  }
+
+  /**
+   * Cancela os títulos a pagar da compra.
+   *
+   * Parcela já paga não é estornada em silêncio: apagar um pagamento perderia
+   * o histórico de caixa, então o cancelamento é barrado e o estorno fica a
+   * cargo do financeiro.
+   */
+  private async cancelPayables(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    purchaseId: string,
+  ): Promise<void> {
+    const paid = await tx.financialEntry.findFirst({
+      where: {
+        purchaseId,
+        companyId,
+        deletedAt: null,
+        type: FinancialType.PAGAR,
+        status: { not: FinancialStatus.CANCELADO },
+        payments: { some: {} },
+      },
+      select: { id: true },
+    });
+
+    if (paid) {
+      throw new BadRequestException(
+        'Compra possui parcelas pagas; estorne o financeiro antes',
+      );
+    }
+
+    await tx.financialEntry.updateMany({
+      where: {
+        purchaseId,
+        companyId,
+        deletedAt: null,
+        type: FinancialType.PAGAR,
+        status: { not: FinancialStatus.CANCELADO },
+      },
+      data: { status: FinancialStatus.CANCELADO },
     });
   }
 
@@ -228,6 +333,10 @@ export class PurchasesService {
       ) {
         throw new BadRequestException('Esta compra não pode ser cancelada');
       }
+
+      // Antes da devolução do estoque: se houver parcela paga o cancelamento
+      // para aqui e nada é revertido pela metade
+      await this.cancelPayables(tx, companyId, purchase.id);
 
       if (purchase.status === PurchaseStatus.CONFIRMED) {
         for (const item of purchase.items) {

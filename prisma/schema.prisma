@@ -307,18 +307,22 @@ model StockMovement {
 }
 
 model Purchase {
-  id              String         @id @default(uuid())
-  companyId       String         @map("company_id")
-  establishmentId String         @map("establishment_id")
-  supplierId      String?        @map("supplier_id")
-  status          PurchaseStatus @default(DRAFT)
-  purchaseNumber  Int            @map("purchase_number")
-  totalAmount     Decimal        @default(0) @map("total_amount") @db.Decimal(12, 2)
-  notes           String?
-  purchaseDate    DateTime       @default(now()) @map("purchase_date")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  deletedAt       DateTime?      @map("deleted_at")
+  id               String           @id @default(uuid())
+  companyId        String           @map("company_id")
+  establishmentId  String           @map("establishment_id")
+  supplierId       String?          @map("supplier_id")
+  status           PurchaseStatus   @default(DRAFT)
+  purchaseNumber   Int              @map("purchase_number")
+  totalAmount      Decimal          @default(0) @map("total_amount") @db.Decimal(12, 2)
+  paymentCondition PaymentCondition @default(A_VISTA) @map("payment_condition")
+  installments     Int              @default(1)
+  firstDueDate     DateTime?        @map("first_due_date")
+  intervalDays     Int              @default(30) @map("interval_days")
+  notes            String?
+  purchaseDate     DateTime         @default(now()) @map("purchase_date")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  deletedAt        DateTime?        @map("deleted_at")
 
   company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   establishment    Establishment    @relation(fields: [establishmentId], references: [id])
