@@ -206,7 +206,8 @@ src/
 ├── stock/           Movimentações de estoque
 ├── purchases/       Compras com controle de estoque
 ├── sales/           Vendas e orçamentos (PDV) com baixa de estoque
-└── receivables/     Contas a receber: títulos e baixas
+├── receivables/     Contas a receber: títulos e baixas
+└── payables/        Contas a pagar: títulos e baixas
 ```
 
 ## Transações críticas
@@ -218,12 +219,12 @@ As seguintes operações **obrigatoriamente** usam `prisma.$transaction()`:
 - Atualizar as permissões de um perfil (deleteMany + createMany em `permission_profile_permissions`)
 - Substituir os perfis de um membro (deleteMany + createMany em `membership_profiles`)
 - Onboarding (update company + create establishment)
-- Confirmar compra (criar StockMovements + atualizar currentStock + confirmar purchase)
-- Cancelar compra confirmada (reverter StockMovements + atualizar currentStock)
+- Confirmar compra (criar StockMovements + atualizar currentStock + confirmar purchase + gerar os títulos a pagar quando A_PRAZO)
+- Cancelar compra confirmada (cancelar títulos a pagar + reverter StockMovements + atualizar currentStock)
 - Criar venda (numeração + validar estabelecimento/cliente/produtos + criar itens; com `confirm: true` a baixa de estoque entra na mesma transação)
 - Finalizar venda (validar saldo + criar StockMovements SAIDA + atualizar currentStock + concluir sale + gerar os títulos quando A_PRAZO)
 - Cancelar venda concluída (cancelar títulos + reverter StockMovements + atualizar currentStock + estornar paymentStatus)
-- Criar título a receber parcelado (uma linha por parcela)
+- Criar título a receber ou a pagar parcelado (uma linha por parcela)
 - Baixar título (criar FinancialPayment + atualizar paidAmount + recalcular status)
 - Atualizar venda com troca de itens (deleteMany dos itens + recriar + recalcular totais)
 - Movimentação manual de estoque (criar StockMovement + atualizar currentStock)

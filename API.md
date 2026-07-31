@@ -1088,10 +1088,18 @@ Os mesmos códigos estão marcados com 🔹 na coluna **Perfil sugerido** do [ca
       "unitPrice": "number > 0"
     }
   ],
+  "paymentCondition": "A_VISTA | A_PRAZO (opcional, default A_VISTA)",
+  "installments": "int >= 1 (opcional, default 1) — só usado em A_PRAZO",
+  "firstDueDate": "ISO8601 (opcional) — default: hoje + intervalDays",
+  "intervalDays": "int >= 1 (opcional, default 30)",
   "notes": "string (opcional)",
   "purchaseDate": "ISO8601 (opcional)"
 }
 ```
+
+A condição de pagamento é **gravada na compra**, não só usada na hora. A compra nasce em RASCUNHO e é
+confirmada depois, possivelmente por outra pessoa — sem persistir, o plano de parcelas escolhido aqui
+se perderia no caminho.
 
 ---
 
@@ -1108,11 +1116,22 @@ Os mesmos códigos estão marcados com 🔹 na coluna **Perfil sugerido** do [ca
 > **Permissões:** `purchases.read` · `purchases.edit`
 > Apenas compras em **RASCUNHO** podem ser editadas.
 
+O `PATCH` também aceita `paymentCondition`, `installments`, `firstDueDate` e `intervalDays` — é a
+janela para corrigir o plano de parcelas antes de confirmar.
+
 ---
 
 ### POST /purchases/:id/confirm — Confirmar compra
 
 > **Permissão:** `purchases.confirm` · dá entrada no estoque de cada item.
+
+Quando a compra é `A_PRAZO`, a mesma transação gera **um título a pagar por parcela**
+(`financial_entries` do tipo `PAGAR`, status `ABERTO`), com `description` no formato
+`Compra #<numero> (i/N)` e vencimentos espaçados por `intervalDays`. Em `A_VISTA` **nenhum título é
+gerado** — a compra foi paga no ato, e contas a pagar é só o que fica em aberto.
+
+Os títulos só nascem aqui, nunca na criação: a compra em RASCUNHO ainda pode ser editada ou excluída,
+e o financeiro não deve enxergar dívida que talvez não exista.
 
 **Erros:** `400` Apenas compras em RASCUNHO podem ser confirmadas
 
@@ -1122,6 +1141,12 @@ Os mesmos códigos estão marcados com 🔹 na coluna **Perfil sugerido** do [ca
 
 > **Permissão:** `purchases.cancel` (por padrão OWNER e ADMIN)
 > Se confirmada: estorna o estoque (movimentação SAIDA).
+
+Os títulos a pagar da compra que ainda não foram cancelados passam a `CANCELADO` na mesma transação.
+
+**Se alguma parcela já tiver pagamento, o cancelamento é recusado** com
+`400 Compra possui parcelas pagas; estorne o financeiro antes`. Estornar em silêncio apagaria histórico
+de caixa. A checagem acontece **antes** da devolução do estoque, então nada é revertido pela metade.
 
 ---
 
@@ -1429,6 +1454,139 @@ Em transação: cria o `FinancialPayment`, soma em `paidAmount` e recalcula o st
 
 ---
 
+## Contas a pagar
+
+Espelho de contas a receber sobre as **mesmas tabelas**: `financial_entries` do tipo `PAGAR` e suas
+baixas em `financial_payments`. Os títulos chegam por dois caminhos: **automático** (confirmação de
+compra `A_PRAZO`) e **manual** (`POST /payables`).
+
+Os status, o cálculo de `isOverdue` e as regras de baixa são **idênticos aos de contas a receber** —
+inclusive as mensagens de erro. O que muda é o tipo do título, o vínculo (`purchase` em vez de `sale`,
+fornecedor em vez de cliente) e o conjunto de permissões.
+
+### Status do título
+
+| Status | Significado |
+|--------|-------------|
+| `ABERTO` | Nenhuma baixa registrada |
+| `PARCIAL` | Pago em parte (`0 < paidAmount < amount`) |
+| `PAGO` | Quitado (`paidAmount >= amount`) |
+| `CANCELADO` | Cancelado manualmente ou pelo cancelamento da compra |
+
+**`VENCIDO` não é gravado** — vale aqui a mesma regra de contas a receber: `isOverdue` é derivado na
+leitura, sem job noturno.
+
+---
+
+### GET /payables — Listar títulos
+
+> **Permissão:** `payables.list`
+
+**Query params:** `page`, `limit`, `status`, `supplierId`, `purchaseId`, `overdue`, `startDate`, `endDate`
+
+- `startDate` / `endDate` filtram por **vencimento**
+- `overdue=true` aplica o mesmo critério do `isOverdue` no banco, para a paginação bater com a tela
+- Ordenado por `dueDate` crescente — o mais urgente primeiro
+- Cada item traz `partner` (fornecedor) e `purchase` (compra de origem, quando houver)
+
+**Resposta 200:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "type": "PAGAR",
+      "status": "ABERTO",
+      "description": "Compra #7 (1/3)",
+      "amount": "33.33",
+      "paidAmount": "0",
+      "dueDate": "2026-09-10T00:00:00.000Z",
+      "installmentNumber": 1,
+      "installmentTotal": 3,
+      "isOverdue": false,
+      "partner": { "id": "uuid", "name": "Distribuidora XYZ" },
+      "purchase": { "id": "uuid", "purchaseNumber": 7 }
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "limit": 20
+}
+```
+
+> Os valores monetários vêm como **string** (`Decimal` do Prisma) e **sem zeros à direita** — `"33.3"`,
+> não `"33.30"`. Formate na exibição.
+
+---
+
+### GET /payables/:id — Detalhar título
+
+> **Permissão:** `payables.read` · retorna o título, o fornecedor, a compra de origem e a lista de `payments`.
+
+**Erros:** `404` Conta a pagar não encontrada
+
+---
+
+### POST /payables — Criar título manual
+
+> **Permissão:** `payables.create`
+
+**Body:**
+```json
+{
+  "supplierId": "uuid (opcional)",
+  "description": "string (obrigatório)",
+  "totalAmount": "number > 0 (obrigatório)",
+  "dueDate": "ISO8601 (obrigatório) — vencimento da 1ª parcela",
+  "installments": "int >= 1 (opcional, default 1)",
+  "intervalDays": "int >= 1 (opcional, default 30)",
+  "category": "string (opcional) — agrupador para relatórios"
+}
+```
+
+**Resposta 201:** um **array** com os títulos criados (uma linha por parcela).
+
+- `totalAmount` é o valor **total**, dividido entre as parcelas; o resto dos centavos vai na última
+- Com `installments > 1`, a `description` recebe o sufixo `(i/N)`
+- É por aqui que entram as despesas sem compra: aluguel, energia, salários
+- **Erros:** `404` Fornecedor não encontrado
+
+---
+
+### POST /payables/:id/pay — Registrar baixa
+
+> **Permissão:** `payables.pay`
+
+**Body:**
+```json
+{
+  "amount": "number > 0 (obrigatório)",
+  "paidAt": "ISO8601 (opcional, default agora)",
+  "method": "DINHEIRO | CARTAO_CREDITO | CARTAO_DEBITO | PIX | BOLETO | OUTRO (opcional)",
+  "notes": "string (opcional)"
+}
+```
+
+Em transação: cria o `FinancialPayment`, soma em `paidAmount` e recalcula o status
+(`PAGO` se quitou, senão `PARCIAL`). **Baixa parcial é suportada** — basta chamar de novo com o resto.
+
+**Erros:**
+- `400` Valor excede o saldo do título (saldo: `<valor>`)
+- `400` Não é possível baixar um título cancelado
+- `400` Título já quitado
+
+---
+
+### POST /payables/:id/cancel — Cancelar título
+
+> **Permissão:** `payables.cancel` (por padrão OWNER e ADMIN) · sem corpo
+
+**Erros:**
+- `400` Título já cancelado
+- `400` Não é possível cancelar um título já quitado
+
+---
+
 ## Paginação
 
 Todos os endpoints de listagem suportam paginação:
@@ -1540,6 +1698,20 @@ compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao mo
 > levar `list` + `read` + `pay`; `create` e `cancel` são os que mexem no que a empresa tem a receber.
 > Vender **não** exige nada daqui — a venda a prazo gera os títulos sozinha, sob `sales.confirm`.
 
+### Contas a pagar (`payables`)
+
+| Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
+|--------|-----------|:-----:|:-----:|:---------------:|----------|
+| `payables.list` | Listar contas a pagar | ✅ | ✅ | | `GET /payables` |
+| `payables.create` | Criar conta a pagar | ✅ | ✅ | | `POST /payables` |
+| `payables.read` | Ler dados da conta a pagar | ✅ | ✅ | | `GET /payables/:id` |
+| `payables.pay` | Registrar baixa em conta a pagar | ✅ | ✅ | | `POST /payables/:id/pay` |
+| `payables.cancel` | Cancelar conta a pagar | ✅ | ✅ | | `POST /payables/:id/cancel` |
+
+> Mesma lógica de contas a receber: sem coluna 🔹, e comprar **não** exige nada daqui — a compra a prazo
+> gera os títulos sozinha, sob `purchases.confirm`. Vale separar quem lança despesa (`create`) de quem
+> dá baixa (`pay`): são as duas pontas que costumam pedir alçadas diferentes.
+
 ### Estoque (`stock`)
 
 | Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
@@ -1626,7 +1798,7 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | 0 | **A migration `20260728150000_empty_member_baseline` apagou o baseline do papel MEMBER de todas as empresas.** Todo MEMBER que já existia ficou **sem acesso a nada** até receber um perfil. | **Alto** — ver [Migração para o modelo de perfis](#migração-para-o-modelo-de-perfis) |
 | 1 | `PATCH /companies/:id` ignora o `:id` e atualiza sempre a empresa ativa. | Baixo — enviar o ID da empresa ativa para evitar confusão |
 | 2 | `POST /sales` com `confirm: true` exige apenas `sales.create` — quem pode criar a venda pode finalizá-la pelo caminho do PDV, mesmo sem `sales.confirm`. | Médio — se quiser separar quem lança de quem finaliza, não conceda `sales.create` a esse perfil |
-| 3 | Contas **a pagar** (`financial_entries` com `type: PAGAR`) tem tabela, mas ainda não tem endpoint. | Nenhum — entra em entrega própria |
+| 3 | Cancelar uma venda ou compra **a prazo** é bloqueado se alguma parcela já foi baixada. | Médio — estorne o título antes (`POST /receivables/:id/cancel` ou `/payables/:id/cancel`) e só então cancele o documento |
 | 4 | Código de permissão inexistente devolve `404` em `PATCH /permissions/:role` e `422` nos perfis. | Baixo — tratar os dois status ao validar o formulário de permissões |
 
 ---
@@ -1650,11 +1822,11 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | `FiscalStatus` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` |
 | `PaymentMethod` | `DINHEIRO`, `CARTAO_CREDITO`, `CARTAO_DEBITO`, `PIX`, `BOLETO`, `OUTRO` |
 | `PaymentCondition` | `A_VISTA`, `A_PRAZO` |
-| `FinancialType` | `RECEBER`, `PAGAR` (só `RECEBER` tem endpoints) |
+| `FinancialType` | `RECEBER` (`/receivables`), `PAGAR` (`/payables`) |
 | `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` |
 
 > `FinancialStatus.VENCIDO` existe no enum mas **nunca é gravado** — o vencimento é derivado na
-> leitura via `isOverdue`. Ver [Contas a receber](#contas-a-receber).
+> leitura via `isOverdue`. Ver [Contas a receber](#contas-a-receber) e [Contas a pagar](#contas-a-pagar).
 
 > Códigos de permissão **não** são um enum: são valores livres da tabela `permissions`, consultáveis em `GET /permissions`. Ver [Catálogo de permissões](#catálogo-de-permissões).
 
@@ -1712,6 +1884,21 @@ POST /sales { paymentCondition: "A_PRAZO", installments: 3, firstDueDate, confir
                              → venda CONCLUIDA, paymentStatus PENDENTE, 3 títulos ABERTO
 GET  /receivables?overdue=true   → o que está vencido
 POST /receivables/:id/pay        → baixa parcial ou total
+```
+
+### 3.4. Fluxo de compra a prazo → contas a pagar
+```
+POST /purchases { paymentCondition: "A_PRAZO", installments: 3, firstDueDate }
+                             → compra em RASCUNHO com o plano de parcelas gravado
+POST /purchases/:id/confirm  → estoque aumenta e nascem os 3 títulos ABERTO
+GET  /payables?overdue=true      → o que está vencendo
+POST /payables/:id/pay           → baixa parcial ou total
+```
+
+### 3.5. Despesa sem compra (aluguel, energia, salários)
+```
+POST /payables { description, totalAmount, dueDate, installments }
+                             → títulos manuais, sem vínculo com compra
 ```
 
 ### 4. Renovar token

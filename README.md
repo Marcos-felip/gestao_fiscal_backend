@@ -140,6 +140,7 @@ src/
 ├── purchases/         # Pedidos de compra
 ├── sales/             # Vendas e orçamentos (PDV)
 ├── receivables/       # Contas a receber
+├── payables/          # Contas a pagar
 ├── prisma/            # Serviço global do Prisma ORM
 └── common/            # Guards, decorators, filtros, validators
 ```

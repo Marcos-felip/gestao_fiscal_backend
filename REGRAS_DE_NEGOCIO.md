@@ -136,9 +136,13 @@ linha desta tabela vira ✅ para um MEMBER específico se algum perfil dele cont
 | Cancelar vendas | ✅ | ✅ | `sales.cancel` |
 | Excluir vendas | ✅ | ✅ | `sales.delete` |
 | Listar/ler contas a receber | ✅ | ✅ | `receivables.list` / `.read` |
-| Criar título manual | ✅ | ✅ | `receivables.create` |
-| Registrar baixa | ✅ | ✅ | `receivables.pay` |
-| Cancelar título | ✅ | ✅ | `receivables.cancel` |
+| Criar título a receber manual | ✅ | ✅ | `receivables.create` |
+| Registrar recebimento | ✅ | ✅ | `receivables.pay` |
+| Cancelar título a receber | ✅ | ✅ | `receivables.cancel` |
+| Listar/ler contas a pagar | ✅ | ✅ | `payables.list` / `.read` |
+| Criar título a pagar manual | ✅ | ✅ | `payables.create` |
+| Registrar pagamento | ✅ | ✅ | `payables.pay` |
+| Cancelar título a pagar | ✅ | ✅ | `payables.cancel` |
 | Movimentação manual de estoque | ✅ | ✅ | `stock.create` |
 
 > A lista completa de códigos está no [API.md](./API.md#catálogo-de-permissões), com os códigos que
@@ -310,22 +314,55 @@ RASCUNHO → CANCELADO
 ### RASCUNHO
 - Compra criada mas não executada
 - Estoque **não é afetado**
-- Pode ser editada (fornecedor, notas)
+- **Nenhum título a pagar é gerado** — a compra ainda pode ser editada ou excluída, e o financeiro não
+  deve enxergar dívida que talvez não exista
+- Pode ser editada (fornecedor, notas, condição de pagamento)
 - Pode ser confirmada ou cancelada
 
 ### CONFIRMADO
 - Estoque **aumentado** automaticamente (movimentação ENTRADA por item)
 - Numeração sequencial por empresa (`purchase_number`)
+- Se `A_PRAZO`: os **títulos a pagar nascem aqui**, na mesma transação
 - **Não pode ser editada**
 - Pode ser cancelada (com estorno automático do estoque)
 
 ### CANCELADO
 - Se veio de CONFIRMADO: estoque **estornado** automaticamente (movimentação SAIDA por item)
+- Os títulos a pagar da compra passam a `CANCELADO` na mesma transação
 - Não pode mais ser alterado
+
+### Condição de pagamento e geração dos títulos
+
+A compra guarda a condição (`paymentCondition`), o número de parcelas, o vencimento da primeira e o
+intervalo entre elas. Guardar em vez de receber tudo na confirmação é deliberado: a compra nasce em
+RASCUNHO e é confirmada depois, possivelmente por outra pessoa — sem persistir, o plano escolhido no
+lançamento se perderia.
+
+Na confirmação, dentro da transação que dá entrada no estoque:
+
+| Condição | Títulos gerados |
+|----------|-----------------|
+| `A_VISTA` | **Nenhum** — foi pago no ato; contas a pagar é só o que fica em aberto |
+| `A_PRAZO` | Um `FinancialEntry` `PAGAR` por parcela, status `ABERTO` |
+
+Cada parcela recebe `amount = totalAmount / installments`, com **o resto dos centavos todo na última**
+(R$ 100,00 em 3× vira 33,33 + 33,33 + 33,34 — senão a soma dos títulos ficaria abaixo do total da
+compra para sempre), `dueDate` espaçado por `intervalDays` e `description` no formato
+`Compra #<numero> (i/N)`. Sem `firstDueDate`, a primeira vence em `hoje + intervalDays`.
+
+### Cancelar compra com parcela já paga
+
+Se **qualquer** título da compra tiver pagamento registrado, o cancelamento é **recusado**:
+`Compra possui parcelas pagas; estorne o financeiro antes`.
+
+O caminho é estornar o título primeiro e só depois cancelar a compra. Cancelar em cascata apagaria
+pagamentos já lançados — histórico de caixa não pode sumir por efeito colateral de outro módulo.
+A checagem roda **antes** da devolução do estoque, então uma tentativa barrada não deixa nada
+revertido pela metade.
 
 ### Regras adicionais
 - Apenas compras em RASCUNHO ou CANCELADO podem ser excluídas (soft delete) — exige a permissão `purchases.delete`, concedida por padrão a OWNER e ADMIN
-- Número da compra (`purchase_number`) é único por empresa e sequencial
+- Número da compra (`purchase_number`) é único por empresa e sequencial. **A numeração considera também as compras excluídas**: o índice único não enxerga `deleted_at`, e reaproveitar o número de uma compra excluída quebraria a criação da próxima
 - Total calculado automaticamente: `Σ (quantidade × preço_unitário)`
 - Itens: mínimo 1 item por compra
 
@@ -490,6 +527,34 @@ agendador.
 
 - Título `PAGO` **não pode ser cancelado** — quitado é fato consumado
 - Cancelar a venda de origem cancela os títulos em bloco, desde que nenhum tenha baixa
+
+---
+
+## 9.3. Contas a pagar
+
+Mesma tabela, mesmas regras, lado oposto: um título é uma parcela **a pagar**. Chega por dois
+caminhos: **automático**, na confirmação de uma compra `A_PRAZO`, ou **manual**, para a despesa que
+não passa por compra — aluguel, energia, salários, impostos.
+
+O ciclo de vida, o cálculo do vencimento (`isOverdue` derivado na leitura, sem job) e as regras de
+baixa são **idênticos aos de contas a receber**, inclusive as mensagens de erro. O que muda:
+
+| | Contas a receber | Contas a pagar |
+|---|---|---|
+| Tipo do título | `RECEBER` | `PAGAR` |
+| Origem automática | Venda `A_PRAZO` finalizada | Compra `A_PRAZO` confirmada |
+| Parceiro | Cliente | Fornecedor |
+| Permissões | `receivables.*` | `payables.*` |
+
+Cada service **força o próprio `type` em toda consulta**: um usuário com acesso apenas a contas a
+pagar não enxerga nem baixa um título a receber, e vice-versa. É o que permite separar as duas
+alçadas com perfis diferentes.
+
+### Cancelamento
+
+- Título `PAGO` **não pode ser cancelado**
+- Cancelar a compra de origem cancela os títulos em bloco, desde que nenhum tenha baixa —
+  ver [Cancelar compra com parcela já paga](#cancelar-compra-com-parcela-já-paga)
 
 ---
 
