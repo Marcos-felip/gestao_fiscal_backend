@@ -89,6 +89,15 @@
                   │  FK: product)  │
                   └────────────────┘
 
+                  ┌────────────────┐
+                  │ sale_payments  │  formas de pagamento da venda à vista
+                  │────────────────│
+                  │ method, amount │
+                  │ amount_received│  (só dinheiro)
+                  │ change_given   │  (troco)
+                  │ (FK: sale CASC)│
+                  └────────────────┘
+
   ── Financeiro (RECEBER → /receivables · PAGAR → /payables) ──
 
            ┌───────────────────────────┐
@@ -312,7 +321,7 @@ Colunas de parcelamento, espelhando `sales`:
 | `subtotal` | DECIMAL(12,2) | ✅ | Soma dos itens |
 | `discount` | DECIMAL(12,2) | ✅ | Default 0; nunca maior que o subtotal |
 | `total_amount` | DECIMAL(12,2) | ✅ | `subtotal - discount` |
-| `payment_method` | ENUM `PaymentMethod` | ❌ | Forma de pagamento |
+| `payment_method` | ENUM `PaymentMethod` | ❌ | Forma **predominante**, só para exibição — ver `sale_payments` |
 | `payment_condition` | ENUM `PaymentCondition` | ✅ | `A_VISTA` (default) ou `A_PRAZO` |
 | `installments` | INTEGER | ✅ | Número de parcelas (default 1; usado só em `A_PRAZO`) |
 | `first_due_date` | TIMESTAMP | ❌ | Vencimento da 1ª parcela; nulo = hoje + `interval_days` na finalização |
@@ -353,6 +362,28 @@ Colunas de parcelamento, espelhando `sales`:
 
 - **Índice:** `sale_id` · **Sem soft delete** (segue a venda, como `purchase_items`)
 - Editar uma venda com `items` no corpo **apaga fisicamente** os itens e recria a lista
+
+### `sale_payments` — Formas de pagamento da venda
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Empresa (`ON DELETE CASCADE`) |
+| `sale_id` | UUID (FK) | ✅ | Venda (`ON DELETE CASCADE`) |
+| `method` | ENUM `PaymentMethod` | ✅ | Forma usada nesta linha |
+| `amount` | DECIMAL(12,2) | ✅ | Valor pago nesta forma |
+| `amount_received` | DECIMAL(12,2) | ❌ | Valor entregue pelo cliente; **só DINHEIRO** |
+| `change_given` | DECIMAL(12,2) | ❌ | Troco = `amount_received - amount` |
+| `created_at` | TIMESTAMP | ✅ | |
+
+- **N linhas por venda:** o balcão aceita pagamento dividido (parte no PIX, parte em dinheiro)
+- Preenchida **só na finalização** de venda `A_VISTA`; venda `A_PRAZO` não gera nenhuma linha aqui —
+  o que fica em aberto vira `financial_entries`
+- A soma dos `amount` fecha o `total_amount` da venda, com tolerância de um centavo
+- **Esta tabela é a fonte de verdade do pagamento.** `sales.payment_method` continua existindo, mas
+  passa a valer apenas como **forma predominante** (a de maior `amount`), para exibição e relatório
+- **Sem soft delete:** cancelar a venda não apaga os pagamentos — são histórico de caixa
+- Nas demais formas que não DINHEIRO, `amount_received` e `change_given` ficam nulos
 
 ### `financial_entries` — Contas a receber e a pagar
 
@@ -555,6 +586,10 @@ Colunas de parcelamento, espelhando `sales`:
 | `sales` | FK CASCADE | `company_id → companies(id)` |
 | `sale_items` | INDEX | `sale_id` |
 | `sale_items` | FK CASCADE | `sale_id → sales(id)` |
+| `sale_payments` | INDEX | `sale_id` |
+| `sale_payments` | INDEX | `company_id` |
+| `sale_payments` | FK CASCADE | `sale_id → sales(id)` |
+| `sale_payments` | FK CASCADE | `company_id → companies(id)` |
 | `financial_entries` | INDEX | `(company_id, type, status)` |
 | `financial_entries` | INDEX | `(company_id, due_date)` |
 | `financial_entries` | FK CASCADE | `company_id → companies(id)` |
@@ -613,6 +648,7 @@ As migrations ficam em `prisma/migrations/`.
 | `20260730133757_sales_and_financial_modules` | Recria `sales` / `sale_items` (agora com os três eixos de status) e cria `financial_entries` / `financial_payments`; adiciona os enums `SaleStatus`, `PaymentStatus`, `FiscalStatus`, `PaymentMethod`, `FinancialType` e `FinancialStatus`; acrescenta `sales.delete` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill de todos os códigos `sales.*` para as empresas existentes (MEMBER fica de fora, o baseline dele é vazio) |
 | `20260730204512_sale_payment_condition_and_receivables` | Adiciona o enum `PaymentCondition` e as colunas `payment_condition`, `installments`, `first_due_date` e `interval_days` em `sales`; acrescenta os 5 códigos `receivables.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
 | `20260731132618_purchase_payment_condition_and_payables` | Adiciona as mesmas quatro colunas de parcelamento em `purchases`; acrescenta os 5 códigos `payables.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora). Nenhuma tabela nova: contas a pagar reusa `financial_entries` / `financial_payments` |
+| `20260731144625_sale_payments` | Cria `sale_payments` (várias formas de pagamento por venda, com valor recebido e troco). Sem permissões novas: o pagamento entra pelas rotas de venda já existentes |
 
 > As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
 >

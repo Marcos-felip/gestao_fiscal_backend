@@ -1238,6 +1238,13 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
   "discount": "number >= 0 (opcional, default 0)",
   "paymentMethod": "DINHEIRO | CARTAO_CREDITO | CARTAO_DEBITO | PIX | BOLETO | OUTRO (opcional)",
   "paymentCondition": "A_VISTA | A_PRAZO (opcional, default A_VISTA)",
+  "payments": [
+    {
+      "method": "DINHEIRO | CARTAO_CREDITO | CARTAO_DEBITO | PIX | BOLETO | OUTRO",
+      "amount": "number > 0",
+      "amountReceived": "number > 0 (opcional) — só DINHEIRO, para calcular o troco"
+    }
+  ],
   "installments": "int >= 1 (opcional, default 1) — só usado em A_PRAZO",
   "firstDueDate": "ISO8601 (opcional) — default: hoje + intervalDays",
   "intervalDays": "int >= 1 (opcional, default 30) — dias entre parcelas",
@@ -1251,6 +1258,9 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
 - **`confirm: true` finaliza a venda na mesma chamada** — é o caminho do PDV: cria, dá baixa no
   estoque e devolve a venda já `CONCLUIDA`. Se faltar estoque, **nada é gravado** (tudo roda numa
   transação única)
+- ⚠️ **`payments` é obrigatório ao finalizar uma venda `A_VISTA`** (`confirm: true`). O orçamento
+  (`confirm: false`) não exige — as formas são definidas ao fechar. Ver
+  [Pagamentos da venda](#pagamentos-da-venda)
 - `saleNumber` é sequencial **por empresa**
 - `paymentCondition`, `installments`, `firstDueDate` e `intervalDays` ficam **gravados na venda** e são
   usados na finalização — inclusive quando ela acontece depois, por `POST /sales/:id/confirm`
@@ -1259,6 +1269,62 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
 - `404` Estabelecimento não encontrado · Cliente não encontrado · Produto não encontrado: `<id>`
 - `400` O desconto não pode ser maior que o subtotal da venda
 - `400` Estoque insuficiente para o produto `<nome>` (só com `confirm: true`)
+- `400` Informe as formas de pagamento para finalizar uma venda à vista
+- `400` Os pagamentos devem somar o total da venda
+- `400` O valor recebido em dinheiro não pode ser menor que o valor do pagamento
+
+---
+
+### Pagamentos da venda
+
+Uma venda à vista pode ser paga em **várias formas ao mesmo tempo** — parte no PIX, parte em dinheiro.
+Cada forma vira uma linha em `sale_payments`, e é esse conjunto que passa a ser a **fonte de verdade**
+do pagamento. A coluna `paymentMethod` da venda continua existindo, mas apenas como **forma
+predominante** (a de maior `amount`), para exibição em lista e relatório.
+
+**Quando é exigido:** ao finalizar uma venda `A_VISTA` — seja por `POST /sales { confirm: true }` ou
+por `POST /sales/:id/confirm`.
+
+| Situação | `payments` |
+|----------|------------|
+| Orçamento (`confirm: false`) | Não exigido — as formas são definidas ao fechar |
+| Finalização `A_VISTA` | **Obrigatório**; a soma dos `amount` deve fechar o `totalAmount` |
+| Finalização `A_PRAZO` | **Ignorado** — o que fica em aberto vira título em contas a receber |
+
+**Regras:**
+
+- Cada `amount` deve ser maior que zero
+- A soma dos `amount` tem que bater com o `totalAmount`, com **tolerância de um centavo** — o
+  arredondamento de um rateio no caixa não pode travar a venda, mas diferença maior é erro de digitação
+- `amountReceived` só faz sentido em `DINHEIRO`: quando informado, precisa ser **maior ou igual** ao
+  `amount`, e o backend grava `changeGiven = amountReceived - amount` (o troco). Nas demais formas o
+  campo é **ignorado** e volta como `null`
+- Pagamento inválido **derruba a venda inteira antes de tocar no estoque** — não existe venda
+  finalizada com pagamento pela metade
+- Ao cancelar a venda, os pagamentos **permanecem registrados**: são histórico de caixa
+
+**Exemplo — R$ 100,00 pagos em PIX e dinheiro, com troco:**
+```json
+{
+  "payments": [
+    { "method": "PIX", "amount": 60 },
+    { "method": "DINHEIRO", "amount": 40, "amountReceived": 50 }
+  ]
+}
+```
+
+A venda volta com `paymentStatus: "APROVADO"`, `paymentMethod: "PIX"` (a maior) e:
+```json
+{
+  "payments": [
+    { "id": "uuid", "method": "PIX", "amount": "60", "amountReceived": null, "changeGiven": null },
+    { "id": "uuid", "method": "DINHEIRO", "amount": "40", "amountReceived": "50", "changeGiven": "10" }
+  ]
+}
+```
+
+> Ainda **não** existe pagamento misto à vista + a prazo (entrada). Uma venda é inteira `A_VISTA` ou
+> inteira `A_PRAZO`.
 
 ---
 
@@ -1272,7 +1338,7 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
 
 ### GET /sales/:id — Detalhar venda
 
-> **Permissão:** `sales.read` · retorna itens (com produto), estabelecimento e cliente.
+> **Permissão:** `sales.read` · retorna itens (com produto), pagamentos, estabelecimento e cliente.
 
 ---
 
@@ -1305,14 +1371,25 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
 
 > **Permissão:** `sales.confirm` · dá **saída** no estoque de cada item.
 
-Em transação única: valida o saldo de cada produto, cria as movimentações `SAIDA`, desconta o
-`currentStock`, marca a venda como `CONCLUIDA` e faz o **desdobramento financeiro**. Não mexe em
-`fiscalStatus`.
+**Body (opcional em A_PRAZO, obrigatório em A_VISTA):**
+```json
+{
+  "payments": [
+    { "method": "DINHEIRO", "amount": 100, "amountReceived": 150 }
+  ]
+}
+```
 
-| `paymentCondition` | `paymentStatus` resultante | Títulos gerados |
-|--------------------|----------------------------|-----------------|
-| `A_VISTA` | `APROVADO` | **nenhum** — quitada no balcão |
-| `A_PRAZO` | `PENDENTE` | `installments` títulos `RECEBER` em [Contas a receber](#contas-a-receber) |
+Em transação única: valida os pagamentos, valida o saldo de cada produto, cria as movimentações
+`SAIDA`, desconta o `currentStock`, marca a venda como `CONCLUIDA` e faz o **desdobramento
+financeiro**. Não mexe em `fiscalStatus`.
+
+| `paymentCondition` | `payments` | `paymentStatus` resultante | Títulos gerados |
+|--------------------|------------|----------------------------|-----------------|
+| `A_VISTA` | **obrigatório**, somando o total | `APROVADO` | **nenhum** — quitada no balcão |
+| `A_PRAZO` | ignorado | `PENDENTE` | `installments` títulos `RECEBER` em [Contas a receber](#contas-a-receber) |
+
+Regras completas em [Pagamentos da venda](#pagamentos-da-venda).
 
 Nas vendas a prazo, cada parcela vira uma linha com `description` `"Venda #<n> (i/N)"`, `dueDate`
 = `firstDueDate + intervalDays × (i-1)`, `partnerId` = cliente da venda e `status` `ABERTO`.
@@ -1323,6 +1400,9 @@ para o somatório fechar com o total da venda.
 - `400` Venda já finalizada
 - `400` Não é possível finalizar uma venda cancelada
 - `400` Estoque insuficiente para o produto `<nome>`
+- `400` Informe as formas de pagamento para finalizar uma venda à vista
+- `400` Os pagamentos devem somar o total da venda
+- `400` O valor recebido em dinheiro não pode ser menor que o valor do pagamento
 
 ---
 
@@ -1333,6 +1413,7 @@ para o somatório fechar com o total da venda.
 - Se a venda estava **CONCLUIDA**: estorna o estoque (movimentação `ENTRADA`) na mesma transação
 - Se `paymentStatus` era `APROVADO`: passa a `ESTORNADO`
 - Os títulos gerados pela venda passam a `CANCELADO`
+- Os `payments` **permanecem registrados** — são histórico de caixa, não some nada
 - Orçamento cancelado não mexe em estoque (nunca deu baixa)
 
 **Erros:**
@@ -1800,6 +1881,8 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | 2 | `POST /sales` com `confirm: true` exige apenas `sales.create` — quem pode criar a venda pode finalizá-la pelo caminho do PDV, mesmo sem `sales.confirm`. | Médio — se quiser separar quem lança de quem finaliza, não conceda `sales.create` a esse perfil |
 | 3 | Cancelar uma venda ou compra **a prazo** é bloqueado se alguma parcela já foi baixada. | Médio — estorne o título antes (`POST /receivables/:id/cancel` ou `/payables/:id/cancel`) e só então cancele o documento |
 | 4 | Código de permissão inexistente devolve `404` em `PATCH /permissions/:role` e `422` nos perfis. | Baixo — tratar os dois status ao validar o formulário de permissões |
+| 5 | **Finalizar venda `A_VISTA` passou a exigir `payments`.** Chamadas que antes funcionavam sem o campo agora recebem `400`. | **Alto** — o PDV precisa enviar as formas de pagamento em `POST /sales { confirm: true }` e em `POST /sales/:id/confirm` |
+| 6 | Não existe pagamento misto à vista + a prazo (entrada). A venda é inteira `A_VISTA` ou inteira `A_PRAZO`. | Baixo — entra em entrega própria |
 
 ---
 
@@ -1867,14 +1950,16 @@ POST /purchases/:id/confirm  → confirmar (estoque aumenta)
 
 ### 3.1. Fluxo de venda — balcão (PDV, uma chamada)
 ```
-POST /sales { confirm: true } → cria e finaliza (estoque diminui na hora)
+POST /sales { confirm: true, payments: [{ method: "DINHEIRO", amount: 100, amountReceived: 150 }] }
+                             → cria e finaliza (estoque diminui na hora, troco de 50 calculado)
 ```
 
 ### 3.2. Fluxo de venda — orçamento que vira venda
 ```
-POST /sales                  → criar orçamento (não mexe no estoque)
+POST /sales                  → criar orçamento (não mexe no estoque, não exige payments)
 PATCH /sales/:id             → ajustar itens/desconto enquanto negocia
-POST /sales/:id/confirm      → finalizar (valida saldo e dá baixa no estoque)
+POST /sales/:id/confirm { payments: [...] }
+                             → finalizar (valida pagamentos, saldo e dá baixa no estoque)
 POST /sales/:id/cancel       → cancelar (estorna o estoque se já estava CONCLUIDA)
 ```
 

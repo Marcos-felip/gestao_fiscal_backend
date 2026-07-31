@@ -436,6 +436,43 @@ abaixo da venda para sempre.
 Se `firstDueDate` não for informado, o 1º vencimento é **hoje + `intervalDays`** no momento da
 finalização (não da criação) — um orçamento parado por semanas não nasce vencido.
 
+### Formas de pagamento e troco
+
+Uma venda à vista pode ser paga em **várias formas ao mesmo tempo** — parte no PIX, parte em dinheiro.
+Cada forma vira uma linha em `sale_payments`, e é esse conjunto que passa a ser a **fonte de verdade**
+do pagamento.
+
+`sales.payment_method` continua existindo, mas foi rebaixada a **forma predominante** — a de maior
+valor, gravada só para exibir em lista e agrupar relatório. Uma coluna única não consegue representar
+um pagamento dividido, e insistir nela obrigaria a escolher qual forma "mente" menos.
+
+**Quando é exigido:** ao finalizar uma venda `A_VISTA`, seja pelo PDV de uma chamada
+(`POST /sales { confirm: true }`) ou pelo `POST /sales/:id/confirm`.
+
+| Situação | `payments` |
+|----------|------------|
+| Orçamento | Não exigido — as formas são definidas ao fechar, não ao orçar |
+| Finalização `A_VISTA` | **Obrigatório**, somando o total da venda |
+| Finalização `A_PRAZO` | **Ignorado** — o que fica em aberto vira título, não pagamento |
+
+**A soma tem tolerância de um centavo.** Um rateio arredondado no caixa não pode travar a venda, mas
+uma diferença maior é erro de digitação e vira `400 Os pagamentos devem somar o total da venda`.
+
+**Troco só existe em dinheiro.** Com `amountReceived` informado num pagamento `DINHEIRO`, o valor
+precisa ser maior ou igual ao `amount` e o sistema grava `changeGiven = amountReceived - amount`. Nas
+demais formas o campo é ignorado: em cartão ou PIX o valor entregue é exatamente o cobrado, e aceitar
+um "recebido" diferente ali só criaria troco fantasma.
+
+**Pagamento inválido derruba a venda antes de tocar no estoque.** A validação roda antes das
+movimentações — não existe venda finalizada com pagamento pela metade, nem estoque baixado por uma
+venda que não fechou.
+
+Ao **cancelar** a venda, os pagamentos permanecem gravados. São histórico de caixa: quem conferiu o
+fechamento precisa continuar enxergando o que entrou, mesmo depois do estorno.
+
+> Ainda **não** existe entrada (misturar à vista com a prazo na mesma venda). A venda é inteira
+> `A_VISTA` ou inteira `A_PRAZO`.
+
 ### Cancelar venda com parcela já recebida
 
 **Bloqueado**, com `Venda possui parcelas recebidas; estorne o financeiro antes`.
