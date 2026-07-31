@@ -298,6 +298,10 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 | `discount` | DECIMAL(12,2) | ✅ | Default 0; nunca maior que o subtotal |
 | `total_amount` | DECIMAL(12,2) | ✅ | `subtotal - discount` |
 | `payment_method` | ENUM `PaymentMethod` | ❌ | Forma de pagamento |
+| `payment_condition` | ENUM `PaymentCondition` | ✅ | `A_VISTA` (default) ou `A_PRAZO` |
+| `installments` | INTEGER | ✅ | Número de parcelas (default 1; usado só em `A_PRAZO`) |
+| `first_due_date` | TIMESTAMP | ❌ | Vencimento da 1ª parcela; nulo = hoje + `interval_days` na finalização |
+| `interval_days` | INTEGER | ✅ | Dias entre parcelas (default 30) |
 | `notes` | TEXT | ❌ | Observações |
 | `sale_date` | TIMESTAMP | ✅ | Data da venda (default agora) |
 | `created_at` / `updated_at` | TIMESTAMP | ✅ | |
@@ -314,6 +318,12 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 - **UNIQUE:** `(company_id, sale_number)` · **Índices:** `company_id`, `(company_id, status)`, `(company_id, sale_date)`
 - `ORCAMENTO` **não reserva nem baixa estoque.** A validação de saldo e as movimentações `SAIDA`
   acontecem só na finalização — um orçamento pode ficar dias parado e o estoque mudar no intervalo
+- ⚠️ **A numeração ignora o soft delete.** `sale_number` é calculado com `MAX` sobre **todas** as
+  vendas da empresa, inclusive as excluídas. O índice único não enxerga `deleted_at`, então contar só
+  as ativas faria a próxima venda reutilizar o número de uma excluída e estourar `P2002`. A mesma
+  regra vale para `purchases.purchase_number`
+- As colunas de parcelamento ficam **na venda**, não só no DTO: um orçamento a prazo pode ser
+  finalizado dias depois por `POST /sales/:id/confirm`, e o plano de parcelas precisa sobreviver até lá
 
 ### `sale_items` — Itens da venda
 
@@ -331,8 +341,8 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 
 ### `financial_entries` — Contas a receber e a pagar
 
-> **Tabela criada, sem service nem controller.** Entra em operação na entrega dos módulos
-> financeiros. Documentada aqui porque a migration já a criou e as FKs já existem.
+> Em operação para `type = RECEBER` (módulo `receivables`). O lado `PAGAR` tem a estrutura pronta,
+> mas ainda não tem service nem controller.
 
 | Coluna | Tipo | Obrig. | Descrição |
 |--------|------|--------|-----------|
@@ -359,6 +369,12 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 - **Índices:** `(company_id, type, status)` e `(company_id, due_date)` — os dois recortes que a tela
   de contas e o fluxo de caixa usam
 - Uma venda parcelada gera **N linhas**, uma por parcela, todas com o mesmo `sale_id`
+- **`status = VENCIDO` nunca é gravado.** O enum tem o valor, mas o vencimento é derivado na leitura
+  (`due_date < agora` e status em `ABERTO`/`PARCIAL`), exposto como `isOverdue`. Gravar exigiria um
+  job diário e deixaria a coluna desatualizada entre duas execuções
+- O resto dos centavos do parcelamento vai **todo na última parcela**: R$ 100,00 em 3× vira
+  33,33 + 33,33 + 33,34, senão o somatório dos títulos ficaria abaixo do total da venda para sempre
+- `paid_amount` é mantido pelo service a cada baixa; a fonte da verdade das baixas é `financial_payments`
 
 ### `financial_payments` — Baixas de um título
 
@@ -487,6 +503,7 @@ Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_i
 | `PaymentStatus` | `PENDENTE`, `APROVADO`, `RECUSADO`, `ESTORNADO` |
 | `FiscalStatus` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` |
 | `PaymentMethod` | `DINHEIRO`, `CARTAO_CREDITO`, `CARTAO_DEBITO`, `PIX`, `BOLETO`, `OUTRO` |
+| `PaymentCondition` | `A_VISTA`, `A_PRAZO` |
 | `FinancialType` | `RECEBER`, `PAGAR` |
 | `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` |
 | `UnitOfMeasure` | `UN`, `KG`, `LT`, `MT`, `CX`, `PC`, `PCT`, `DZ` |
@@ -575,6 +592,7 @@ As migrations ficam em `prisma/migrations/`.
 | `20260728120000_permission_profiles` | Cria `permission_profiles`, `permission_profile_permissions` e `membership_profiles`; adiciona `permissions.manage` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes |
 | `20260728150000_empty_member_baseline` | **Apaga todas as linhas de `company_role_permissions` com `role = 'MEMBER'`**, em todas as empresas. A partir daqui o MEMBER só tem acesso por perfil — os MEMBERs existentes ficam sem acesso até receberem um. As linhas de MEMBER em `role_permissions` são preservadas como referência |
 | `20260730133757_sales_and_financial_modules` | Recria `sales` / `sale_items` (agora com os três eixos de status) e cria `financial_entries` / `financial_payments`; adiciona os enums `SaleStatus`, `PaymentStatus`, `FiscalStatus`, `PaymentMethod`, `FinancialType` e `FinancialStatus`; acrescenta `sales.delete` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill de todos os códigos `sales.*` para as empresas existentes (MEMBER fica de fora, o baseline dele é vazio) |
+| `20260730204512_sale_payment_condition_and_receivables` | Adiciona o enum `PaymentCondition` e as colunas `payment_condition`, `installments`, `first_due_date` e `interval_days` em `sales`; acrescenta os 5 códigos `receivables.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
 
 > As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
 >

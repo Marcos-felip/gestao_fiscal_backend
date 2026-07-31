@@ -1212,6 +1212,10 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
   ],
   "discount": "number >= 0 (opcional, default 0)",
   "paymentMethod": "DINHEIRO | CARTAO_CREDITO | CARTAO_DEBITO | PIX | BOLETO | OUTRO (opcional)",
+  "paymentCondition": "A_VISTA | A_PRAZO (opcional, default A_VISTA)",
+  "installments": "int >= 1 (opcional, default 1) — só usado em A_PRAZO",
+  "firstDueDate": "ISO8601 (opcional) — default: hoje + intervalDays",
+  "intervalDays": "int >= 1 (opcional, default 30) — dias entre parcelas",
   "notes": "string (opcional)",
   "saleDate": "ISO8601 (opcional)",
   "confirm": "boolean (opcional, default false)"
@@ -1223,6 +1227,8 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
   estoque e devolve a venda já `CONCLUIDA`. Se faltar estoque, **nada é gravado** (tudo roda numa
   transação única)
 - `saleNumber` é sequencial **por empresa**
+- `paymentCondition`, `installments`, `firstDueDate` e `intervalDays` ficam **gravados na venda** e são
+  usados na finalização — inclusive quando ela acontece depois, por `POST /sales/:id/confirm`
 
 **Erros:**
 - `404` Estabelecimento não encontrado · Cliente não encontrado · Produto não encontrado: `<id>`
@@ -1275,7 +1281,18 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
 > **Permissão:** `sales.confirm` · dá **saída** no estoque de cada item.
 
 Em transação única: valida o saldo de cada produto, cria as movimentações `SAIDA`, desconta o
-`currentStock` e marca a venda como `CONCLUIDA`. Não mexe em `paymentStatus` nem em `fiscalStatus`.
+`currentStock`, marca a venda como `CONCLUIDA` e faz o **desdobramento financeiro**. Não mexe em
+`fiscalStatus`.
+
+| `paymentCondition` | `paymentStatus` resultante | Títulos gerados |
+|--------------------|----------------------------|-----------------|
+| `A_VISTA` | `APROVADO` | **nenhum** — quitada no balcão |
+| `A_PRAZO` | `PENDENTE` | `installments` títulos `RECEBER` em [Contas a receber](#contas-a-receber) |
+
+Nas vendas a prazo, cada parcela vira uma linha com `description` `"Venda #<n> (i/N)"`, `dueDate`
+= `firstDueDate + intervalDays × (i-1)`, `partnerId` = cliente da venda e `status` `ABERTO`.
+O resto dos centavos vai **todo na última parcela**: R$ 100,00 em 3× gera 33,33 + 33,33 + **33,34**,
+para o somatório fechar com o total da venda.
 
 **Erros:**
 - `400` Venda já finalizada
@@ -1290,9 +1307,16 @@ Em transação única: valida o saldo de cada produto, cria as movimentações `
 
 - Se a venda estava **CONCLUIDA**: estorna o estoque (movimentação `ENTRADA`) na mesma transação
 - Se `paymentStatus` era `APROVADO`: passa a `ESTORNADO`
+- Os títulos gerados pela venda passam a `CANCELADO`
 - Orçamento cancelado não mexe em estoque (nunca deu baixa)
 
-**Erros:** `400` Venda já cancelada
+**Erros:**
+- `400` Venda já cancelada
+- `400` Venda possui parcelas recebidas; estorne o financeiro antes
+
+> O segundo erro é **proposital**: se alguma parcela já teve baixa, o cancelamento é bloqueado em vez
+> de estornar sozinho — apagar um recebimento em silêncio perderia histórico de caixa. Cancele ou
+> estorne os títulos primeiro, depois cancele a venda.
 
 ---
 
@@ -1302,6 +1326,106 @@ Em transação única: valida o saldo de cada produto, cria as movimentações `
 > Só vendas em **ORCAMENTO** ou **CANCELADA**. Soft delete.
 
 **Erros:** `400` Apenas vendas em ORCAMENTO ou CANCELADAS podem ser excluídas
+
+---
+
+## Contas a receber
+
+Opera sobre `financial_entries` do tipo `RECEBER` e suas baixas em `financial_payments`. Os títulos
+chegam aqui por dois caminhos: **automático** (finalização de venda `A_PRAZO`) e **manual**
+(`POST /receivables`).
+
+### Status do título
+
+| Status | Significado |
+|--------|-------------|
+| `ABERTO` | Nenhuma baixa registrada |
+| `PARCIAL` | Recebido em parte (`0 < paidAmount < amount`) |
+| `PAGO` | Quitado (`paidAmount >= amount`) |
+| `CANCELADO` | Cancelado manualmente ou pelo cancelamento da venda |
+
+**`VENCIDO` não é gravado** — é derivado na leitura. Todo título traz `isOverdue: boolean`, verdadeiro
+quando `dueDate` já passou e o status é `ABERTO` ou `PARCIAL`. Não há job noturno: gravar o status
+exigiria um e deixaria a tabela mentindo entre duas execuções.
+
+---
+
+### GET /receivables — Listar títulos
+
+> **Permissão:** `receivables.list`
+
+**Query params:** `page`, `limit`, `status`, `customerId`, `saleId`, `overdue`, `startDate`, `endDate`
+
+- `startDate` / `endDate` filtram por **vencimento**
+- `overdue=true` aplica o mesmo critério do `isOverdue` no banco (vencimento passado + status em aberto),
+  para a paginação bater com o que a tela mostra
+- Ordenado por `dueDate` crescente — o mais urgente primeiro
+- Cada item traz `partner` (cliente) e `sale` (venda de origem, quando houver)
+
+---
+
+### GET /receivables/:id — Detalhar título
+
+> **Permissão:** `receivables.read` · retorna o título, o cliente, a venda de origem e a lista de `payments`.
+
+---
+
+### POST /receivables — Criar título manual
+
+> **Permissão:** `receivables.create`
+
+**Body:**
+```json
+{
+  "customerId": "uuid (opcional)",
+  "description": "string (obrigatório)",
+  "totalAmount": "number > 0 (obrigatório)",
+  "dueDate": "ISO8601 (obrigatório) — vencimento da 1ª parcela",
+  "installments": "int >= 1 (opcional, default 1)",
+  "intervalDays": "int >= 1 (opcional, default 30)",
+  "category": "string (opcional) — agrupador para relatórios"
+}
+```
+
+**Resposta 201:** um **array** com os títulos criados (uma linha por parcela).
+
+- `totalAmount` é o valor **total**, dividido entre as parcelas; o resto dos centavos vai na última
+- Com `installments > 1`, a `description` recebe o sufixo `(i/N)`
+- **Erros:** `404` Cliente não encontrado
+
+---
+
+### POST /receivables/:id/pay — Registrar baixa
+
+> **Permissão:** `receivables.pay`
+
+**Body:**
+```json
+{
+  "amount": "number > 0 (obrigatório)",
+  "paidAt": "ISO8601 (opcional, default agora)",
+  "method": "DINHEIRO | CARTAO_CREDITO | CARTAO_DEBITO | PIX | BOLETO | OUTRO (opcional)",
+  "notes": "string (opcional)"
+}
+```
+
+Em transação: cria o `FinancialPayment`, soma em `paidAmount` e recalcula o status
+(`PAGO` se quitou, senão `PARCIAL`). **Baixa parcial é suportada** — basta chamar de novo com o resto.
+
+**Erros:**
+- `400` Valor excede o saldo do título (saldo: `<valor>`)
+- `400` Não é possível baixar um título cancelado
+- `400` Título já quitado
+
+---
+
+### POST /receivables/:id/cancel — Cancelar título
+
+> **Permissão:** `receivables.cancel` (por padrão OWNER e ADMIN)
+
+**Erros:**
+- `400` Título já cancelado
+- `400` Não é possível cancelar um título já quitado
 
 ---
 
@@ -1402,6 +1526,20 @@ compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao mo
 | `purchases.cancel` | Cancelar compra | ✅ | ✅ | | `POST /purchases/:id/cancel` |
 | `purchases.delete` | Deletar compra | ✅ | ✅ | | `DELETE /purchases/:id` |
 
+### Contas a receber (`receivables`)
+
+| Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
+|--------|-----------|:-----:|:-----:|:---------------:|----------|
+| `receivables.list` | Listar contas a receber | ✅ | ✅ | | `GET /receivables` |
+| `receivables.create` | Criar conta a receber | ✅ | ✅ | | `POST /receivables` |
+| `receivables.read` | Ler dados da conta a receber | ✅ | ✅ | | `GET /receivables/:id` |
+| `receivables.pay` | Registrar baixa em conta a receber | ✅ | ✅ | | `POST /receivables/:id/pay` |
+| `receivables.cancel` | Cancelar conta a receber | ✅ | ✅ | | `POST /receivables/:id/cancel` |
+
+> Módulo novo, sem coluna 🔹: não havia padrão de MEMBER para herdar. Um perfil de financeiro costuma
+> levar `list` + `read` + `pay`; `create` e `cancel` são os que mexem no que a empresa tem a receber.
+> Vender **não** exige nada daqui — a venda a prazo gera os títulos sozinha, sob `sales.confirm`.
+
 ### Estoque (`stock`)
 
 | Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
@@ -1488,7 +1626,7 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | 0 | **A migration `20260728150000_empty_member_baseline` apagou o baseline do papel MEMBER de todas as empresas.** Todo MEMBER que já existia ficou **sem acesso a nada** até receber um perfil. | **Alto** — ver [Migração para o modelo de perfis](#migração-para-o-modelo-de-perfis) |
 | 1 | `PATCH /companies/:id` ignora o `:id` e atualiza sempre a empresa ativa. | Baixo — enviar o ID da empresa ativa para evitar confusão |
 | 2 | `POST /sales` com `confirm: true` exige apenas `sales.create` — quem pode criar a venda pode finalizá-la pelo caminho do PDV, mesmo sem `sales.confirm`. | Médio — se quiser separar quem lança de quem finaliza, não conceda `sales.create` a esse perfil |
-| 3 | As tabelas `financial_entries`, `financial_payments` e a relação `sales.financialEntries` **já existem no banco**, mas ainda não têm endpoint. | Nenhum — contas a pagar/receber entram em entrega própria |
+| 3 | Contas **a pagar** (`financial_entries` com `type: PAGAR`) tem tabela, mas ainda não tem endpoint. | Nenhum — entra em entrega própria |
 | 4 | Código de permissão inexistente devolve `404` em `PATCH /permissions/:role` e `422` nos perfis. | Baixo — tratar os dois status ao validar o formulário de permissões |
 
 ---
@@ -1511,8 +1649,12 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | `PaymentStatus` | `PENDENTE`, `APROVADO`, `RECUSADO`, `ESTORNADO` |
 | `FiscalStatus` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` |
 | `PaymentMethod` | `DINHEIRO`, `CARTAO_CREDITO`, `CARTAO_DEBITO`, `PIX`, `BOLETO`, `OUTRO` |
-| `FinancialType` | `RECEBER`, `PAGAR` (tabelas criadas, sem endpoint ainda) |
-| `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` (idem) |
+| `PaymentCondition` | `A_VISTA`, `A_PRAZO` |
+| `FinancialType` | `RECEBER`, `PAGAR` (só `RECEBER` tem endpoints) |
+| `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` |
+
+> `FinancialStatus.VENCIDO` existe no enum mas **nunca é gravado** — o vencimento é derivado na
+> leitura via `isOverdue`. Ver [Contas a receber](#contas-a-receber).
 
 > Códigos de permissão **não** são um enum: são valores livres da tabela `permissions`, consultáveis em `GET /permissions`. Ver [Catálogo de permissões](#catálogo-de-permissões).
 
@@ -1562,6 +1704,14 @@ POST /sales                  → criar orçamento (não mexe no estoque)
 PATCH /sales/:id             → ajustar itens/desconto enquanto negocia
 POST /sales/:id/confirm      → finalizar (valida saldo e dá baixa no estoque)
 POST /sales/:id/cancel       → cancelar (estorna o estoque se já estava CONCLUIDA)
+```
+
+### 3.3. Fluxo de venda a prazo → contas a receber
+```
+POST /sales { paymentCondition: "A_PRAZO", installments: 3, firstDueDate, confirm: true }
+                             → venda CONCLUIDA, paymentStatus PENDENTE, 3 títulos ABERTO
+GET  /receivables?overdue=true   → o que está vencido
+POST /receivables/:id/pay        → baixa parcial ou total
 ```
 
 ### 4. Renovar token

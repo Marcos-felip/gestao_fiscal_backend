@@ -15,8 +15,10 @@ export class PurchasesService {
 
   async create(companyId: string, dto: CreatePurchaseDto): Promise<Purchase> {
     return this.prisma.$transaction(async (tx) => {
+      // Sem filtrar deletedAt: o índice único (company_id, purchase_number)
+      // também cobre as compras excluídas — ver a mesma nota em SalesService
       const aggregate = await tx.purchase.aggregate({
-        where: { companyId, deletedAt: null },
+        where: { companyId },
         _max: { purchaseNumber: true },
       });
       const purchaseNumber = (aggregate._max.purchaseNumber ?? 0) + 1;

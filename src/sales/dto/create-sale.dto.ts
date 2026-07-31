@@ -1,11 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentMethod } from '@prisma/client';
+import { PaymentCondition, PaymentMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -44,6 +46,36 @@ export class CreateSaleDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  @ApiPropertyOptional({
+    enum: PaymentCondition,
+    default: PaymentCondition.A_VISTA,
+  })
+  @IsOptional()
+  @IsEnum(PaymentCondition)
+  paymentCondition?: PaymentCondition;
+
+  @ApiPropertyOptional({
+    default: 1,
+    description: 'Número de parcelas. Usado apenas quando A_PRAZO.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  installments?: number;
+
+  @ApiPropertyOptional({
+    description: 'Vencimento da 1ª parcela. Default: hoje + intervalDays.',
+  })
+  @IsOptional()
+  @IsDateString()
+  firstDueDate?: string;
+
+  @ApiPropertyOptional({ default: 30, description: 'Dias entre parcelas' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  intervalDays?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

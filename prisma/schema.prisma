@@ -97,6 +97,11 @@ enum PaymentMethod {
   OUTRO
 }
 
+enum PaymentCondition {
+  A_VISTA
+  A_PRAZO
+}
+
 enum FinancialType {
   RECEBER
   PAGAR
@@ -342,23 +347,27 @@ model PurchaseItem {
 }
 
 model Sale {
-  id              String         @id @default(uuid())
-  companyId       String         @map("company_id")
-  establishmentId String         @map("establishment_id")
-  customerId      String?        @map("customer_id")
-  status          SaleStatus     @default(ORCAMENTO)
-  paymentStatus   PaymentStatus  @default(PENDENTE) @map("payment_status")
-  fiscalStatus    FiscalStatus   @default(NAO_EMITIDO) @map("fiscal_status")
-  saleNumber      Int            @map("sale_number")
-  subtotal        Decimal        @db.Decimal(12, 2)
-  discount        Decimal        @default(0) @db.Decimal(12, 2)
-  totalAmount     Decimal        @map("total_amount") @db.Decimal(12, 2)
-  paymentMethod   PaymentMethod? @map("payment_method")
-  notes           String?
-  saleDate        DateTime       @default(now()) @map("sale_date")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  deletedAt       DateTime?      @map("deleted_at")
+  id               String           @id @default(uuid())
+  companyId        String           @map("company_id")
+  establishmentId  String           @map("establishment_id")
+  customerId       String?          @map("customer_id")
+  status           SaleStatus       @default(ORCAMENTO)
+  paymentStatus    PaymentStatus    @default(PENDENTE) @map("payment_status")
+  fiscalStatus     FiscalStatus     @default(NAO_EMITIDO) @map("fiscal_status")
+  saleNumber       Int              @map("sale_number")
+  subtotal         Decimal          @db.Decimal(12, 2)
+  discount         Decimal          @default(0) @db.Decimal(12, 2)
+  totalAmount      Decimal          @map("total_amount") @db.Decimal(12, 2)
+  paymentMethod    PaymentMethod?   @map("payment_method")
+  paymentCondition PaymentCondition @default(A_VISTA) @map("payment_condition")
+  installments     Int              @default(1)
+  firstDueDate     DateTime?        @map("first_due_date")
+  intervalDays     Int              @default(30) @map("interval_days")
+  notes            String?
+  saleDate         DateTime         @default(now()) @map("sale_date")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  deletedAt        DateTime?        @map("deleted_at")
 
   company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   establishment    Establishment    @relation(fields: [establishmentId], references: [id])
