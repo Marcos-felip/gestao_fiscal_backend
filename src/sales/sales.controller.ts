@@ -27,6 +27,7 @@ import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
 import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentCompany } from '../common/decorators/current-company.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('sales')
 @ApiBearerAuth()
@@ -43,8 +44,12 @@ export class SalesController {
       'Com confirm: true a venda já é finalizada e dá baixa no estoque na mesma chamada.',
   })
   @ApiResponse({ status: 201 })
-  create(@CurrentCompany() companyId: string, @Body() dto: CreateSaleDto) {
-    return this.salesService.create(companyId, dto);
+  create(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreateSaleDto,
+  ) {
+    return this.salesService.create(companyId, dto, user.id);
   }
 
   @Get()
@@ -104,9 +109,10 @@ export class SalesController {
   confirm(
     @Param('id') id: string,
     @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string },
     @Body() dto: ConfirmSaleDto,
   ) {
-    return this.salesService.confirm(id, companyId, dto);
+    return this.salesService.confirm(id, companyId, user.id, dto);
   }
 
   @Post(':id/cancel')
