@@ -1,0 +1,18 @@
+schema: spec-driven
+
+context: |
+  Projeto: Gestão Fiscal — ERP/PDV SaaS multi-tenant (Brasil).
+  Backend: NestJS + Prisma + PostgreSQL, Clean Architecture, tenant resolvido
+  no servidor por user.companyActiveId. Já existem: empresas, estabelecimentos,
+  usuários/permissões (papel + permissão granular dominio.acao), produtos,
+  parceiros, vendas, pagamentos (SalePayment), caixa (CashSession), estoque,
+  financeiro (FinancialEntry).
+  Novo: módulo fiscal. MVP = NFC-e (modelo 65) com EMISSÃO NATIVA.
+  Arquitetura fiscal: o NestJS orquestra (config, documento fiscal, numeração,
+  snapshot, status, fila, storage) e um microserviço .NET ("fiscal-engine",
+  usando DFe.NET/Zeus) é o motor (montar/assinar XML, transmitir à SEFAZ, gerar
+  DANFE/QR, cancelar, consultar). Comunicação HTTP interna autenticada; o Nest
+  injeta a porta IFiscalEngine. Certificado A1 fica criptografado no Nest e é
+  enviado ao motor por requisição (motor stateless).
+  Fora do MVP: NF-e (55), NFS-e, DF-e, manifestação, devoluções, CC-e,
+  complementar, CT-e/MDF-e, SPED.
