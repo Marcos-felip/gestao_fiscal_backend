@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CompanyType, TaxRegime } from '@prisma/client';
 import {
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -59,6 +60,15 @@ export class UpdateCompanyDto {
       'Regime tributário inválido. Valores válidos: SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL, MEI',
   })
   taxRegime?: TaxRegime;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'Fechamento de caixa às cegas: o operador não vê o valor esperado antes de contar',
+  })
+  @IsOptional()
+  @IsBoolean()
+  cashBlindClose?: boolean;
 
   @ApiPropertyOptional({
     description: 'Dados do estabelecimento MATRIZ para atualizar (opcional)',

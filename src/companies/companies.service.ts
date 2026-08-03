@@ -210,6 +210,8 @@ export class CompaniesService {
     if (dto.cnpj !== undefined) updateData.cnpj = dto.cnpj;
     if (dto.phone !== undefined) updateData.phone = dto.phone;
     if (dto.taxRegime !== undefined) updateData.taxRegime = dto.taxRegime;
+    if (dto.cashBlindClose !== undefined)
+      updateData.cashBlindClose = dto.cashBlindClose;
 
     // Se establishment foi fornecido, fazer operação em transação
     if (dto.establishment !== undefined && dto.establishment !== null) {
