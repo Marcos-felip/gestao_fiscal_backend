@@ -18,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
+import { ConfirmSaleDto } from './dto/confirm-sale.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
 import { FilterSaleDto } from './dto/filter-sale.dto';
@@ -94,10 +95,18 @@ export class SalesController {
   @Post(':id/confirm')
   @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
   @RequirePermission('sales.confirm')
-  @ApiOperation({ summary: 'Finalizar venda e dar saída no estoque' })
+  @ApiOperation({
+    summary: 'Finalizar venda e dar saída no estoque',
+    description:
+      'Venda A_VISTA exige payments somando o total. Em A_PRAZO o corpo é ignorado e os títulos são gerados.',
+  })
   @ApiResponse({ status: 200 })
-  confirm(@Param('id') id: string, @CurrentCompany() companyId: string) {
-    return this.salesService.confirm(id, companyId);
+  confirm(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+    @Body() dto: ConfirmSaleDto,
+  ) {
+    return this.salesService.confirm(id, companyId, dto);
   }
 
   @Post(':id/cancel')

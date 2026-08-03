@@ -222,7 +222,7 @@ As seguintes operações **obrigatoriamente** usam `prisma.$transaction()`:
 - Confirmar compra (criar StockMovements + atualizar currentStock + confirmar purchase + gerar os títulos a pagar quando A_PRAZO)
 - Cancelar compra confirmada (cancelar títulos a pagar + reverter StockMovements + atualizar currentStock)
 - Criar venda (numeração + validar estabelecimento/cliente/produtos + criar itens; com `confirm: true` a baixa de estoque entra na mesma transação)
-- Finalizar venda (validar saldo + criar StockMovements SAIDA + atualizar currentStock + concluir sale + gerar os títulos quando A_PRAZO)
+- Finalizar venda (validar pagamentos + validar saldo + criar StockMovements SAIDA + atualizar currentStock + concluir sale + gravar os SalePayments quando A_VISTA ou gerar os títulos quando A_PRAZO)
 - Cancelar venda concluída (cancelar títulos + reverter StockMovements + atualizar currentStock + estornar paymentStatus)
 - Criar título a receber ou a pagar parcelado (uma linha por parcela)
 - Baixar título (criar FinancialPayment + atualizar paidAmount + recalcular status)

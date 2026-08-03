@@ -5,6 +5,7 @@ import {
   FinancialType,
   PartnerType,
   PaymentCondition,
+  PaymentMethod,
   PaymentStatus,
   SaleStatus,
   StockMovementType,
@@ -22,6 +23,9 @@ const mockTx = {
   saleItem: {
     findMany: jest.fn(),
     deleteMany: jest.fn(),
+  },
+  salePayment: {
+    createMany: jest.fn(),
   },
   financialEntry: {
     createMany: jest.fn(),
@@ -200,6 +204,7 @@ describe('SalesService', () => {
         establishmentId: 'est-1',
         confirm: true,
         items: [{ productId: 'prod-1', quantity: 3, unitPrice: 25 }],
+        payments: [{ method: PaymentMethod.PIX, amount: 75 }],
       };
       const result = await service.create('comp-1', dto as any);
 
@@ -220,6 +225,7 @@ describe('SalesService', () => {
           data: {
             status: SaleStatus.CONCLUIDA,
             paymentStatus: PaymentStatus.APROVADO,
+            paymentMethod: PaymentMethod.PIX,
           },
         }),
       );
@@ -256,7 +262,9 @@ describe('SalesService', () => {
       const finalized = { id: 'sale-1', status: SaleStatus.CONCLUIDA };
       mockTx.sale.update.mockResolvedValue(finalized);
 
-      const result = await service.confirm('sale-1', 'comp-1');
+      const result = await service.confirm('sale-1', 'comp-1', {
+        payments: [{ method: PaymentMethod.DINHEIRO, amount: 100 }],
+      } as any);
 
       expect(mockTx.stockMovement.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -276,6 +284,7 @@ describe('SalesService', () => {
           data: {
             status: SaleStatus.CONCLUIDA,
             paymentStatus: PaymentStatus.APROVADO,
+            paymentMethod: PaymentMethod.DINHEIRO,
           },
         }),
       );
@@ -378,7 +387,9 @@ describe('SalesService', () => {
         prazoSale({ paymentCondition: PaymentCondition.A_VISTA }),
       );
 
-      await service.confirm('sale-1', 'comp-1');
+      await service.confirm('sale-1', 'comp-1', {
+        payments: [{ method: PaymentMethod.DINHEIRO, amount: 100 }],
+      } as any);
 
       expect(mockTx.financialEntry.createMany).not.toHaveBeenCalled();
       expect(mockTx.sale.update).toHaveBeenCalledWith(
@@ -386,6 +397,7 @@ describe('SalesService', () => {
           data: {
             status: SaleStatus.CONCLUIDA,
             paymentStatus: PaymentStatus.APROVADO,
+            paymentMethod: PaymentMethod.DINHEIRO,
           },
         }),
       );
@@ -461,6 +473,158 @@ describe('SalesService', () => {
       expect(rows[0].dueDate.toISOString().slice(0, 10)).toBe(
         expected.toISOString().slice(0, 10),
       );
+    });
+  });
+
+  describe('confirm — pagamentos da venda à vista', () => {
+    const cashSale = (overrides: Record<string, unknown> = {}) => ({
+      id: 'sale-1',
+      saleNumber: 42,
+      status: SaleStatus.EM_ABERTO,
+      establishmentId: 'est-1',
+      totalAmount: 100,
+      paymentCondition: PaymentCondition.A_VISTA,
+      installments: 1,
+      intervalDays: 30,
+      ...overrides,
+    });
+
+    const confirmWith = (payments: unknown[]) =>
+      service.confirm('sale-1', 'comp-1', { payments } as any);
+
+    beforeEach(() => {
+      mockTx.sale.findFirst.mockResolvedValue(cashSale());
+      mockTx.saleItem.findMany.mockResolvedValue([
+        { productId: 'prod-1', quantity: 1 },
+      ]);
+      mockTx.product.findFirst.mockResolvedValue({
+        id: 'prod-1',
+        name: 'Caneta',
+        currentStock: 10,
+      });
+      mockTx.sale.update.mockResolvedValue({ id: 'sale-1' });
+    });
+
+    it('should persist one row per payment method', async () => {
+      await confirmWith([
+        { method: PaymentMethod.PIX, amount: 60 },
+        { method: PaymentMethod.CARTAO_DEBITO, amount: 40 },
+      ]);
+
+      expect(mockTx.salePayment.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            companyId: 'comp-1',
+            saleId: 'sale-1',
+            method: PaymentMethod.PIX,
+            amount: 60,
+            amountReceived: null,
+            changeGiven: null,
+          },
+          {
+            companyId: 'comp-1',
+            saleId: 'sale-1',
+            method: PaymentMethod.CARTAO_DEBITO,
+            amount: 40,
+            amountReceived: null,
+            changeGiven: null,
+          },
+        ],
+      });
+    });
+
+    it('should compute the change for a cash payment', async () => {
+      await confirmWith([
+        { method: PaymentMethod.DINHEIRO, amount: 100, amountReceived: 150 },
+      ]);
+
+      expect(mockTx.salePayment.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            amount: 100,
+            amountReceived: 150,
+            changeGiven: 50,
+          }),
+        ],
+      });
+    });
+
+    it('should reject a cash payment received below its amount', async () => {
+      await expect(
+        confirmWith([
+          { method: PaymentMethod.DINHEIRO, amount: 100, amountReceived: 90 },
+        ]),
+      ).rejects.toThrow(
+        'O valor recebido em dinheiro não pode ser menor que o valor do pagamento',
+      );
+      expect(mockTx.salePayment.createMany).not.toHaveBeenCalled();
+    });
+
+    it('should ignore amountReceived on a non-cash method', async () => {
+      await confirmWith([
+        { method: PaymentMethod.PIX, amount: 100, amountReceived: 150 },
+      ]);
+
+      expect(mockTx.salePayment.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({ amountReceived: null, changeGiven: null }),
+        ],
+      });
+    });
+
+    it('should reject payments that do not add up to the total', async () => {
+      await expect(
+        confirmWith([{ method: PaymentMethod.PIX, amount: 90 }]),
+      ).rejects.toThrow('Os pagamentos devem somar o total da venda');
+    });
+
+    it('should accept a one cent difference', async () => {
+      await confirmWith([{ method: PaymentMethod.PIX, amount: 99.99 }]);
+
+      expect(mockTx.salePayment.createMany).toHaveBeenCalled();
+    });
+
+    it('should require payments to finalize a cash sale', async () => {
+      await expect(service.confirm('sale-1', 'comp-1')).rejects.toThrow(
+        'Informe as formas de pagamento para finalizar uma venda à vista',
+      );
+      expect(mockTx.stockMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('should not touch the stock when the payments are invalid', async () => {
+      await expect(
+        confirmWith([{ method: PaymentMethod.PIX, amount: 50 }]),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockTx.stockMovement.create).not.toHaveBeenCalled();
+      expect(mockTx.product.update).not.toHaveBeenCalled();
+      expect(mockTx.sale.update).not.toHaveBeenCalled();
+    });
+
+    it('should record the largest payment as the predominant method', async () => {
+      await confirmWith([
+        { method: PaymentMethod.DINHEIRO, amount: 30 },
+        { method: PaymentMethod.CARTAO_CREDITO, amount: 70 },
+      ]);
+
+      expect(mockTx.sale.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            paymentMethod: PaymentMethod.CARTAO_CREDITO,
+          }),
+        }),
+      );
+    });
+
+    it('should ignore payments on a credit sale', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(
+        cashSale({ paymentCondition: PaymentCondition.A_PRAZO }),
+      );
+
+      await confirmWith([{ method: PaymentMethod.PIX, amount: 999 }]);
+
+      expect(mockTx.salePayment.createMany).not.toHaveBeenCalled();
+      expect(mockTx.financialEntry.createMany).toHaveBeenCalled();
     });
   });
 

@@ -17,6 +17,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { CreateSaleItemDto } from './create-sale-item.dto';
+import { SalePaymentDto } from './sale-payment.dto';
 
 export class CreateSaleDto {
   @ApiProperty()
@@ -42,10 +43,25 @@ export class CreateSaleDto {
   @Min(0)
   discount?: number;
 
-  @ApiPropertyOptional({ enum: PaymentMethod })
+  @ApiPropertyOptional({
+    enum: PaymentMethod,
+    description:
+      'Forma predominante, apenas para exibição. Ao finalizar à vista é sobrescrita pela forma de maior valor em payments.',
+  })
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  @ApiPropertyOptional({
+    type: [SalePaymentDto],
+    description:
+      'Formas de pagamento. Obrigatório ao finalizar (confirm: true) uma venda A_VISTA; a soma deve fechar o total. Ignorado em A_PRAZO e no orçamento.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SalePaymentDto)
+  payments?: SalePaymentDto[];
 
   @ApiPropertyOptional({
     enum: PaymentCondition,
