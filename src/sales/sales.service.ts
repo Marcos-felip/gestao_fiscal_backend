@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  CashSessionStatus,
   FinancialStatus,
   FinancialType,
   PartnerType,
@@ -86,7 +87,11 @@ const SALE_INCLUDE = { items: true, payments: true };
 export class SalesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(companyId: string, dto: CreateSaleDto): Promise<Sale> {
+  async create(
+    companyId: string,
+    dto: CreateSaleDto,
+    operatorId: string,
+  ): Promise<Sale> {
     return this.prisma.$transaction(async (tx) => {
       // Sem filtrar deletedAt de propósito: o índice único (company_id,
       // sale_number) também cobre as vendas excluídas, então ignorá-las aqui
@@ -144,7 +149,7 @@ export class SalesService {
         return sale;
       }
 
-      return this.finalize(tx, companyId, sale, dto.payments);
+      return this.finalize(tx, companyId, sale, operatorId, dto.payments);
     });
   }
 
@@ -319,6 +324,7 @@ export class SalesService {
   async confirm(
     id: string,
     companyId: string,
+    operatorId: string,
     dto: ConfirmSaleDto = {},
   ): Promise<Sale> {
     return this.prisma.$transaction(async (tx) => {
@@ -338,7 +344,7 @@ export class SalesService {
         );
       }
 
-      return this.finalize(tx, companyId, sale, dto.payments);
+      return this.finalize(tx, companyId, sale, operatorId, dto.payments);
     });
   }
 
@@ -351,6 +357,7 @@ export class SalesService {
     tx: Prisma.TransactionClient,
     companyId: string,
     sale: Sale,
+    operatorId: string,
     payments?: SalePaymentDto[],
   ): Promise<Sale> {
     const isCash = sale.paymentCondition === PaymentCondition.A_VISTA;
@@ -360,6 +367,20 @@ export class SalesService {
     const settlement = isCash
       ? this.buildPayments(Number(sale.totalAmount), payments)
       : null;
+
+    const cashSession = await tx.cashSession.findFirst({
+      where: { companyId, operatorId, status: CashSessionStatus.ABERTA },
+      select: { id: true },
+    });
+
+    // Dinheiro à vista tem que cair em alguma gaveta, e a gaveta é a sessão. A
+    // venda a prazo não passa pelo caixa, mas é carimbada quando existe sessão
+    // aberta para o fechamento conseguir mostrar quanto do turno saiu fiado.
+    if (isCash && !cashSession) {
+      throw new BadRequestException(
+        'Abra um caixa para registrar vendas em dinheiro',
+      );
+    }
 
     await this.applyStockExit(tx, companyId, sale.id, sale.saleNumber);
 
@@ -383,6 +404,7 @@ export class SalesService {
       data: {
         status: SaleStatus.CONCLUIDA,
         paymentStatus: isCash ? PaymentStatus.APROVADO : PaymentStatus.PENDENTE,
+        ...(cashSession ? { cashSessionId: cashSession.id } : {}),
         // Coluna mantida só para exibição e relatório; a verdade está em payments
         ...(settlement ? { paymentMethod: settlement.predominant } : {}),
       },

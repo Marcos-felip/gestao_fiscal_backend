@@ -505,6 +505,10 @@ transação.
 > uma venda pode finalizá-la pelo PDV mesmo sem `sales.confirm`. Se a operação precisar separar quem
 > lança de quem finaliza, o perfil de quem só lança **não** pode ter `sales.create`.
 
+Desde o módulo de [caixa](#94-caixa), finalizar uma venda `A_VISTA` por esse caminho exige que o
+operador tenha uma **sessão de caixa aberta** — o PDV precisa consultar `GET /cash-sessions/current`
+antes de vender.
+
 `GET /sales/context` devolve estabelecimentos, clientes e produtos ativos numa chamada só, também sob
 `sales.create`. É o que permite que o perfil do vendedor tenha **apenas `sales.*`**: sem esse
 endpoint, a tela do PDV dependeria de `establishments.list`, `partners.list` e `products.list`, e
@@ -595,6 +599,85 @@ alçadas com perfis diferentes.
 
 ---
 
+## 9.4. Caixa
+
+Duas entidades e um turno:
+
+- **Terminal** (`cash_registers`) — a gaveta física, cadastrada por estabelecimento
+- **Sessão** (`cash_sessions`) — o turno de um operador naquele terminal, da abertura ao fechamento
+
+A sessão é o que dá endereço ao dinheiro: sem ela, uma diferença na gaveta não teria a quem ser
+atribuída, nem período em que teria acontecido.
+
+### Abertura
+
+- O operador é sempre o usuário autenticado — não se abre caixa em nome de outro
+- `openingAmount` é o fundo de troco que entra na gaveta
+- **Um terminal aceita uma sessão aberta por vez** (`Este caixa já tem uma sessão aberta`)
+- **Um operador só pode ter uma sessão aberta por vez** (`Você já tem um caixa aberto`) — em dois
+  terminais ao mesmo tempo ficaria ambíguo em qual gaveta a venda dele entra
+- Terminal inativo não aceita abertura
+
+### Vender exige caixa aberto
+
+Finalizar uma venda **`A_VISTA`** sem sessão aberta é bloqueado com
+`Abra um caixa para registrar vendas em dinheiro`. Vale tanto para `POST /sales { confirm: true }`
+quanto para `POST /sales/:id/confirm`.
+
+- Venda **`A_PRAZO`** não exige caixa: não entra dinheiro na gaveta, entra título a receber
+- **Orçamento** não exige caixa — nada é movimentado
+- Toda venda finalizada com sessão aberta é carimbada com `cash_session_id`, **inclusive a a prazo**.
+  Não é dinheiro em gaveta; é o que permite o turno responder quanto saiu fiado
+- O carimbo é do operador que finalizou, não de quem criou o orçamento
+
+### Sangria e suprimento
+
+- `SANGRIA` tira dinheiro da gaveta (depósito bancário, retirada de segurança) e **diminui** o esperado
+- `SUPRIMENTO` coloca (reforço de troco) e **aumenta** o esperado
+- O valor é sempre positivo — o sinal vem do tipo
+- Só é aceito em sessão `ABERTA`
+
+### Conferência e fechamento
+
+A conferência é **só de dinheiro**. Cartão e PIX aparecem no resumo como informação, mas não entram
+no esperado em gaveta: esse dinheiro nunca passou por ela e não é o operador quem responde por ele.
+
+```
+esperado = fundo de troco + vendas em dinheiro + suprimentos - sangrias
+diferença = contado - esperado
+```
+
+- `vendas em dinheiro` = soma dos `sale_payments` com `method = DINHEIRO` das vendas `CONCLUIDA`
+  da sessão. Venda cancelada sai da conta porque deixa de ser `CONCLUIDA`
+- Diferença **negativa é falta**, positiva é sobra
+- **O caixa fecha sempre.** Quebra é fato a registrar, não motivo para travar o turno
+- Diferença acima de **1 centavo** exige justificativa: `Informe uma observação para a diferença de caixa`
+- Sessão fechada não reabre nem aceita movimentação
+
+### Fechamento às cegas
+
+Configurável por empresa em `companies.cash_blind_close` (padrão desligado). Serve para o operador
+contar a gaveta sem saber o alvo — conferência cega vale mais do que conferência com gabarito.
+
+Com a política ligada e a sessão ainda **aberta**, ficam ocultos o esperado em gaveta, as vendas em
+dinheiro, o total vendido, o detalhamento por forma de pagamento e o total a prazo. Continuam
+visíveis o fundo de troco, sangrias, suprimentos e a quantidade de vendas.
+
+> Esconder apenas o esperado não resolveria: o operador somaria fundo + dinheiro + suprimentos −
+> sangrias e chegaria ao mesmo número. Por isso o bloqueio é do conjunto.
+
+Depois do fechamento tudo é revelado, inclusive para quem fechou: a cegueira existe até a contagem,
+não depois dela.
+
+### Regras adicionais
+
+- Terminal com sessão aberta **não pode ser desativado nem excluído**
+- Sessão **não tem soft delete**: é registro de auditoria do turno
+- O histórico (`cash.list`) é de supervisão — enxerga os turnos de todos os operadores; o operador
+  comum precisa apenas da própria sessão (`cash.read`)
+
+---
+
 ## 10. Soft Delete
 
 - Registros "excluídos" **não são apagados do banco** — recebem `deleted_at = data/hora`
@@ -612,3 +695,5 @@ alçadas com perfis diferentes.
 | Venda CONCLUIDA | Não pode ser excluída nem editada (apenas cancelada) |
 | Venda com parcela recebida | Não pode ser cancelada até o financeiro ser estornado |
 | Título PAGO | Não pode ser cancelado |
+| Caixa com sessão aberta | Não pode ser desativado nem excluído |
+| Sessão de caixa | Não tem soft delete — é registro de auditoria do turno |

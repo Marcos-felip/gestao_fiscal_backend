@@ -80,6 +80,7 @@
                   │ sale_number (UQ p/ emp)│
                   │ subtotal, discount     │
                   │ total_amount           │
+                  │ cash_session_id (FK opc│──> cash_sessions
                   │ deleted_at             │
                   └───────┬────────────────┘
                           │1:N
@@ -97,6 +98,25 @@
                   │ change_given   │  (troco)
                   │ (FK: sale CASC)│
                   └────────────────┘
+
+  ── Caixa ──
+
+                  ┌────────────────┐          ┌──────────────────────────┐
+                  │ cash_registers │────1:N──<│      cash_sessions       │  o turno do operador
+                  │────────────────│          │──────────────────────────│
+                  │ id (PK)        │          │ id (PK)                  │
+                  │ company_id(FK) │          │ cash_register_id (FK)    │
+                  │ establishment_ │          │ operator_id (FK users)   │
+                  │   id (FK)      │          │ status (ABERTA/FECHADA)  │
+                  │ name (UQ p/    │          │ opening_amount           │
+                  │  estab.)       │          │ expected/counted_cash    │  (só no fechamento)
+                  │ is_active      │          │ difference, closing_notes│
+                  │ deleted_at     │          └────────────┬─────────────┘
+                  └────────────────┘                       │1:N
+                                               ┌───────────┴──────────────┐
+                                               │      cash_movements      │  sangria / suprimento
+                                               │ (FK: session ON DEL CASC)│
+                                               └──────────────────────────┘
 
   ── Financeiro (RECEBER → /receivables · PAGAR → /payables) ──
 
@@ -192,6 +212,7 @@
 | `cnpj` | VARCHAR | ❌ | CNPJ (único, preenchido no onboarding) |
 | `tax_regime` | ENUM | ❌ | Regime tributário |
 | `is_onboarded` | BOOLEAN | ✅ | Empresa configurada? |
+| `cash_blind_close` | BOOLEAN | ✅ | Default `false`; fechamento de caixa às cegas (o operador não vê o esperado antes de contar) |
 | `created_at` | TIMESTAMP | ✅ | |
 | `updated_at` | TIMESTAMP | ✅ | |
 | `deleted_at` | TIMESTAMP | ❌ | Soft delete |
@@ -327,6 +348,7 @@ Colunas de parcelamento, espelhando `sales`:
 | `first_due_date` | TIMESTAMP | ❌ | Vencimento da 1ª parcela; nulo = hoje + `interval_days` na finalização |
 | `interval_days` | INTEGER | ✅ | Dias entre parcelas (default 30) |
 | `notes` | TEXT | ❌ | Observações |
+| `cash_session_id` | UUID (FK) | ❌ | Sessão de caixa que registrou a venda (`ON DELETE SET NULL`) |
 | `sale_date` | TIMESTAMP | ✅ | Data da venda (default agora) |
 | `created_at` / `updated_at` | TIMESTAMP | ✅ | |
 | `deleted_at` | TIMESTAMP | ❌ | Soft delete |
@@ -348,6 +370,9 @@ Colunas de parcelamento, espelhando `sales`:
   regra vale para `purchases.purchase_number`
 - As colunas de parcelamento ficam **na venda**, não só no DTO: um orçamento a prazo pode ser
   finalizado dias depois por `POST /sales/:id/confirm`, e o plano de parcelas precisa sobreviver até lá
+- `cash_session_id` é carimbado na **finalização**, quando o operador tem sessão aberta — inclusive na
+  venda a prazo, que não põe dinheiro na gaveta mas conta como movimento do turno. Orçamento e venda
+  finalizada sem sessão ficam nulos. Ver [`cash_sessions`](#cash_sessions--turnos-de-caixa)
 
 ### `sale_items` — Itens da venda
 
@@ -384,6 +409,68 @@ Colunas de parcelamento, espelhando `sales`:
   passa a valer apenas como **forma predominante** (a de maior `amount`), para exibição e relatório
 - **Sem soft delete:** cancelar a venda não apaga os pagamentos — são histórico de caixa
 - Nas demais formas que não DINHEIRO, `amount_received` e `change_given` ficam nulos
+
+### `cash_registers` — Terminais de caixa
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Empresa (`ON DELETE CASCADE`) |
+| `establishment_id` | UUID (FK) | ✅ | Estabelecimento onde a gaveta fica |
+| `name` | VARCHAR | ✅ | Ex: "Caixa 01" |
+| `is_active` | BOOLEAN | ✅ | Default `true`; inativo não aceita abertura |
+| `created_at` / `updated_at` | TIMESTAMP | ✅ | |
+| `deleted_at` | TIMESTAMP | ❌ | Soft delete |
+
+- **UNIQUE:** `(company_id, establishment_id, name)` — dois estabelecimentos podem ter cada um o seu
+  "Caixa 01"
+- Terminal com sessão aberta não pode ser desativado nem excluído
+
+### `cash_sessions` — Turnos de caixa
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Empresa (`ON DELETE CASCADE`) |
+| `establishment_id` | UUID (FK) | ✅ | Copiado do terminal na abertura |
+| `cash_register_id` | UUID (FK) | ✅ | Terminal |
+| `operator_id` | UUID (FK → `users.id`) | ✅ | Quem abriu o turno |
+| `status` | ENUM `CashSessionStatus` | ✅ | Default `ABERTA` |
+| `opening_amount` | DECIMAL(12,2) | ✅ | Fundo de troco na abertura |
+| `opened_at` | TIMESTAMP | ✅ | Default agora |
+| `closed_at` | TIMESTAMP | ❌ | Preenchido no fechamento |
+| `expected_cash` | DECIMAL(12,2) | ❌ | Esperado em gaveta, **congelado no fechamento** |
+| `counted_cash` | DECIMAL(12,2) | ❌ | Dinheiro contado pelo operador |
+| `difference` | DECIMAL(12,2) | ❌ | `counted_cash - expected_cash`; negativo é falta |
+| `closing_notes` | TEXT | ❌ | Justificativa; obrigatória quando há diferença |
+| `created_at` / `updated_at` | TIMESTAMP | ✅ | |
+
+- **Sem `deleted_at`:** a sessão é registro de auditoria do turno, não se exclui
+- As quatro colunas de fechamento ficam nulas enquanto a sessão está aberta — os números do turno em
+  andamento são **calculados na leitura**, não gravados
+- `expected_cash` é gravado uma vez, no `close`: é o valor contra o qual a contagem foi conferida
+  naquele instante. Recalcular depois daria outro número se uma venda fosse cancelada
+- **Unicidade da sessão aberta é garantida pelo service, não pelo banco** — um terminal com uma
+  aberta, um operador com uma aberta. Um índice parcial `UNIQUE ... WHERE status = 'ABERTA'` daria a
+  garantia no banco, mas devolveria `409` genérico no lugar das duas mensagens que a tela precisa
+  distinguir
+
+### `cash_movements` — Sangrias e suprimentos
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Empresa (`ON DELETE CASCADE`) |
+| `session_id` | UUID (FK) | ✅ | Sessão (`ON DELETE CASCADE`) |
+| `type` | ENUM `CashMovementType` | ✅ | `SANGRIA` tira da gaveta, `SUPRIMENTO` coloca |
+| `amount` | DECIMAL(12,2) | ✅ | Sempre positivo — o sinal vem do `type` |
+| `reason` | TEXT | ❌ | Ex: "Depósito bancário" |
+| `created_by_id` | UUID (FK → `users.id`) | ✅ | Quem registrou |
+| `created_at` | TIMESTAMP | ✅ | |
+
+- **Sem soft delete e sem `updated_at`:** movimento de gaveta não se edita nem se apaga; o que se faz
+  é lançar o contrário
+- Só aceito em sessão `ABERTA`
 
 ### `financial_entries` — Contas a receber e a pagar
 
@@ -557,6 +644,8 @@ Colunas de parcelamento, espelhando `sales`:
 | `FinancialType` | `RECEBER`, `PAGAR` |
 | `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` |
 | `UnitOfMeasure` | `UN`, `KG`, `LT`, `MT`, `CX`, `PC`, `PCT`, `DZ` |
+| `CashSessionStatus` | `ABERTA`, `FECHADA` |
+| `CashMovementType` | `SANGRIA`, `SUPRIMENTO` |
 
 ---
 
@@ -590,6 +679,21 @@ Colunas de parcelamento, espelhando `sales`:
 | `sale_payments` | INDEX | `company_id` |
 | `sale_payments` | FK CASCADE | `sale_id → sales(id)` |
 | `sale_payments` | FK CASCADE | `company_id → companies(id)` |
+| `sales` | INDEX | `cash_session_id` |
+| `sales` | FK SET NULL | `cash_session_id → cash_sessions(id)` |
+| `cash_registers` | UNIQUE | `(company_id, establishment_id, name)` |
+| `cash_registers` | INDEX | `company_id` |
+| `cash_registers` | FK CASCADE | `company_id → companies(id)` |
+| `cash_registers` | FK RESTRICT | `establishment_id → establishments(id)` |
+| `cash_sessions` | INDEX | `(company_id, status)` |
+| `cash_sessions` | INDEX | `(cash_register_id, status)` |
+| `cash_sessions` | INDEX | `(operator_id, status)` |
+| `cash_sessions` | FK CASCADE | `company_id → companies(id)` |
+| `cash_sessions` | FK RESTRICT | `cash_register_id → cash_registers(id)`, `establishment_id`, `operator_id` |
+| `cash_movements` | INDEX | `session_id` |
+| `cash_movements` | INDEX | `company_id` |
+| `cash_movements` | FK CASCADE | `session_id → cash_sessions(id)`, `company_id → companies(id)` |
+| `cash_movements` | FK RESTRICT | `created_by_id → users(id)` |
 | `financial_entries` | INDEX | `(company_id, type, status)` |
 | `financial_entries` | INDEX | `(company_id, due_date)` |
 | `financial_entries` | FK CASCADE | `company_id → companies(id)` |
@@ -620,7 +724,7 @@ Colunas de parcelamento, espelhando `sales`:
 
 ## Soft Delete
 
-Todas as tabelas de negócio (exceto `purchase_items`, `sale_items`, `financial_payments` e as tabelas de autorização — `permissions`, `role_permissions`, `company_role_permissions`, `permission_profiles`, `permission_profile_permissions` e `membership_profiles`) possuem o campo `deleted_at TIMESTAMP NULL`.
+Todas as tabelas de negócio (exceto `purchase_items`, `sale_items`, `sale_payments`, `financial_payments`, `cash_sessions`, `cash_movements` e as tabelas de autorização — `permissions`, `role_permissions`, `company_role_permissions`, `permission_profiles`, `permission_profile_permissions` e `membership_profiles`) possuem o campo `deleted_at TIMESTAMP NULL`.
 
 - Registros ativos: `deleted_at IS NULL`
 - Registros excluídos: `deleted_at IS NOT NULL`
@@ -649,6 +753,7 @@ As migrations ficam em `prisma/migrations/`.
 | `20260730204512_sale_payment_condition_and_receivables` | Adiciona o enum `PaymentCondition` e as colunas `payment_condition`, `installments`, `first_due_date` e `interval_days` em `sales`; acrescenta os 5 códigos `receivables.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
 | `20260731132618_purchase_payment_condition_and_payables` | Adiciona as mesmas quatro colunas de parcelamento em `purchases`; acrescenta os 5 códigos `payables.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora). Nenhuma tabela nova: contas a pagar reusa `financial_entries` / `financial_payments` |
 | `20260731144625_sale_payments` | Cria `sale_payments` (várias formas de pagamento por venda, com valor recebido e troco). Sem permissões novas: o pagamento entra pelas rotas de venda já existentes |
+| `20260731153056_cash_registers_and_sessions` | Cria `cash_registers`, `cash_sessions` e `cash_movements` e os enums `CashSessionStatus` e `CashMovementType`; adiciona `companies.cash_blind_close` e `sales.cash_session_id`; acrescenta os 10 códigos `cash-registers.*` e `cash.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
 
 > As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
 >

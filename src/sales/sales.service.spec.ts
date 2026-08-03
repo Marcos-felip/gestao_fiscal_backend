@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
+  CashSessionStatus,
   FinancialStatus,
   FinancialType,
   PartnerType,
@@ -45,6 +46,9 @@ const mockTx = {
   stockMovement: {
     create: jest.fn(),
   },
+  cashSession: {
+    findFirst: jest.fn(),
+  },
 };
 
 const mockPrismaService = {
@@ -82,6 +86,9 @@ describe('SalesService', () => {
     mockPrismaService.$transaction.mockImplementation((callback) =>
       callback(mockTx),
     );
+    // O operador tem caixa aberto por padrão: só os testes de bloqueio
+    // sobrescrevem esse mock para devolver null
+    mockTx.cashSession.findFirst.mockResolvedValue({ id: 'sess-1' });
   });
 
   describe('create', () => {
@@ -105,7 +112,7 @@ describe('SalesService', () => {
         establishmentId: 'est-1',
         items: [{ productId: 'prod-1', quantity: 2, unitPrice: 25 }],
       };
-      const result = await service.create('comp-1', dto as any);
+      const result = await service.create('comp-1', dto as any, 'user-1');
 
       // A numeração ignora o soft delete: contar só as ativas reutilizaria o
       // número de uma venda excluída e violaria o índice único
@@ -144,7 +151,7 @@ describe('SalesService', () => {
         discount: 10,
         items: [{ productId: 'prod-1', quantity: 4, unitPrice: 25 }],
       };
-      await service.create('comp-1', dto as any);
+      await service.create('comp-1', dto as any, 'user-1');
 
       expect(mockTx.sale.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -172,9 +179,9 @@ describe('SalesService', () => {
         discount: 200,
         items: [{ productId: 'prod-1', quantity: 1, unitPrice: 25 }],
       };
-      await expect(service.create('comp-1', dto as any)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.create('comp-1', dto as any, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
       expect(mockTx.sale.create).not.toHaveBeenCalled();
     });
 
@@ -206,7 +213,7 @@ describe('SalesService', () => {
         items: [{ productId: 'prod-1', quantity: 3, unitPrice: 25 }],
         payments: [{ method: PaymentMethod.PIX, amount: 75 }],
       };
-      const result = await service.create('comp-1', dto as any);
+      const result = await service.create('comp-1', dto as any, 'user-1');
 
       expect(mockTx.stockMovement.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -226,6 +233,7 @@ describe('SalesService', () => {
             status: SaleStatus.CONCLUIDA,
             paymentStatus: PaymentStatus.APROVADO,
             paymentMethod: PaymentMethod.PIX,
+            cashSessionId: 'sess-1',
           },
         }),
       );
@@ -237,9 +245,9 @@ describe('SalesService', () => {
       mockTx.establishment.findFirst.mockResolvedValue(null);
 
       const dto = { establishmentId: 'est-999', items: [] };
-      await expect(service.create('comp-1', dto as any)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.create('comp-1', dto as any, 'user-1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -262,7 +270,7 @@ describe('SalesService', () => {
       const finalized = { id: 'sale-1', status: SaleStatus.CONCLUIDA };
       mockTx.sale.update.mockResolvedValue(finalized);
 
-      const result = await service.confirm('sale-1', 'comp-1', {
+      const result = await service.confirm('sale-1', 'comp-1', 'user-1', {
         payments: [{ method: PaymentMethod.DINHEIRO, amount: 100 }],
       } as any);
 
@@ -285,6 +293,7 @@ describe('SalesService', () => {
             status: SaleStatus.CONCLUIDA,
             paymentStatus: PaymentStatus.APROVADO,
             paymentMethod: PaymentMethod.DINHEIRO,
+            cashSessionId: 'sess-1',
           },
         }),
       );
@@ -306,9 +315,9 @@ describe('SalesService', () => {
         currentStock: 10,
       });
 
-      await expect(service.confirm('sale-1', 'comp-1')).rejects.toThrow(
-        'Estoque insuficiente para o produto Caneta',
-      );
+      await expect(
+        service.confirm('sale-1', 'comp-1', 'user-1'),
+      ).rejects.toThrow('Estoque insuficiente para o produto Caneta');
       expect(mockTx.product.update).not.toHaveBeenCalled();
       expect(mockTx.sale.update).not.toHaveBeenCalled();
     });
@@ -329,9 +338,9 @@ describe('SalesService', () => {
         currentStock: 10,
       });
 
-      await expect(service.confirm('sale-1', 'comp-1')).rejects.toThrow(
-        'Estoque insuficiente para o produto Caneta',
-      );
+      await expect(
+        service.confirm('sale-1', 'comp-1', 'user-1'),
+      ).rejects.toThrow('Estoque insuficiente para o produto Caneta');
       expect(mockTx.product.findFirst).toHaveBeenCalledTimes(1);
     });
 
@@ -341,17 +350,17 @@ describe('SalesService', () => {
         status: SaleStatus.CONCLUIDA,
       });
 
-      await expect(service.confirm('sale-1', 'comp-1')).rejects.toThrow(
-        'Venda já finalizada',
-      );
+      await expect(
+        service.confirm('sale-1', 'comp-1', 'user-1'),
+      ).rejects.toThrow('Venda já finalizada');
     });
 
     it('should throw NotFoundException if the sale does not exist', async () => {
       mockTx.sale.findFirst.mockResolvedValue(null);
 
-      await expect(service.confirm('sale-999', 'comp-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.confirm('sale-999', 'comp-1', 'user-1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -387,7 +396,7 @@ describe('SalesService', () => {
         prazoSale({ paymentCondition: PaymentCondition.A_VISTA }),
       );
 
-      await service.confirm('sale-1', 'comp-1', {
+      await service.confirm('sale-1', 'comp-1', 'user-1', {
         payments: [{ method: PaymentMethod.DINHEIRO, amount: 100 }],
       } as any);
 
@@ -398,6 +407,7 @@ describe('SalesService', () => {
             status: SaleStatus.CONCLUIDA,
             paymentStatus: PaymentStatus.APROVADO,
             paymentMethod: PaymentMethod.DINHEIRO,
+            cashSessionId: 'sess-1',
           },
         }),
       );
@@ -406,7 +416,7 @@ describe('SalesService', () => {
     it('should generate one RECEBER entry per installment', async () => {
       mockTx.sale.findFirst.mockResolvedValue(prazoSale());
 
-      await service.confirm('sale-1', 'comp-1');
+      await service.confirm('sale-1', 'comp-1', 'user-1');
 
       const rows = (
         mockTx.financialEntry.createMany.mock.calls[0][0] as {
@@ -443,13 +453,14 @@ describe('SalesService', () => {
     it('should leave the payment PENDENTE on a credit sale', async () => {
       mockTx.sale.findFirst.mockResolvedValue(prazoSale());
 
-      await service.confirm('sale-1', 'comp-1');
+      await service.confirm('sale-1', 'comp-1', 'user-1');
 
       expect(mockTx.sale.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: {
             status: SaleStatus.CONCLUIDA,
             paymentStatus: PaymentStatus.PENDENTE,
+            cashSessionId: 'sess-1',
           },
         }),
       );
@@ -460,7 +471,7 @@ describe('SalesService', () => {
         prazoSale({ firstDueDate: null, installments: 1, intervalDays: 15 }),
       );
 
-      await service.confirm('sale-1', 'comp-1');
+      await service.confirm('sale-1', 'comp-1', 'user-1');
 
       const rows = (
         mockTx.financialEntry.createMany.mock.calls[0][0] as {
@@ -490,7 +501,7 @@ describe('SalesService', () => {
     });
 
     const confirmWith = (payments: unknown[]) =>
-      service.confirm('sale-1', 'comp-1', { payments } as any);
+      service.confirm('sale-1', 'comp-1', 'user-1', { payments } as any);
 
     beforeEach(() => {
       mockTx.sale.findFirst.mockResolvedValue(cashSale());
@@ -585,7 +596,9 @@ describe('SalesService', () => {
     });
 
     it('should require payments to finalize a cash sale', async () => {
-      await expect(service.confirm('sale-1', 'comp-1')).rejects.toThrow(
+      await expect(
+        service.confirm('sale-1', 'comp-1', 'user-1'),
+      ).rejects.toThrow(
         'Informe as formas de pagamento para finalizar uma venda à vista',
       );
       expect(mockTx.stockMovement.create).not.toHaveBeenCalled();
@@ -625,6 +638,81 @@ describe('SalesService', () => {
 
       expect(mockTx.salePayment.createMany).not.toHaveBeenCalled();
       expect(mockTx.financialEntry.createMany).toHaveBeenCalled();
+    });
+  });
+
+  describe('confirm — vínculo com a sessão de caixa', () => {
+    const cashSale = (overrides: Record<string, unknown> = {}) => ({
+      id: 'sale-1',
+      saleNumber: 42,
+      status: SaleStatus.EM_ABERTO,
+      establishmentId: 'est-1',
+      totalAmount: 100,
+      paymentCondition: PaymentCondition.A_VISTA,
+      installments: 1,
+      intervalDays: 30,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      mockTx.sale.findFirst.mockResolvedValue(cashSale());
+      mockTx.saleItem.findMany.mockResolvedValue([
+        { productId: 'prod-1', quantity: 1 },
+      ]);
+      mockTx.product.findFirst.mockResolvedValue({
+        id: 'prod-1',
+        name: 'Caneta',
+        currentStock: 10,
+      });
+      mockTx.sale.update.mockResolvedValue({ id: 'sale-1' });
+    });
+
+    it('should look for the open session of the logged operator', async () => {
+      await service.confirm('sale-1', 'comp-1', 'user-1', {
+        payments: [{ method: PaymentMethod.PIX, amount: 100 }],
+      } as any);
+
+      expect(mockTx.cashSession.findFirst).toHaveBeenCalledWith({
+        where: {
+          companyId: 'comp-1',
+          operatorId: 'user-1',
+          status: CashSessionStatus.ABERTA,
+        },
+        select: { id: true },
+      });
+    });
+
+    it('should block a cash sale when the operator has no open session', async () => {
+      mockTx.cashSession.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.confirm('sale-1', 'comp-1', 'user-1', {
+          payments: [{ method: PaymentMethod.DINHEIRO, amount: 100 }],
+        } as any),
+      ).rejects.toThrow('Abra um caixa para registrar vendas em dinheiro');
+
+      expect(mockTx.stockMovement.create).not.toHaveBeenCalled();
+      expect(mockTx.sale.update).not.toHaveBeenCalled();
+    });
+
+    it('should finalize a credit sale without an open session', async () => {
+      mockTx.cashSession.findFirst.mockResolvedValue(null);
+      mockTx.sale.findFirst.mockResolvedValue(
+        cashSale({
+          paymentCondition: PaymentCondition.A_PRAZO,
+          firstDueDate: new Date('2026-09-10'),
+        }),
+      );
+
+      await service.confirm('sale-1', 'comp-1', 'user-1');
+
+      expect(mockTx.sale.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({
+            cashSessionId: expect.anything(),
+          }),
+        }),
+      );
     });
   });
 

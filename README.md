@@ -141,6 +141,8 @@ src/
 ├── sales/             # Vendas e orçamentos (PDV)
 ├── receivables/       # Contas a receber
 ├── payables/          # Contas a pagar
+├── cash-registers/    # Terminais de caixa
+├── cash-sessions/     # Turnos de caixa: abertura, sangria/suprimento e fechamento
 ├── prisma/            # Serviço global do Prisma ORM
 └── common/            # Guards, decorators, filtros, validators
 ```

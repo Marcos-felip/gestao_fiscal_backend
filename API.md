@@ -382,7 +382,8 @@ O usuário precisa ser membro da empresa ativa, e não é possível editar quem 
 >
 > ⚠️ O `:id` da URL é **ignorado**: a atualização é sempre aplicada à **empresa ativa** do usuário.
 
-Permite atualizar dados da empresa: nome, tipo, CNPJ, inscrição estadual, telefone e regime tributário.
+Permite atualizar dados da empresa: nome, tipo, CNPJ, inscrição estadual, telefone, regime tributário
+e a política de fechamento de caixa.
 
 **Body:** (todos os campos são opcionais)
 ```json
@@ -392,7 +393,8 @@ Permite atualizar dados da empresa: nome, tipo, CNPJ, inscrição estadual, tele
   "cnpj": "string (formato: XX.XXX.XXX/XXXX-XX)",
   "stateRegistration": "string (Inscrição Estadual, min 11 dígitos)",
   "phone": "string (formato: (XX) XXXXX-XXXX)",
-  "taxRegime": "SIMPLES_NACIONAL | LUCRO_PRESUMIDO | LUCRO_REAL | MEI"
+  "taxRegime": "SIMPLES_NACIONAL | LUCRO_PRESUMIDO | LUCRO_REAL | MEI",
+  "cashBlindClose": "boolean — fechamento de caixa às cegas (default false)"
 }
 ```
 
@@ -403,6 +405,7 @@ Permite atualizar dados da empresa: nome, tipo, CNPJ, inscrição estadual, tele
 - `stateRegistration`: mínimo 11 dígitos (padrão estadual brasileiro)
 - `phone`: formato (XX) XXXXX-XXXX ou variações
 - `taxRegime`: enum válido (SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL, MEI)
+- `cashBlindClose`: liga o [fechamento às cegas](#fechamento-às-cegas) para toda a empresa
 
 **Resposta 200:**
 ```json
@@ -414,6 +417,7 @@ Permite atualizar dados da empresa: nome, tipo, CNPJ, inscrição estadual, tele
   "taxRegime": "string",
   "phone": "string",
   "isOnboarded": "boolean",
+  "cashBlindClose": "boolean",
   "createdAt": "ISO8601",
   "updatedAt": "ISO8601"
 }
@@ -1272,6 +1276,7 @@ menus de Estabelecimentos, Parceiros e Produtos na sidebar. Aquelas rotas contin
 - `400` Informe as formas de pagamento para finalizar uma venda à vista
 - `400` Os pagamentos devem somar o total da venda
 - `400` O valor recebido em dinheiro não pode ser menor que o valor do pagamento
+- `400` Abra um caixa para registrar vendas em dinheiro (só com `confirm: true` em `A_VISTA`)
 
 ---
 
@@ -1283,7 +1288,8 @@ do pagamento. A coluna `paymentMethod` da venda continua existindo, mas apenas c
 predominante** (a de maior `amount`), para exibição em lista e relatório.
 
 **Quando é exigido:** ao finalizar uma venda `A_VISTA` — seja por `POST /sales { confirm: true }` ou
-por `POST /sales/:id/confirm`.
+por `POST /sales/:id/confirm`. A mesma finalização exige que o operador tenha um
+[caixa aberto](#bloqueio-da-venda), e carimba a venda com `cashSessionId`.
 
 | Situação | `payments` |
 |----------|------------|
@@ -1403,6 +1409,7 @@ para o somatório fechar com o total da venda.
 - `400` Informe as formas de pagamento para finalizar uma venda à vista
 - `400` Os pagamentos devem somar o total da venda
 - `400` O valor recebido em dinheiro não pode ser menor que o valor do pagamento
+- `400` Abra um caixa para registrar vendas em dinheiro (só em `A_VISTA`)
 
 ---
 
@@ -1668,6 +1675,252 @@ Em transação: cria o `FinancialPayment`, soma em `paidAmount` e recalcula o st
 
 ---
 
+## Caixa
+
+Dois cadastros e um turno:
+
+- **Terminal** (`/cash-registers`) — a gaveta física, cadastrada uma vez por estabelecimento
+- **Sessão** (`/cash-sessions`) — o turno de um operador naquele terminal, da abertura ao fechamento
+
+Enquanto a sessão está `ABERTA` ela recolhe as vendas do operador, as sangrias e os suprimentos.
+No fechamento o operador conta o dinheiro e o backend confronta com o esperado.
+
+**A conferência é só de dinheiro.** Cartão e PIX aparecem no resumo como informação, mas não entram
+no valor esperado em gaveta — esse dinheiro nunca passou por ela.
+
+**Vender à vista exige caixa aberto.** Ver [Bloqueio da venda](#bloqueio-da-venda).
+
+---
+
+### GET /cash-registers — Listar terminais
+
+> **Permissão:** `cash-registers.list`
+
+**Query params:** `establishmentId`, `isActive`
+
+Ordenado por `name`. Cada item traz `establishment { id, name }`. **Não é paginado** — a lista de
+terminais de uma empresa é curta por natureza.
+
+---
+
+### POST /cash-registers — Cadastrar terminal
+
+> **Permissão:** `cash-registers.create`
+
+**Body:**
+```json
+{
+  "establishmentId": "uuid (obrigatório)",
+  "name": "string (obrigatório) — ex: Caixa 01",
+  "isActive": "boolean (opcional, default true)"
+}
+```
+
+**Erros:**
+- `404` Estabelecimento não encontrado
+- `409` Nome já usado por outro terminal do mesmo estabelecimento
+
+---
+
+### GET /cash-registers/:id · PATCH /cash-registers/:id · DELETE /cash-registers/:id
+
+> **Permissões:** `cash-registers.read`, `cash-registers.edit`, `cash-registers.delete`
+
+O `PATCH` aceita `name` e `isActive`. O `DELETE` é soft delete e devolve `204`.
+
+**Erros:**
+- `404` Caixa não encontrado
+- `400` Não é possível desativar um caixa com sessão aberta
+- `400` Não é possível excluir um caixa com sessão aberta
+
+> Terminal inativo continua listado (com `isActive: false`) e não aceita nova abertura.
+
+---
+
+### POST /cash-sessions/open — Abrir o caixa
+
+> **Permissão:** `cash.open`
+
+**Body:**
+```json
+{
+  "cashRegisterId": "uuid (obrigatório)",
+  "openingAmount": "number >= 0 (obrigatório) — fundo de troco em gaveta"
+}
+```
+
+O operador é sempre o usuário do token — não há como abrir caixa em nome de outro.
+
+**Resposta 201:** a sessão criada com `summary` (ver [Resumo da sessão](#resumo-da-sessão)).
+
+**Erros:**
+- `404` Caixa não encontrado
+- `400` Este caixa está inativo
+- `400` Este caixa já tem uma sessão aberta
+- `400` Você já tem um caixa aberto
+
+> As duas últimas são regras distintas: um terminal aceita **um** turno por vez, e um operador só
+> pode estar em **um** terminal por vez — senão ficaria ambíguo em qual gaveta a venda dele entra.
+
+---
+
+### GET /cash-sessions/current — Sessão aberta do operador
+
+> **Permissão:** `cash.read`
+
+Devolve a sessão `ABERTA` do usuário do token, com `movements[]` e `summary`, ou **`null`** quando não
+há nenhuma. É o endpoint que o PDV consulta ao carregar a tela para saber se pode vender.
+
+---
+
+### GET /cash-sessions — Histórico de sessões
+
+> **Permissão:** `cash.list`
+
+**Query params:** `page`, `limit`, `status`, `cashRegisterId`, `startDate`, `endDate`
+
+- `startDate` / `endDate` filtram pela **abertura** (`openedAt`)
+- Ordenado por `openedAt` decrescente — o turno mais recente primeiro
+- Cada item traz `cashRegister { id, name }` e `operator { id, name }`; **sem** `summary`
+
+**Resposta 200:** `{ data, total, page, limit }`
+
+---
+
+### GET /cash-sessions/:id — Detalhar sessão
+
+> **Permissão:** `cash.read`
+
+**Resposta 200:**
+```json
+{
+  "id": "uuid",
+  "cashRegisterId": "uuid",
+  "operatorId": "uuid",
+  "status": "ABERTA | FECHADA",
+  "openingAmount": "100.00",
+  "openedAt": "ISO8601",
+  "closedAt": "ISO8601 | null",
+  "expectedCash": "220.00 | null",
+  "countedCash": "210.00 | null",
+  "difference": "-10.00 | null",
+  "closingNotes": "string | null",
+  "cashRegister": { "id": "uuid", "name": "Caixa 01" },
+  "operator": { "id": "uuid", "name": "string" },
+  "movements": [
+    { "id": "uuid", "type": "SANGRIA", "amount": "30.00", "reason": "Depósito", "createdById": "uuid", "createdAt": "ISO8601" }
+  ],
+  "summary": {}
+}
+```
+
+As colunas `expectedCash`, `countedCash`, `difference` e `closingNotes` só são gravadas no fechamento —
+numa sessão aberta vêm `null`. Os números do turno em andamento estão em `summary`.
+
+**Erros:** `404` Sessão de caixa não encontrada
+
+---
+
+### Resumo da sessão
+
+O objeto `summary` acompanha `open`, `current`, `GET /cash-sessions/:id` e `close`:
+
+| Campo | Significado |
+|-------|-------------|
+| `openingAmount` | Fundo de troco da abertura |
+| `cashSales` | Soma dos pagamentos em `DINHEIRO` das vendas `CONCLUIDA` da sessão |
+| `supplies` | Soma dos suprimentos |
+| `withdrawals` | Soma das sangrias |
+| `expectedCash` | `openingAmount + cashSales + supplies - withdrawals` |
+| `countedCash` | Dinheiro contado no fechamento (`null` enquanto aberta) |
+| `difference` | `countedCash - expectedCash` — negativo é falta, positivo é sobra |
+| `salesCount` | Quantidade de vendas `CONCLUIDA` da sessão |
+| `salesTotal` | Valor total dessas vendas, em qualquer forma de pagamento |
+| `paymentBreakdown` | `[{ method, amount }]` por forma de pagamento, do maior para o menor |
+| `creditTotal` | Total a prazo do turno (títulos a receber não cancelados das vendas da sessão) |
+| `blind` | `true` quando o [fechamento às cegas](#fechamento-às-cegas) está escondendo números |
+
+> `salesTotal` e `cashSales` respondem perguntas diferentes: o primeiro é quanto o operador vendeu, o
+> segundo é quanto disso tem que estar na gaveta.
+
+---
+
+### POST /cash-sessions/:id/movements — Sangria e suprimento
+
+> **Permissão:** `cash.movement`
+
+**Body:**
+```json
+{
+  "type": "SANGRIA | SUPRIMENTO (obrigatório)",
+  "amount": "number > 0 (obrigatório)",
+  "reason": "string (opcional) — ex: Depósito bancário"
+}
+```
+
+`SANGRIA` tira dinheiro da gaveta (e **diminui** o esperado); `SUPRIMENTO` coloca (e **aumenta**).
+O `amount` é sempre positivo — o sinal vem do `type`.
+
+**Erros:**
+- `404` Sessão de caixa não encontrada
+- `400` Não é possível movimentar uma sessão fechada
+
+---
+
+### POST /cash-sessions/:id/close — Fechar o caixa
+
+> **Permissão:** `cash.close`
+
+**Body:**
+```json
+{
+  "countedCash": "number >= 0 (obrigatório) — dinheiro contado na gaveta",
+  "notes": "string (opcional; obrigatório quando há diferença)"
+}
+```
+
+O backend calcula `expectedCash`, grava `countedCash` e a `difference`, e fecha a sessão.
+
+**O caixa fecha sempre** — quebra é fato a registrar, não motivo para travar o turno. O que se exige é
+a justificativa: diferença acima de **1 centavo** sem `notes` devolve `400`.
+
+**Erros:**
+- `404` Sessão de caixa não encontrada
+- `400` Esta sessão já está fechada
+- `400` Informe uma observação para a diferença de caixa
+
+---
+
+### Fechamento às cegas
+
+Ligado por empresa em `PATCH /companies/:id` com `cashBlindClose: true`. Serve para o operador contar a
+gaveta sem saber o alvo.
+
+Com a política ligada e a sessão ainda **ABERTA**, o `summary` devolve `null` em `expectedCash`,
+`cashSales`, `salesTotal`, `paymentBreakdown` e `creditTotal`, e `blind: true`. Continuam visíveis
+`openingAmount`, `supplies`, `withdrawals` e `salesCount` — o operador já os conhece.
+
+> Esconder só o `expectedCash` não serviria: o operador somaria abertura + dinheiro + suprimentos −
+> sangrias e chegaria ao mesmo número. Por isso o bloqueio é do conjunto.
+
+Depois do `close` a sessão devolve **tudo**, inclusive para quem fechou — a cegueira vale até a
+contagem, não depois dela. Com `cashBlindClose: false` (padrão) nada é escondido em momento algum.
+
+---
+
+### Bloqueio da venda
+
+Finalizar uma venda **`A_VISTA`** (`POST /sales { confirm: true }` ou `POST /sales/:id/confirm`) exige
+que o operador tenha uma sessão aberta. Sem ela: `400` **"Abra um caixa para registrar vendas em dinheiro"**.
+
+- Venda **`A_PRAZO`** não exige caixa — não entra dinheiro na gaveta, entra título a receber
+- **Orçamento** (`POST /sales` sem `confirm`) não exige caixa
+- Toda venda finalizada com sessão aberta é carimbada com `cashSessionId`, inclusive a prazo — é assim
+  que o resumo consegue mostrar o `creditTotal` do turno
+- Cancelar uma venda **não** a desvincula da sessão; ela sai do resumo porque deixa de ser `CONCLUIDA`
+
+---
+
 ## Paginação
 
 Todos os endpoints de listagem suportam paginação:
@@ -1831,6 +2084,32 @@ compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao mo
 > orçamento antes de fechar. Cancelar e excluir ficam de fora de propósito — são as duas ações que
 > desfazem movimento de estoque.
 
+### Caixa — terminais (`cash-registers`)
+
+| Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
+|--------|-----------|:-----:|:-----:|:---------------:|----------|
+| `cash-registers.list` | Listar caixas | ✅ | ✅ | | `GET /cash-registers` |
+| `cash-registers.create` | Criar caixa | ✅ | ✅ | | `POST /cash-registers` |
+| `cash-registers.read` | Ler dados do caixa | ✅ | ✅ | | `GET /cash-registers/:id` |
+| `cash-registers.edit` | Editar caixa | ✅ | ✅ | | `PATCH /cash-registers/:id` |
+| `cash-registers.delete` | Excluir caixa | ✅ | ✅ | | `DELETE /cash-registers/:id` |
+
+### Caixa — operação (`cash`)
+
+| Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
+|--------|-----------|:-----:|:-----:|:---------------:|----------|
+| `cash.open` | Abrir sessão de caixa | ✅ | ✅ | | `POST /cash-sessions/open` |
+| `cash.close` | Fechar sessão de caixa | ✅ | ✅ | | `POST /cash-sessions/:id/close` |
+| `cash.movement` | Registrar sangria ou suprimento | ✅ | ✅ | | `POST /cash-sessions/:id/movements` |
+| `cash.list` | Listar sessões de caixa | ✅ | ✅ | | `GET /cash-sessions` |
+| `cash.read` | Ler dados da sessão de caixa | ✅ | ✅ | | `GET /cash-sessions/current`, `GET /cash-sessions/:id` |
+
+> Os dois domínios são separados de propósito: **cadastrar terminal** é tarefa de administração,
+> **operar o turno** é tarefa de balcão. O perfil do operador leva `cash.open` + `cash.close` +
+> `cash.movement` + `cash.read` e **nenhum** `cash-registers.*`; sem `cash.open` ele não consegue
+> vender à vista, porque a venda exige caixa aberto. `cash.list` é de supervisão — dá acesso ao
+> histórico de todos os operadores.
+
 ---
 
 ## Hierarquia de papéis
@@ -1883,6 +2162,9 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | 4 | Código de permissão inexistente devolve `404` em `PATCH /permissions/:role` e `422` nos perfis. | Baixo — tratar os dois status ao validar o formulário de permissões |
 | 5 | **Finalizar venda `A_VISTA` passou a exigir `payments`.** Chamadas que antes funcionavam sem o campo agora recebem `400`. | **Alto** — o PDV precisa enviar as formas de pagamento em `POST /sales { confirm: true }` e em `POST /sales/:id/confirm` |
 | 6 | Não existe pagamento misto à vista + a prazo (entrada). A venda é inteira `A_VISTA` ou inteira `A_PRAZO`. | Baixo — entra em entrega própria |
+| 7 | **Finalizar venda `A_VISTA` passou a exigir caixa aberto.** Sem sessão do operador: `400` "Abra um caixa para registrar vendas em dinheiro". | **Alto** — o PDV precisa chamar `GET /cash-sessions/current` ao abrir a tela e oferecer a abertura de caixa antes de vender |
+| 8 | Toda venda finalizada com sessão aberta recebe `cashSessionId`, inclusive a **a prazo**. | Baixo — é o que permite o `creditTotal` do turno; não significa que entrou dinheiro na gaveta |
+| 9 | O histórico `GET /cash-sessions` não traz `summary` — só o detalhe traz. | Baixo — buscar `GET /cash-sessions/:id` para exibir os números de um turno |
 
 ---
 
@@ -1905,6 +2187,8 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | `FiscalStatus` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` |
 | `PaymentMethod` | `DINHEIRO`, `CARTAO_CREDITO`, `CARTAO_DEBITO`, `PIX`, `BOLETO`, `OUTRO` |
 | `PaymentCondition` | `A_VISTA`, `A_PRAZO` |
+| `CashSessionStatus` | `ABERTA`, `FECHADA` |
+| `CashMovementType` | `SANGRIA` (tira da gaveta), `SUPRIMENTO` (coloca) |
 | `FinancialType` | `RECEBER` (`/receivables`), `PAGAR` (`/payables`) |
 | `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` |
 
@@ -1948,6 +2232,13 @@ POST /purchases              → criar compra em RASCUNHO
 POST /purchases/:id/confirm  → confirmar (estoque aumenta)
 ```
 
+### 3.0. Abertura do caixa (antes de qualquer venda à vista)
+```
+GET  /cash-sessions/current  → null? é preciso abrir
+GET  /cash-registers         → escolher o terminal
+POST /cash-sessions/open     → { cashRegisterId, openingAmount } com o fundo de troco
+```
+
 ### 3.1. Fluxo de venda — balcão (PDV, uma chamada)
 ```
 POST /sales { confirm: true, payments: [{ method: "DINHEIRO", amount: 100, amountReceived: 150 }] }
@@ -1984,6 +2275,13 @@ POST /payables/:id/pay           → baixa parcial ou total
 ```
 POST /payables { description, totalAmount, dueDate, installments }
                              → títulos manuais, sem vínculo com compra
+```
+
+### 3.6. Fechamento do caixa
+```
+POST /cash-sessions/:id/movements → sangrias e suprimentos ao longo do turno
+GET  /cash-sessions/:id           → resumo (esperado em gaveta, formas de pagamento, total a prazo)
+POST /cash-sessions/:id/close     → { countedCash, notes } — notes obrigatório se houver diferença
 ```
 
 ### 4. Renovar token

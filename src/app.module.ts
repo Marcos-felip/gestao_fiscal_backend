@@ -15,6 +15,8 @@ import { PurchasesModule } from './purchases/purchases.module';
 import { SalesModule } from './sales/sales.module';
 import { ReceivablesModule } from './receivables/receivables.module';
 import { PayablesModule } from './payables/payables.module';
+import { CashRegistersModule } from './cash-registers/cash-registers.module';
+import { CashSessionsModule } from './cash-sessions/cash-sessions.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PermissionProfilesModule } from './permission-profiles/permission-profiles.module';
 
@@ -35,6 +37,8 @@ import { PermissionProfilesModule } from './permission-profiles/permission-profi
     SalesModule,
     ReceivablesModule,
     PayablesModule,
+    CashRegistersModule,
+    CashSessionsModule,
     PermissionsModule,
     PermissionProfilesModule,
   ],
