@@ -1,30 +1,30 @@
 ## 1. Fundacao e enums [Fase A]
 
-- [ ] 1.1 Criar modulo `fiscal` (`module/controller/service/dto`) no NestJS
-- [ ] 1.2 Enum `FiscalDocumentModel` (NFE=55, NFCE=65)
-- [ ] 1.3 Enum `FiscalEnvironment` (HOMOLOGACAO=2, PRODUCAO=1)
-- [ ] 1.4 Enum `FiscalDocumentStatus` (NAO_EMITIDO, PENDENTE, PROCESSANDO, AUTORIZADO, REJEITADO, ERRO, CONTINGENCIA, CANCELAMENTO_PENDENTE, CANCELADO, INUTILIZADO)
-- [ ] 1.5 Enum `TaxRegimeCode`/CRT (1 Simples, 2 Simples excesso, 3 Normal)
-- [ ] 1.6 Seed das permissoes `fiscal.settings.read/edit`, `fiscal.emit`, `fiscal.cancel`, `fiscal.read` (OWNER/ADMIN por padrao)
-- [ ] 1.7 Instalar `@nestjs/event-emitter` + registrar no `AppModule`
-- [ ] 1.8 Instalar `@nestjs/bullmq` + `bullmq` + `ioredis` e configurar `QueueModule`
-- [ ] 1.9 Adicionar Redis ao `docker-compose.yml`
-- [ ] 1.10 Instalar `@aws-sdk/client-s3` e configurar `StorageModule` (Supabase S3)
+- [x] 1.1 Criar modulo `fiscal` (`module/controller/service/dto`) no NestJS
+- [x] 1.2 Enum `FiscalDocumentModel` (NFE=55, NFCE=65)
+- [x] 1.3 Enum `FiscalEnvironment` (HOMOLOGACAO=2, PRODUCAO=1)
+- [x] 1.4 Enum `FiscalDocumentStatus` (NAO_EMITIDO, PENDENTE, PROCESSANDO, AUTORIZADO, REJEITADO, ERRO, CONTINGENCIA, CANCELAMENTO_PENDENTE, CANCELADO, INUTILIZADO)
+- [x] 1.5 Enum `TaxRegimeCode`/CRT (1 Simples, 2 Simples excesso, 3 Normal)
+- [x] 1.6 Seed das permissoes `fiscal.settings.read/edit`, `fiscal.emit`, `fiscal.cancel`, `fiscal.read` (OWNER/ADMIN por padrao)
+- [x] 1.7 Instalar `@nestjs/event-emitter` + registrar no `AppModule`
+- [x] 1.8 Instalar `@nestjs/bullmq` + `bullmq` + `ioredis` e configurar `QueueModule`
+- [x] 1.9 Adicionar Redis ao `docker-compose.yml`
+- [x] 1.10 Instalar `@aws-sdk/client-s3` e configurar `StorageModule` (Supabase S3)
 
 ## 2. Configuracao fiscal da empresa [Fase A]
 
-- [ ] 2.1 Garantir/estender campos fiscais em `Company` (razao social, nome fantasia, CNPJ, IE, IM, CRT, contribuinte de ICMS)
-- [ ] 2.2 Endereco fiscal + `codigoIbgeMunicipio` + UF + telefone/e-mail fiscal
+- [x] 2.1 Garantir/estender campos fiscais em `Company` (razao social, nome fantasia, CNPJ, IE, IM, CRT, contribuinte de ICMS)
+- [x] 2.2 Endereco fiscal + `codigoIbgeMunicipio` + UF + telefone/e-mail fiscal
 - [ ] 2.3 Validar CNPJ/CPF localmente (digitos verificadores)
 - [ ] 2.4 Validar formato de IE e de CEP/UF/codigo IBGE
-- [ ] 2.5 Campo derivado `fiscalConfigComplete` na empresa
-- [ ] 2.6 Bloquear emissao quando a configuracao da empresa estiver incompleta
+- [x] 2.5 Campo derivado `fiscalConfigComplete` na empresa
+- [x] 2.6 Bloquear emissao quando a configuracao da empresa estiver incompleta
 
 ## 3. Configuracao fiscal do estabelecimento + certificado [Fase A]
 
-- [ ] 3.1 Tabela `FiscalSettings` (1:1 com establishment): ambiente, serie NFC-e, proximo numero, CSC, idCSC
-- [ ] 3.2 Campos do certificado: ref criptografada do A1, ref da senha, validade, subject
-- [ ] 3.3 Endpoint obter/gravar `FiscalSettings` do estabelecimento
+- [x] 3.1 Tabela `FiscalSettings` (1:1 com establishment): ambiente, serie NFC-e, proximo numero, CSC, idCSC
+- [x] 3.2 Campos do certificado: ref criptografada do A1, ref da senha, validade, subject
+- [x] 3.3 Endpoint obter/gravar `FiscalSettings` do estabelecimento
 - [ ] 3.4 Upload de certificado A1 (armazenar criptografado em cofre/KMS, extrair validade/subject)
 - [ ] 3.5 Substituir certificado (mantendo auditoria)
 - [ ] 3.6 Alertar certificado a <=30 dias do vencimento
@@ -33,43 +33,43 @@
 
 ## 4. Dados fiscais dos produtos [Fase A]
 
-- [ ] 4.1 Estender `Product` (ou `ProductFiscal` 1:1): NCM, CEST, origem, CFOP padrao
-- [ ] 4.2 CSOSN (Simples) e CST de ICMS/PIS/COFINS (Normal)
-- [ ] 4.3 Aliquotas ICMS/PIS/COFINS, unidade comercial, GTIN
-- [ ] 4.4 Campo derivado `fiscalComplete` por produto
+- [x] 4.1 Estender `Product` (ou `ProductFiscal` 1:1): NCM, CEST, origem, CFOP padrao
+- [x] 4.2 CSOSN (Simples) e CST de ICMS/PIS/COFINS (Normal)
+- [x] 4.3 Aliquotas ICMS/PIS/COFINS, unidade comercial, GTIN
+- [x] 4.4 Campo derivado `fiscalComplete` por produto
 - [ ] 4.5 Endpoint/relatorio de produtos com pendencia fiscal
-- [ ] 4.6 Bloquear emissao quando algum item da venda estiver fiscalmente incompleto
+- [x] 4.6 Bloquear emissao quando algum item da venda estiver fiscalmente incompleto
 
 ## 5. Formas de pagamento fiscais [Fase A]
 
-- [ ] 5.1 Mapear `PaymentMethod` -> `tPag` (01 dinheiro, 03 credito, 04 debito, 15 boleto, 17 PIX, 90 vale, 99 outros)
-- [ ] 5.2 Tratar pagamento dividido a partir de `SalePayment[]`
+- [x] 5.1 Mapear `PaymentMethod` -> `tPag` (01 dinheiro, 03 credito, 04 debito, 15 boleto, 17 PIX, 90 vale, 99 outros)
+- [x] 5.2 Tratar pagamento dividido a partir de `SalePayment[]`
 - [ ] 5.3 Validar soma dos pagamentos = total da venda
 - [ ] 5.4 Calcular troco (`vTroco`) a partir de `amountReceived`
 
 ## 6. Documento fiscal, snapshot e status [Fase A]
 
-- [ ] 6.1 Tabela `FiscalDocument` (modelo, serie, numero, chave, status, ambiente, protocolo, rejeicao, datas, valores, XMLs, danfeUrl, qrCode, idempotencyKey, attempts, engine, snapshot)
-- [ ] 6.2 Vinculo `FiscalDocument` <-> venda, empresa e estabelecimento
-- [ ] 6.3 Tabela `FiscalStatusHistory` (de/para, motivo, usuario, data)
-- [ ] 6.4 Tabela `FiscalDocumentEvent` (generica; MVP usa cancelamento)
-- [ ] 6.5 Snapshot imutavel (emitente, destinatario, endereco, itens, impostos, pagamentos, totais) em JSONB
-- [ ] 6.6 Proibir exclusao fisica de documento fiscal (soft/append-only)
+- [x] 6.1 Tabela `FiscalDocument` (modelo, serie, numero, chave, status, ambiente, protocolo, rejeicao, datas, valores, XMLs, danfeUrl, qrCode, idempotencyKey, attempts, engine, snapshot)
+- [x] 6.2 Vinculo `FiscalDocument` <-> venda, empresa e estabelecimento
+- [x] 6.3 Tabela `FiscalStatusHistory` (de/para, motivo, usuario, data)
+- [x] 6.4 Tabela `FiscalDocumentEvent` (generica; MVP usa cancelamento)
+- [x] 6.5 Snapshot imutavel (emitente, destinatario, endereco, itens, impostos, pagamentos, totais) em JSONB
+- [x] 6.6 Proibir exclusao fisica de documento fiscal (soft/append-only)
 
 ## 7. Motor fiscal (.NET) + porta [Fase A]
 
-- [ ] 7.1 Repositorio `fiscal_service` criado em `/home/marcos/Projetos/fiscal_service` (estrutura DDD + Clean Architecture ja montada)
-- [ ] 7.2 Porta `IFiscalEngine` no Nest + implementacao `DfeNetFiscalEngine` (HTTP client com API Key)
+- [x] 7.1 Repositorio `fiscal_service` criado em `/home/marcos/Projetos/fiscal_service` (estrutura DDD + Clean Architecture ja montada)
+- [x] 7.2 Porta `IFiscalEngine` no Nest + implementacao `DfeNetFiscalEngine` (HTTP client com API Key)
 - [ ] 7.3 Contrato de comunicacao NestJS <-> .NET documentado (headers, payload, response)
 - [ ] 7.4 Health check do motor fiscal (.NET `/health`) integrado ao monitoring do NestJS
 
 ## 8. Emissao automatica de NFC-e [Fase A]
 
-- [ ] 8.1 Emitir evento `sale.confirmed` no `SalesService.finalize()` via `EventEmitter` ao transitar para `CONCLUIDA`
-- [ ] 8.2 Listener `OnSaleConfirmed` no `FiscalModule`: validar empresa/estabelecimento/certificado/CSC/numeracao/produtos/pagamentos/totais
-- [ ] 8.3 Reservar numeracao sequencial atomica por serie+estabelecimento
-- [ ] 8.4 Criar `FiscalDocument` (PENDENTE) + `idempotencyKey` e enfileirar (BullMQ)
-- [ ] 8.5 Job de emissao: montar snapshot e chamar `IFiscalEngine.emitirNfce`
+- [x] 8.1 Emitir evento `sale.confirmed` no `SalesService.finalize()` via `EventEmitter` ao transitar para `CONCLUIDA`
+- [x] 8.2 Listener `OnSaleConfirmed` no `FiscalModule`: validar empresa/estabelecimento/certificado/CSC/numeracao/produtos/pagamentos/totais
+- [x] 8.3 Reservar numeracao sequencial atomica por serie+estabelecimento
+- [x] 8.4 Criar `FiscalDocument` (PENDENTE) + `idempotencyKey` e enfileirar (BullMQ)
+- [x] 8.5 Job de emissao: montar snapshot e chamar `IFiscalEngine.emitirNfce`
 - [ ] 8.6 Processar autorizacao: salvar chave, protocolo, XML autorizado, QR Code
 - [ ] 8.7 Upload XML/DANFE para Supabase Storage (S3): `fiscal/{companyId}/{ano}/{mes}/{chave}.xml`
 - [ ] 8.8 Atualizar status fiscal da venda (`Sale.fiscalStatus`)
@@ -107,8 +107,8 @@
 
 ## 13. Endpoints, listagem e docs [Fase C]
 
-- [ ] 13.1 `GET /fiscal/documents` (filtros: status, periodo, estabelecimento, modelo) e `GET /fiscal/documents/:id`
-- [ ] 13.2 Aplicar gating por permissao em todos os endpoints
+- [x] 13.1 `GET /fiscal/documents` (filtros: status, periodo, estabelecimento, modelo) e `GET /fiscal/documents/:id`
+- [x] 13.2 Aplicar gating por permissao em todos os endpoints
 - [ ] 13.3 Atualizar `API.md`, `REGRAS_DE_NEGOCIO.md`, `BANCO_DE_DADOS.md`
 - [ ] 13.4 Criar `FISCAL.md` (arquitetura NestJS<->.NET, contrato do motor, politica de certificados, ambientes)
 
