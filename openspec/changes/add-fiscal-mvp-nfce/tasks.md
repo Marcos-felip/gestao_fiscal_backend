@@ -87,8 +87,8 @@
 
 - [x] 10.1 Persistir codigo + mensagem de rejeicao + retorno tecnico completo
 - [x] 10.2 `POST /fiscal/documents/:id/retry` sem duplicar (respeita idempotencia)
-- [ ] 10.3 Contar tentativas (`attempts`) e registrar usuario/data de cada uma
-- [ ] 10.4 Endpoint da central de rejeicoes (listar/filtrar por status, periodo, estabelecimento)
+- [x] 10.3 Contar tentativas (`attempts`) e registrar usuario/data de cada uma
+- [x] 10.4 Endpoint da central de rejeicoes (listar/filtrar por status, periodo, estabelecimento)
 
 ## 11. Producao [Fase C]
 

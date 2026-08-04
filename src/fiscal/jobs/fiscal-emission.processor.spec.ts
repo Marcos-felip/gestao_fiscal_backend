@@ -293,6 +293,70 @@ describe('FiscalEmissionProcessor', () => {
     });
   });
 
+  describe('auditoria das tentativas', () => {
+    const jobComUsuario = () =>
+      ({
+        data: {
+          fiscalDocumentId: 'doc-1',
+          companyId: 'company-1',
+          usuarioId: 'user-1',
+        },
+        attemptsMade: 0,
+      }) as Job<FiscalEmissionJobData>;
+
+    it('conta a tentativa e registra quem a originou', async () => {
+      mockEngine.emitir.mockResolvedValue({
+        sucesso: true,
+        chaveAcesso: CHAVE,
+        protocolo: '135210000123456',
+      });
+
+      await processor.process(jobComUsuario());
+
+      expect(dadosDoUpdate(0)).toEqual({
+        attempts: { increment: 1 },
+        status: FiscalDocumentStatus.PROCESSANDO,
+      });
+      expect(mockPrisma.fiscalStatusHistory.create).toHaveBeenNthCalledWith(1, {
+        data: expect.objectContaining({
+          statusTo: FiscalDocumentStatus.PROCESSANDO,
+          motivo: 'Tentativa de emissão #1',
+          usuarioId: 'user-1',
+        }),
+      });
+    });
+
+    it('registra o usuário também no desfecho da tentativa', async () => {
+      mockEngine.emitir.mockResolvedValue({
+        sucesso: false,
+        rejeicao: { codigo: '539', mensagem: 'Duplicidade de NF-e' },
+      });
+
+      await processor.process(jobComUsuario());
+
+      expect(mockPrisma.fiscalStatusHistory.create).toHaveBeenNthCalledWith(2, {
+        data: expect.objectContaining({
+          statusTo: FiscalDocumentStatus.REJEITADO,
+          usuarioId: 'user-1',
+        }),
+      });
+    });
+
+    it('mantém a emissão sem usuário quando o job não informa', async () => {
+      mockEngine.emitir.mockResolvedValue({
+        sucesso: true,
+        chaveAcesso: CHAVE,
+        protocolo: '135210000123456',
+      });
+
+      await processor.process(job());
+
+      expect(mockPrisma.fiscalStatusHistory.create).toHaveBeenNthCalledWith(1, {
+        data: expect.objectContaining({ usuarioId: undefined }),
+      });
+    });
+  });
+
   describe('guarda de status', () => {
     it('ignora documento que não está PENDENTE nem ERRO', async () => {
       mockPrisma.fiscalDocument.findFirst.mockResolvedValue(

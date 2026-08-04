@@ -14,11 +14,30 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateFiscalSettingsDto } from './dto/create-fiscal-settings.dto';
 import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
+import { QueryFiscalRejectionsDto } from './dto/query-fiscal-rejections.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
 import { buildFiscalSnapshot } from './emission/fiscal-snapshot.builder';
 import { isFiscalStorageKey } from './emission/fiscal-storage';
 import { assertEmissionSettings } from './emission/fiscal-preconditions';
 import { StorageService } from '../storage/storage.service';
+
+/** Status que o `POST /fiscal/documents/:id/retry` aceita reprocessar. */
+const STATUS_REPROCESSAVEL: FiscalDocumentStatus[] = [
+  FiscalDocumentStatus.ERRO,
+  FiscalDocumentStatus.REJEITADO,
+  FiscalDocumentStatus.PENDENTE,
+];
+
+/** Linha da central de rejeições. */
+export interface FiscalRejectionItem
+  extends Prisma.FiscalDocumentGetPayload<null> {
+  reprocessavel: boolean;
+  ultimaTentativa?: {
+    data: Date;
+    usuarioId: string | null;
+    motivo: string | null;
+  };
+}
 
 @Injectable()
 export class FiscalService {
@@ -214,6 +233,85 @@ export class FiscalService {
       }),
       this.prisma.fiscalDocument.count({ where }),
     ]);
+
+    return { data, total, page, limit };
+  }
+
+  /**
+   * Central de rejeições: documentos que não foram autorizados, com o motivo,
+   * as tentativas e quando/por quem foi a última.
+   *
+   * `reprocessavel` diz se o `POST /fiscal/documents/:id/retry` aceita o
+   * documento — é a mesma lista de status que a operação de retry admite.
+   */
+  async findRejections(
+    companyId: string,
+    query: QueryFiscalRejectionsDto,
+  ): Promise<{
+    data: FiscalRejectionItem[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.FiscalDocumentWhereInput = {
+      companyId,
+      deletedAt: null,
+      status: query.status
+        ? (query.status as FiscalDocumentStatus)
+        : {
+            in: [FiscalDocumentStatus.REJEITADO, FiscalDocumentStatus.ERRO],
+          },
+    };
+
+    if (query.establishmentId) {
+      where.establishmentId = query.establishmentId;
+    }
+    if (query.rejeicaoCodigo) {
+      where.rejeicaoCodigo = query.rejeicaoCodigo;
+    }
+    if (query.search) {
+      where.rejeicaoMensagem = {
+        contains: query.search,
+        mode: 'insensitive',
+      };
+    }
+    if (query.startDate || query.endDate) {
+      const createdAt: Prisma.DateTimeFilter = {};
+      if (query.startDate) createdAt.gte = new Date(query.startDate);
+      if (query.endDate) createdAt.lte = new Date(query.endDate);
+      where.createdAt = createdAt;
+    }
+
+    const [documentos, total] = await Promise.all([
+      this.prisma.fiscalDocument.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          establishment: { select: { id: true, name: true } },
+          sale: { select: { id: true, saleNumber: true } },
+          statusHistory: { orderBy: { createdAt: 'desc' }, take: 1 },
+        },
+      }),
+      this.prisma.fiscalDocument.count({ where }),
+    ]);
+
+    const data = documentos.map(({ statusHistory, ...documento }) => ({
+      ...documento,
+      reprocessavel: STATUS_REPROCESSAVEL.includes(documento.status),
+      ultimaTentativa: statusHistory[0]
+        ? {
+            data: statusHistory[0].createdAt,
+            usuarioId: statusHistory[0].usuarioId,
+            motivo: statusHistory[0].motivo,
+          }
+        : undefined,
+    }));
 
     return { data, total, page, limit };
   }

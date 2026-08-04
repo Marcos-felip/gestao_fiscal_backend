@@ -164,6 +164,7 @@ export class SalesService {
         saleId: sale.id,
         companyId: sale.companyId,
         establishmentId: sale.establishmentId,
+        usuarioId: operatorId,
       });
     }
 
@@ -370,6 +371,7 @@ export class SalesService {
         saleId: sale.id,
         companyId: sale.companyId,
         establishmentId: sale.establishmentId,
+        usuarioId: operatorId,
       });
     }
 

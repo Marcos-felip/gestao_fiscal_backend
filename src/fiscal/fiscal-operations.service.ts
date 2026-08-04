@@ -337,7 +337,7 @@ export class FiscalOperationsService {
     await this.fiscalQueue.remove(jobId).catch(() => undefined);
     await this.fiscalQueue.add(
       'emitir',
-      { fiscalDocumentId, companyId },
+      { fiscalDocumentId, companyId, usuarioId: userId },
       {
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },

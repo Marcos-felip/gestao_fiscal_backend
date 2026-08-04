@@ -162,6 +162,7 @@ export class OnSaleConfirmedListener {
       {
         fiscalDocumentId: fiscalDocument.id,
         companyId: event.companyId,
+        usuarioId: event.usuarioId,
       },
       {
         attempts: 3,

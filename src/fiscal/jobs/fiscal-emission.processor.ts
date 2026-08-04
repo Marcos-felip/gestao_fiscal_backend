@@ -18,6 +18,11 @@ import { FiscalDocumentStatus, FiscalStatus } from '@prisma/client';
 export interface FiscalEmissionJobData {
   fiscalDocumentId: string;
   companyId: string;
+  /**
+   * Quem originou esta tentativa: o operador da venda, na emissão automática,
+   * ou quem acionou a emissão manual/o retry. Fica no histórico de status.
+   */
+  usuarioId?: string;
 }
 
 /**
@@ -44,7 +49,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
   }
 
   async process(job: Job<FiscalEmissionJobData>): Promise<void> {
-    const { fiscalDocumentId, companyId } = job.data;
+    const { fiscalDocumentId, companyId, usuarioId } = job.data;
 
     this.logger.log(
       `Processando emissão fiscal: documento=${fiscalDocumentId}, empresa=${companyId}, tentativa=${job.attemptsMade + 1}`,
@@ -85,13 +90,14 @@ export class FiscalEmissionProcessor extends WorkerHost {
       });
     }
 
-    // Adiciona histórico de transição
+    // Cada tentativa fica registrada com quem a originou e quando.
     await this.prisma.fiscalStatusHistory.create({
       data: {
         fiscalDocumentId,
         statusFrom: document.status,
         statusTo: FiscalDocumentStatus.PROCESSANDO,
         motivo: `Tentativa de emissão #${document.attempts + 1}`,
+        usuarioId,
       },
     });
 
@@ -135,6 +141,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
         motivo,
         { etapa: 'preparacao', tentativa: document.attempts + 1 },
         document.saleId,
+        usuarioId,
       );
       return;
     }
@@ -192,6 +199,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
             motivo: result.sucesso
               ? `Documento autorizado: protocolo ${result.protocolo}`
               : `Rejeição: ${result.rejeicao?.codigo} - ${result.rejeicao?.mensagem}`,
+            usuarioId,
           },
         });
 
@@ -223,6 +231,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
         `Erro inesperado: ${motivo}`,
         undefined,
         document.saleId,
+        usuarioId,
       );
 
       throw error; // BullMQ faz retry
@@ -298,6 +307,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
     motivo: string,
     detalhes?: Record<string, unknown>,
     saleId?: string | null,
+    usuarioId?: string,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await tx.fiscalDocument.update({
@@ -318,6 +328,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
           statusFrom: FiscalDocumentStatus.PROCESSANDO,
           statusTo: FiscalDocumentStatus.ERRO,
           motivo,
+          usuarioId,
         },
       });
 
@@ -327,6 +338,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
             fiscalDocumentId,
             tipo: 'emissao',
             detalhes: { sucesso: false, motivo, ...detalhes },
+            usuarioId,
           },
         });
       }

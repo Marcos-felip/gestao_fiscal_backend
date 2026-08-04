@@ -277,7 +277,11 @@ describe('FiscalOperationsService', () => {
       expect(mockQueue.remove).toHaveBeenCalledWith('fiscal-doc-1');
       expect(mockQueue.add).toHaveBeenCalledWith(
         'emitir',
-        { fiscalDocumentId: 'doc-1', companyId: 'company-1' },
+        {
+          fiscalDocumentId: 'doc-1',
+          companyId: 'company-1',
+          usuarioId: 'user-1',
+        },
         expect.objectContaining({ jobId: 'fiscal-doc-1' }) as unknown,
       );
     });

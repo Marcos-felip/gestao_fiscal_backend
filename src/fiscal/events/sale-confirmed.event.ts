@@ -8,6 +8,8 @@ export interface SaleConfirmedEvent {
   saleId: string;
   companyId: string;
   establishmentId: string;
+  /** Operador que finalizou a venda — fica no histórico da emissão */
+  usuarioId?: string;
 }
 
 export const SALE_CONFIRMED_EVENT = 'sale.confirmed';
