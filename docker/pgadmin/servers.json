@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Gestão Fiscal",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "gestao_fiscal",
+      "Username": "gestao_fiscal",
+      "PassFile": "/var/lib/pgadmin/pgpass",
+      "SSLMode": "prefer",
+      "Comment": "Banco de desenvolvimento do Gestão Fiscal (container gestao_fiscal_db)"
+    }
+  }
+}
