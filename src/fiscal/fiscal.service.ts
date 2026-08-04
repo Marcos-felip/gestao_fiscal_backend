@@ -18,7 +18,11 @@ import { QueryFiscalRejectionsDto } from './dto/query-fiscal-rejections.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
 import { buildFiscalSnapshot } from './emission/fiscal-snapshot.builder';
 import { isFiscalStorageKey } from './emission/fiscal-storage';
-import { assertEmissionSettings } from './emission/fiscal-preconditions';
+import {
+  assertEmissionSettings,
+  buildProductionChecklist,
+  ProductionChecklistItem,
+} from './emission/fiscal-preconditions';
 import { StorageService } from '../storage/storage.service';
 
 /** Status que o `POST /fiscal/documents/:id/retry` aceita reprocessar. */
@@ -75,37 +79,48 @@ export class FiscalService {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
 
-    // Verifica se já existe configuração para este estabelecimento
-    const existing = await this.prisma.fiscalSettings.findFirst({
+    const ambiente =
+      (dto.ambiente as FiscalEnvironment) ?? FiscalEnvironment.HOMOLOGACAO;
+
+    // Uma configuração por ambiente: homologação e produção são independentes
+    // e não compartilham série, numeração, CSC nem certificado.
+    const doAmbiente = await this.prisma.fiscalSettings.findFirst({
       where: {
         establishmentId: dto.establishmentId,
         companyId,
+        ambiente,
         deletedAt: null,
       },
     });
 
-    if (existing) {
+    if (doAmbiente) {
       throw new BadRequestException(
-        'Já existe uma configuração fiscal para este estabelecimento',
+        `Já existe uma configuração fiscal de ${ambiente} para este estabelecimento`,
       );
     }
+
+    // A primeira configuração do estabelecimento nasce em uso; as seguintes
+    // só entram em uso pela troca explícita de ambiente.
+    const jaExisteAlguma = await this.prisma.fiscalSettings.count({
+      where: { establishmentId: dto.establishmentId, companyId, deletedAt: null },
+    });
 
     return this.prisma.fiscalSettings.create({
       data: {
         establishmentId: dto.establishmentId,
         companyId,
-        ambiente:
-          (dto.ambiente as FiscalEnvironment) ?? FiscalEnvironment.HOMOLOGACAO,
+        ambiente,
         serieNfce: dto.serieNfce ?? 1,
         codigoCsc: dto.codigoCsc,
         idCsc: dto.idCsc,
         certificadoRef: dto.certificadoRef,
         certificadoSenhaRef: dto.certificadoSenhaRef,
-        ativo: dto.ativo ?? true,
+        ativo: dto.ativo ?? jaExisteAlguma === 0,
       },
     });
   }
 
+  /** Configuração em uso pelo estabelecimento (a marcada como ativa). */
   async findSettings(
     companyId: string,
     establishmentId: string,
@@ -116,6 +131,18 @@ export class FiscalService {
         companyId,
         deletedAt: null,
       },
+      orderBy: [{ ativo: 'desc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  /** As configurações do estabelecimento, uma por ambiente. */
+  async findSettingsByEnvironment(
+    companyId: string,
+    establishmentId: string,
+  ): Promise<Prisma.FiscalSettingsGetPayload<null>[]> {
+    return this.prisma.fiscalSettings.findMany({
+      where: { establishmentId, companyId, deletedAt: null },
+      orderBy: { ambiente: 'asc' },
     });
   }
 
@@ -138,14 +165,9 @@ export class FiscalService {
     companyId: string,
     establishmentId: string,
     dto: UpdateFiscalSettingsDto,
+    userId?: string,
   ): Promise<Prisma.FiscalSettingsGetPayload<null>> {
-    const settings = await this.prisma.fiscalSettings.findFirst({
-      where: {
-        establishmentId,
-        companyId,
-        deletedAt: null,
-      },
-    });
+    const settings = await this.findSettings(companyId, establishmentId);
 
     if (!settings) {
       throw new NotFoundException(
@@ -155,8 +177,11 @@ export class FiscalService {
 
     const data: Prisma.FiscalSettingsUpdateInput = {};
 
-    if (dto.ambiente !== undefined) {
-      data.ambiente = dto.ambiente as FiscalEnvironment;
+    // Ambiente virou chave da configuração: trocar é escolher outra linha.
+    if (dto.ambiente !== undefined && dto.ambiente !== settings.ambiente) {
+      throw new BadRequestException(
+        'Use POST /fiscal/settings/:establishmentId/ambientes/:ambiente/ativar para trocar de ambiente',
+      );
     }
     if (dto.serieNfce !== undefined) data.serieNfce = dto.serieNfce;
     if (dto.proximoNumeroNfce !== undefined)
@@ -173,10 +198,290 @@ export class FiscalService {
       data.certificadoSubject = dto.certificadoSubject;
     if (dto.ativo !== undefined) data.ativo = dto.ativo;
 
-    return this.prisma.fiscalSettings.update({
-      where: { id: settings.id },
-      data,
+    const auditoria = this.montarEventosDeAlteracao(settings, dto, userId);
+
+    const [atualizado] = await this.prisma.$transaction([
+      this.prisma.fiscalSettings.update({
+        where: { id: settings.id },
+        data,
+      }),
+      ...auditoria.map((evento) =>
+        this.prisma.fiscalSettingsEvent.create({ data: evento }),
+      ),
+    ]);
+
+    return atualizado;
+  }
+
+  /**
+   * Série e CSC mudam a identidade fiscal do estabelecimento: cada alteração
+   * fica registrada com o valor anterior, o novo e quem alterou.
+   */
+  private montarEventosDeAlteracao(
+    settings: Prisma.FiscalSettingsGetPayload<null>,
+    dto: UpdateFiscalSettingsDto,
+    userId?: string,
+  ): Prisma.FiscalSettingsEventUncheckedCreateInput[] {
+    const eventos: Prisma.FiscalSettingsEventUncheckedCreateInput[] = [];
+    const base = {
+      companyId: settings.companyId,
+      fiscalSettingsId: settings.id,
+      usuarioId: userId,
+    };
+
+    if (dto.serieNfce !== undefined && dto.serieNfce !== settings.serieNfce) {
+      eventos.push({
+        ...base,
+        tipo: 'serie',
+        valorAnterior: String(settings.serieNfce),
+        valorNovo: String(dto.serieNfce),
+      });
+    }
+
+    // O valor do CSC é segredo: a auditoria registra a troca, não o código.
+    const trocouCsc =
+      (dto.codigoCsc !== undefined && dto.codigoCsc !== settings.codigoCsc) ||
+      (dto.idCsc !== undefined && dto.idCsc !== settings.idCsc);
+
+    if (trocouCsc) {
+      eventos.push({
+        ...base,
+        tipo: 'csc',
+        valorAnterior: settings.idCsc ? `idCSC ${settings.idCsc}` : null,
+        valorNovo: dto.idCsc ? `idCSC ${dto.idCsc}` : null,
+      });
+    }
+
+    return eventos;
+  }
+
+  /**
+   * Troca o ambiente em uso pelo estabelecimento.
+   *
+   * A configuração do ambiente alvo precisa existir, e produção só entra em
+   * uso depois de liberada pelo checklist.
+   */
+  async activateEnvironment(
+    companyId: string,
+    establishmentId: string,
+    ambiente: FiscalEnvironment,
+    userId?: string,
+  ): Promise<Prisma.FiscalSettingsGetPayload<null>> {
+    const atual = await this.findSettings(companyId, establishmentId);
+    const alvo = await this.prisma.fiscalSettings.findFirst({
+      where: { establishmentId, companyId, ambiente, deletedAt: null },
     });
+
+    if (!alvo) {
+      throw new NotFoundException(
+        `Não existe configuração fiscal de ${ambiente} para este estabelecimento`,
+      );
+    }
+
+    if (ambiente === FiscalEnvironment.PRODUCAO && !alvo.producaoLiberada) {
+      throw new BadRequestException(
+        'Conclua o checklist e libere a produção antes de ativá-la',
+      );
+    }
+
+    const [ativado] = await this.prisma.$transaction([
+      this.prisma.fiscalSettings.update({
+        where: { id: alvo.id },
+        data: { ativo: true },
+      }),
+      this.prisma.fiscalSettings.updateMany({
+        where: {
+          establishmentId,
+          companyId,
+          deletedAt: null,
+          id: { not: alvo.id },
+        },
+        data: { ativo: false },
+      }),
+      this.prisma.fiscalSettingsEvent.create({
+        data: {
+          companyId,
+          fiscalSettingsId: alvo.id,
+          tipo: 'ambiente',
+          valorAnterior: atual?.ambiente ?? null,
+          valorNovo: ambiente,
+          usuarioId: userId,
+        },
+      }),
+    ]);
+
+    this.logger.log(
+      `Ambiente fiscal do estabelecimento ${establishmentId} alterado para ${ambiente}`,
+    );
+
+    return ativado;
+  }
+
+  /** Checklist de ativação da produção, com o que já está pronto e o que falta. */
+  async getProductionChecklist(
+    companyId: string,
+    establishmentId: string,
+  ): Promise<{
+    liberada: boolean;
+    liberadaEm: Date | null;
+    itens: ProductionChecklistItem[];
+  }> {
+    const settings = await this.requireProductionSettings(
+      companyId,
+      establishmentId,
+    );
+
+    return {
+      liberada: settings.producaoLiberada,
+      liberadaEm: settings.producaoLiberadaEm,
+      itens: buildProductionChecklist(settings),
+    };
+  }
+
+  /**
+   * Libera a emissão em produção do estabelecimento.
+   *
+   * Recusa enquanto qualquer item do checklist estiver pendente — é o que
+   * impede uma nota real sair por engano com dados de homologação.
+   */
+  async releaseProduction(
+    companyId: string,
+    establishmentId: string,
+    userId?: string,
+  ): Promise<Prisma.FiscalSettingsGetPayload<null>> {
+    const settings = await this.requireProductionSettings(
+      companyId,
+      establishmentId,
+    );
+
+    const pendentes = buildProductionChecklist(settings).filter(
+      (item) => !item.ok,
+    );
+
+    if (pendentes.length > 0) {
+      throw new BadRequestException(
+        `Não é possível liberar a produção: ${pendentes
+          .map((item) => item.item.toLowerCase())
+          .join('; ')}`,
+      );
+    }
+
+    const [liberada] = await this.prisma.$transaction([
+      this.prisma.fiscalSettings.update({
+        where: { id: settings.id },
+        data: {
+          producaoLiberada: true,
+          producaoLiberadaEm: new Date(),
+          producaoLiberadaPor: userId,
+        },
+      }),
+      this.prisma.fiscalSettingsEvent.create({
+        data: {
+          companyId,
+          fiscalSettingsId: settings.id,
+          tipo: 'producao_liberada',
+          valorNovo: 'true',
+          usuarioId: userId,
+        },
+      }),
+    ]);
+
+    this.logger.log(
+      `Produção liberada para o estabelecimento ${establishmentId}`,
+    );
+
+    return liberada;
+  }
+
+  /** Revoga a liberação e volta o estabelecimento para homologação. */
+  async revokeProduction(
+    companyId: string,
+    establishmentId: string,
+    userId?: string,
+  ): Promise<Prisma.FiscalSettingsGetPayload<null>> {
+    const settings = await this.requireProductionSettings(
+      companyId,
+      establishmentId,
+    );
+
+    const [revogada] = await this.prisma.$transaction([
+      this.prisma.fiscalSettings.update({
+        where: { id: settings.id },
+        data: {
+          producaoLiberada: false,
+          producaoLiberadaEm: null,
+          producaoLiberadaPor: null,
+          ativo: false,
+        },
+      }),
+      this.prisma.fiscalSettings.updateMany({
+        where: {
+          establishmentId,
+          companyId,
+          ambiente: FiscalEnvironment.HOMOLOGACAO,
+          deletedAt: null,
+        },
+        data: { ativo: true },
+      }),
+      this.prisma.fiscalSettingsEvent.create({
+        data: {
+          companyId,
+          fiscalSettingsId: settings.id,
+          tipo: 'producao_revogada',
+          valorNovo: 'false',
+          usuarioId: userId,
+        },
+      }),
+    ]);
+
+    return revogada;
+  }
+
+  /** Histórico de alterações da configuração fiscal do estabelecimento. */
+  async getSettingsHistory(
+    companyId: string,
+    establishmentId: string,
+  ): Promise<Prisma.FiscalSettingsEventGetPayload<null>[]> {
+    const settings = await this.findSettingsByEnvironment(
+      companyId,
+      establishmentId,
+    );
+
+    if (settings.length === 0) {
+      throw new NotFoundException(
+        'Configuração fiscal não encontrada para este estabelecimento',
+      );
+    }
+
+    return this.prisma.fiscalSettingsEvent.findMany({
+      where: {
+        companyId,
+        fiscalSettingsId: { in: settings.map((linha) => linha.id) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private async requireProductionSettings(
+    companyId: string,
+    establishmentId: string,
+  ): Promise<Prisma.FiscalSettingsGetPayload<null>> {
+    const settings = await this.prisma.fiscalSettings.findFirst({
+      where: {
+        establishmentId,
+        companyId,
+        ambiente: FiscalEnvironment.PRODUCAO,
+        deletedAt: null,
+      },
+    });
+
+    if (!settings) {
+      throw new NotFoundException(
+        'Crie a configuração fiscal de produção deste estabelecimento antes',
+      );
+    }
+
+    return settings;
   }
 
   // ──────────────────────────────────────────────

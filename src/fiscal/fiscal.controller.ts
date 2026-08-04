@@ -4,6 +4,7 @@ import {
   Get,
   Logger,
   Param,
+  ParseEnumPipe,
   Patch,
   Post,
   Query,
@@ -26,6 +27,7 @@ import {
 } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { FiscalEnvironment } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
 import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
@@ -104,6 +106,8 @@ export class FiscalController {
     @Param('establishmentId') establishmentId: string,
     @UploadedFile() certificado: Express.Multer.File | undefined,
     @Body() dto: UploadCertificateDto,
+    @Query('ambiente', new ParseEnumPipe(FiscalEnvironment, { optional: true }))
+    ambiente?: FiscalEnvironment,
   ) {
     return this.certificateService.upload(
       companyId,
@@ -111,6 +115,7 @@ export class FiscalController {
       certificado?.buffer ?? Buffer.alloc(0),
       dto.senha,
       user.id,
+      ambiente,
     );
   }
 
@@ -125,8 +130,14 @@ export class FiscalController {
   getCertificateStatus(
     @CurrentCompany() companyId: string,
     @Param('establishmentId') establishmentId: string,
+    @Query('ambiente', new ParseEnumPipe(FiscalEnvironment, { optional: true }))
+    ambiente?: FiscalEnvironment,
   ) {
-    return this.certificateService.getStatus(companyId, establishmentId);
+    return this.certificateService.getStatus(
+      companyId,
+      establishmentId,
+      ambiente,
+    );
   }
 
   @Get('settings/:establishmentId/certificate/history')
@@ -140,8 +151,14 @@ export class FiscalController {
   getCertificateHistory(
     @CurrentCompany() companyId: string,
     @Param('establishmentId') establishmentId: string,
+    @Query('ambiente', new ParseEnumPipe(FiscalEnvironment, { optional: true }))
+    ambiente?: FiscalEnvironment,
   ) {
-    return this.certificateService.getHistory(companyId, establishmentId);
+    return this.certificateService.getHistory(
+      companyId,
+      establishmentId,
+      ambiente,
+    );
   }
 
   @Post('settings')
@@ -189,16 +206,152 @@ export class FiscalController {
   @UseGuards(RequirePermissionGuard)
   @RequirePermission('fiscal.settings.edit')
   @ApiOperation({
-    summary: 'Atualizar configuração fiscal de um estabelecimento',
+    summary: 'Atualizar a configuração fiscal em uso pelo estabelecimento',
+    description:
+      'Atualiza a configuração do ambiente ativo. Trocar de ambiente é feito pela rota de ativação.',
   })
   @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
   @ApiResponse({ status: 200, description: 'Configuração fiscal atualizada' })
   updateSettings(
     @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
     @Param('establishmentId') establishmentId: string,
     @Body() dto: UpdateFiscalSettingsDto,
   ) {
-    return this.fiscalService.updateSettings(companyId, establishmentId, dto);
+    return this.fiscalService.updateSettings(
+      companyId,
+      establishmentId,
+      dto,
+      user.id,
+    );
+  }
+
+  @Get('settings/:establishmentId/ambientes')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({
+    summary: 'Listar as configurações do estabelecimento por ambiente',
+    description:
+      'Homologação e produção têm série, numeração, CSC e certificado próprios.',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 200 })
+  findSettingsByEnvironment(
+    @CurrentCompany() companyId: string,
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.fiscalService.findSettingsByEnvironment(
+      companyId,
+      establishmentId,
+    );
+  }
+
+  @Post('settings/:establishmentId/ambientes/:ambiente/ativar')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.edit')
+  @ApiOperation({ summary: 'Trocar o ambiente fiscal em uso' })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiParam({
+    name: 'ambiente',
+    description: 'Ambiente a ativar',
+    enum: FiscalEnvironment,
+  })
+  @ApiResponse({ status: 201, description: 'Ambiente ativado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Produção ainda não liberada pelo checklist',
+  })
+  activateEnvironment(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Param('establishmentId') establishmentId: string,
+    @Param('ambiente', new ParseEnumPipe(FiscalEnvironment))
+    ambiente: FiscalEnvironment,
+  ) {
+    return this.fiscalService.activateEnvironment(
+      companyId,
+      establishmentId,
+      ambiente,
+      user.id,
+    );
+  }
+
+  @Get('settings/:establishmentId/producao/checklist')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({
+    summary: 'Checklist de ativação da produção',
+    description:
+      'Confere certificado, CSC, série e numeração da configuração de produção.',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 200 })
+  getProductionChecklist(
+    @CurrentCompany() companyId: string,
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.fiscalService.getProductionChecklist(
+      companyId,
+      establishmentId,
+    );
+  }
+
+  @Post('settings/:establishmentId/producao/liberar')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.edit')
+  @ApiOperation({
+    summary: 'Liberar a emissão em produção',
+    description: 'Só passa com todos os itens do checklist concluídos.',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 201, description: 'Produção liberada' })
+  @ApiResponse({ status: 400, description: 'Checklist incompleto' })
+  releaseProduction(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.fiscalService.releaseProduction(
+      companyId,
+      establishmentId,
+      user.id,
+    );
+  }
+
+  @Post('settings/:establishmentId/producao/revogar')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.edit')
+  @ApiOperation({
+    summary: 'Revogar a produção e voltar para homologação',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 201, description: 'Produção revogada' })
+  revokeProduction(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.fiscalService.revokeProduction(
+      companyId,
+      establishmentId,
+      user.id,
+    );
+  }
+
+  @Get('settings/:establishmentId/history')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({
+    summary: 'Histórico de alterações da configuração fiscal',
+    description: 'Trocas de série, de CSC, de ambiente e liberação de produção.',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 200 })
+  getSettingsHistory(
+    @CurrentCompany() companyId: string,
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.fiscalService.getSettingsHistory(companyId, establishmentId);
   }
 
   // ──────────────────────────────────────────────

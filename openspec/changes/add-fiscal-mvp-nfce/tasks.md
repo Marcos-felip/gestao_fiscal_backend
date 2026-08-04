@@ -22,7 +22,7 @@
 
 ## 3. Configuracao fiscal do estabelecimento + certificado [Fase A]
 
-- [x] 3.1 Tabela `FiscalSettings` (1:1 com establishment): ambiente, serie NFC-e, proximo numero, CSC, idCSC
+- [x] 3.1 Tabela `FiscalSettings` (1 por establishment+ambiente): ambiente, serie NFC-e, proximo numero, CSC, idCSC
 - [x] 3.2 Campos do certificado: ref criptografada do A1, ref da senha, validade, subject
 - [x] 3.3 Endpoint obter/gravar `FiscalSettings` do estabelecimento
 - [x] 3.4 Upload de certificado A1 (armazenar criptografado em cofre/KMS, extrair validade/subject)
@@ -92,16 +92,16 @@
 
 ## 11. Producao [Fase C]
 
-- [ ] 11.1 Separar configuracao de homologacao e producao
-- [ ] 11.2 Flag/checklist explicito de ativacao (impedir producao por acidente)
-- [ ] 11.3 Validar certificado, CSC, serie e numeracao de producao
+- [x] 11.1 Separar configuracao de homologacao e producao
+- [x] 11.2 Flag/checklist explicito de ativacao (impedir producao por acidente)
+- [x] 11.3 Validar certificado, CSC, serie e numeracao de producao
 - [ ] 11.4 Validar consulta publica da nota autorizada em producao
 
 ## 12. Auditoria e storage [Fase C]
 
 - [x] 12.1 Registrar emissao, cancelamento, download de XML, reimpressao
-- [ ] 12.2 Registrar troca de certificado, alteracao de serie e de CSC
-- [ ] 12.3 Registrar mudanca de ambiente (homologacao<->producao)
+- [x] 12.2 Registrar troca de certificado, alteracao de serie e de CSC
+- [x] 12.3 Registrar mudanca de ambiente (homologacao<->producao)
 - [x] 12.4 Storage de XML/DANFE via Supabase Storage (S3) com refs no banco
 - [x] 12.5 Organizar arquivos por empresa/ano/mes
 

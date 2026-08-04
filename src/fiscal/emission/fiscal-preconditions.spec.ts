@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
+import { FiscalEnvironment } from '@prisma/client';
 import {
   assertEmissionSettings,
+  buildProductionChecklist,
   checkEmissionSettings,
 } from './fiscal-preconditions';
 
@@ -65,5 +67,92 @@ describe('assertEmissionSettings', () => {
     expect(() => assertEmissionSettings(settings({ idCsc: null }))).toThrow(
       /Não é possível emitir a NFC-e/,
     );
+  });
+});
+
+describe('produção liberada', () => {
+  it('bloqueia a emissão em produção sem liberação', () => {
+    expect(
+      checkEmissionSettings(
+        settings({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          producaoLiberada: false,
+        }),
+      ),
+    ).toEqual([expect.stringContaining('libere a emissão em produção')]);
+  });
+
+  it('libera a emissão em produção depois do checklist', () => {
+    expect(
+      checkEmissionSettings(
+        settings({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          producaoLiberada: true,
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('não exige liberação em homologação', () => {
+    expect(
+      checkEmissionSettings(
+        settings({
+          ambiente: FiscalEnvironment.HOMOLOGACAO,
+          producaoLiberada: false,
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('buildProductionChecklist', () => {
+  const producao = (overrides: Record<string, unknown> = {}) => ({
+    ...settings(),
+    serieNfce: 1,
+    proximoNumeroNfce: 1,
+    ...overrides,
+  });
+
+  const pendentes = (config: Record<string, unknown> = {}) =>
+    buildProductionChecklist(producao(config))
+      .filter((item) => !item.ok)
+      .map((item) => item.item);
+
+  it('aprova a configuração completa', () => {
+    expect(pendentes()).toEqual([]);
+  });
+
+  it('devolve todos os itens, inclusive os já concluídos', () => {
+    expect(buildProductionChecklist(producao())).toHaveLength(5);
+  });
+
+  it('aponta certificado ausente', () => {
+    expect(pendentes({ certificadoRef: null })).toEqual([
+      'Certificado digital A1 enviado',
+      'Certificado dentro da validade',
+    ]);
+  });
+
+  it('aponta certificado vencido', () => {
+    expect(pendentes({ certificadoValidade: ontem })).toEqual([
+      'Certificado dentro da validade',
+    ]);
+  });
+
+  it('aponta CSC de produção ausente', () => {
+    expect(pendentes({ codigoCsc: null })).toEqual([
+      'CSC e ID do CSC de produção configurados',
+    ]);
+  });
+
+  it.each([
+    ['série fora da faixa', { serieNfce: 1000 }, 'Série entre 1 e 999'],
+    [
+      'numeração zerada',
+      { proximoNumeroNfce: 0 },
+      'Próximo número entre 1 e 999999999',
+    ],
+  ])('aponta %s', (_caso, override, esperado) => {
+    expect(pendentes(override)).toEqual([esperado]);
   });
 });

@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { FiscalEnvironment } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CertificateCryptoService } from './certificate-crypto.service';
 import { parsePfx } from './certificate-parser';
@@ -52,6 +53,7 @@ export class FiscalCertificateService {
     pfx: Buffer,
     senha: string,
     userId?: string,
+    ambiente?: FiscalEnvironment,
   ): Promise<CertificateStatus> {
     if (!pfx || pfx.length === 0) {
       throw new BadRequestException('Envie o arquivo do certificado digital');
@@ -69,7 +71,11 @@ export class FiscalCertificateService {
       );
     }
 
-    const settings = await this.requireSettings(companyId, establishmentId);
+    const settings = await this.requireSettings(
+      companyId,
+      establishmentId,
+      ambiente,
+    );
     const parsed = parsePfx(pfx, senha);
 
     if (parsed.validoAte.getTime() <= Date.now()) {
@@ -116,8 +122,13 @@ export class FiscalCertificateService {
   async getStatus(
     companyId: string,
     establishmentId: string,
+    ambiente?: FiscalEnvironment,
   ): Promise<CertificateStatus> {
-    const settings = await this.requireSettings(companyId, establishmentId);
+    const settings = await this.requireSettings(
+      companyId,
+      establishmentId,
+      ambiente,
+    );
 
     if (!settings.certificadoRef || !settings.certificadoValidade) {
       return { configurado: false, vencido: false };
@@ -139,8 +150,13 @@ export class FiscalCertificateService {
   async loadCredentials(
     companyId: string,
     establishmentId: string,
+    ambiente?: FiscalEnvironment,
   ): Promise<FiscalCertificateCredentials> {
-    const settings = await this.requireSettings(companyId, establishmentId);
+    const settings = await this.requireSettings(
+      companyId,
+      establishmentId,
+      ambiente,
+    );
 
     if (!settings.certificadoRef || !settings.certificadoSenhaRef) {
       throw new BadRequestException(
@@ -166,8 +182,16 @@ export class FiscalCertificateService {
   }
 
   /** Histórico de envio/substituição do certificado do estabelecimento. */
-  async getHistory(companyId: string, establishmentId: string) {
-    const settings = await this.requireSettings(companyId, establishmentId);
+  async getHistory(
+    companyId: string,
+    establishmentId: string,
+    ambiente?: FiscalEnvironment,
+  ) {
+    const settings = await this.requireSettings(
+      companyId,
+      establishmentId,
+      ambiente,
+    );
 
     return this.prisma.fiscalCertificateEvent.findMany({
       where: { companyId, fiscalSettingsId: settings.id },
@@ -175,14 +199,28 @@ export class FiscalCertificateService {
     });
   }
 
-  private async requireSettings(companyId: string, establishmentId: string) {
+  /**
+   * Resolve em qual configuração mexer.
+   *
+   * O certificado é por ambiente. Sem ambiente informado, vale a configuração
+   * em uso — é o que a tela de configuração fiscal mostra. Informar o ambiente
+   * permite preparar a produção antes de ativá-la.
+   */
+  private async requireSettings(
+    companyId: string,
+    establishmentId: string,
+    ambiente?: FiscalEnvironment,
+  ) {
     const settings = await this.prisma.fiscalSettings.findFirst({
-      where: { establishmentId, companyId, deletedAt: null },
+      where: { establishmentId, companyId, deletedAt: null, ambiente },
+      orderBy: [{ ativo: 'desc' }, { createdAt: 'asc' }],
     });
 
     if (!settings) {
       throw new NotFoundException(
-        'Configuração fiscal não encontrada para este estabelecimento',
+        ambiente
+          ? `Configuração fiscal de ${ambiente} não encontrada para este estabelecimento`
+          : 'Configuração fiscal não encontrada para este estabelecimento',
       );
     }
 

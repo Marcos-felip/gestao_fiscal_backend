@@ -195,15 +195,42 @@ o certificado nunca é gravado em texto claro como alternativa.
 
 ## 5. Ambientes, série e numeração
 
-- O ambiente é **por estabelecimento**, em `FiscalSettings.ambiente`
-  (`HOMOLOGACAO` / `PRODUCAO`), e viaja em toda chamada ao motor.
-- Cada estabelecimento tem **série** e **próximo número** próprios. A numeração é
-  reservada de forma atômica na criação do `FiscalDocument`, antes de enfileirar — o
-  retry reaproveita a mesma série e número, nunca gera um novo.
-- **CSC e idCSC** (código de segurança do contribuinte, usado no QR Code) também são por
-  estabelecimento e mudam entre homologação e produção.
+**Homologação e produção são configurações separadas.** `FiscalSettings` tem uma linha
+por `(estabelecimento, ambiente)`: série, numeração, CSC/idCSC e certificado de cada
+ambiente são independentes — a numeração de teste nunca contamina a real. A linha com
+`ativo = true` é a **configuração em uso**; no máximo uma por estabelecimento.
+
+- A numeração é reservada de forma atômica na criação do `FiscalDocument`, antes de
+  enfileirar — o retry reaproveita a mesma série e número, nunca gera um novo.
+- O documento carimba o `ambiente` na criação. O processor busca o CSC e o certificado
+  **daquele** ambiente, não do que estiver ativo agora.
 - Em homologação a SEFAZ exige a razão social do destinatário substituída pelo texto legal
   — quem faz isso é o motor.
+
+### Ativação da produção
+
+Emitir em produção exige **liberação explícita**, para que nenhuma nota real saia por
+engano com dados de teste:
+
+1. Crie a configuração de produção: `POST /fiscal/settings` com `ambiente: "PRODUCAO"`.
+2. Envie o certificado e o CSC de produção — o upload aceita `?ambiente=PRODUCAO`, então
+   dá para preparar a produção sem sair da homologação.
+3. Confira `GET /fiscal/settings/:establishmentId/producao/checklist`: certificado
+   enviado, certificado vigente, CSC e idCSC preenchidos, série entre 1 e 999 e próximo
+   número entre 1 e 999999999.
+4. `POST /fiscal/settings/:establishmentId/producao/liberar` — recusa enquanto faltar
+   qualquer item.
+5. `POST /fiscal/settings/:establishmentId/ambientes/PRODUCAO/ativar` para passar a emitir
+   em produção.
+
+`POST .../producao/revogar` desfaz a liberação e devolve o estabelecimento à homologação.
+Enquanto `producaoLiberada` for falso, a emissão em produção é barrada nas pré-condições,
+antes de reservar numeração.
+
+Trocas de **série**, de **CSC**, de **ambiente** e a liberação/revogação da produção ficam
+registradas em `fiscal_settings_events` e saem em
+`GET /fiscal/settings/:establishmentId/history`. O valor do CSC nunca é gravado na
+auditoria — só o idCSC, que o identifica.
 
 ---
 
@@ -240,6 +267,13 @@ adicional. O contrato HTTP para o frontend não muda quando o motor muda.
 | GET | `/settings/:establishmentId/certificate` | `fiscal.settings.read` |
 | GET | `/settings/:establishmentId/certificate/history` | `fiscal.settings.read` |
 | POST | `/settings/:establishmentId/sefaz-status` | `fiscal.settings.read` |
+| GET | `/settings/:establishmentId/ambientes` | `fiscal.settings.read` |
+| POST | `/settings/:establishmentId/ambientes/:ambiente/ativar` | `fiscal.settings.edit` |
+| GET | `/settings/:establishmentId/producao/checklist` | `fiscal.settings.read` |
+| POST | `/settings/:establishmentId/producao/liberar` | `fiscal.settings.edit` |
+| POST | `/settings/:establishmentId/producao/revogar` | `fiscal.settings.edit` |
+| GET | `/settings/:establishmentId/history` | `fiscal.settings.read` |
+| GET | `/rejections` | `fiscal.read` |
 | GET | `/engine/health` | `fiscal.settings.read` |
 | GET | `/documents` | `fiscal.read` |
 | GET | `/documents/:id` | `fiscal.read` |
@@ -312,11 +346,12 @@ A mesma chave é usada dos dois lados: o Nest a envia em `X-Api-Key`, o motor a 
 
 | Tabela | Conteúdo |
 |--------|----------|
-| `fiscal_settings` | 1:1 com estabelecimento: ambiente, série, próximo número, CSC/idCSC, refs cifradas do certificado, validade e subject |
+| `fiscal_settings` | Uma linha por (estabelecimento, ambiente): série, próximo número, CSC/idCSC, refs cifradas do certificado, validade, subject e liberação de produção |
 | `fiscal_documents` | Documento fiscal: modelo, série, número, chave, status, ambiente, protocolo, rejeição, datas, valores, XMLs, DANFE, QR Code, `idempotencyKey`, `attempts`, engine e **snapshot** |
 | `fiscal_status_history` | Toda transição de status, com motivo, usuário e data |
 | `fiscal_document_events` | Eventos do documento (no MVP, o cancelamento) |
 | `fiscal_certificate_events` | Auditoria de envio e substituição de certificado |
+| `fiscal_settings_events` | Auditoria de série, CSC, troca de ambiente e liberação de produção |
 
 O **snapshot** (JSONB) congela emitente, destinatário, itens, impostos, pagamentos e
 totais no momento da emissão: alterar produto ou cliente depois não muda o que foi

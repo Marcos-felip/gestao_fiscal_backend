@@ -105,10 +105,13 @@ export class FiscalEmissionProcessor extends WorkerHost {
     // param a emissão de vez — reprocessar não resolve.
     let request: EmitirNfceRequest;
     try {
+      // O CSC é por ambiente: usar o do ambiente carimbado no documento, e
+      // não o da configuração em uso, que pode ter mudado desde a criação.
       const settings = await this.prisma.fiscalSettings.findFirst({
         where: {
           establishmentId: document.establishmentId,
           companyId,
+          ambiente: document.ambiente,
           deletedAt: null,
         },
       });
@@ -126,6 +129,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
         await this.certificates.loadCredentials(
           companyId,
           document.establishmentId,
+          document.ambiente,
         );
 
       request = { ...payload, ...credentials };

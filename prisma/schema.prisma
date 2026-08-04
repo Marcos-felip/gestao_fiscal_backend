@@ -255,6 +255,7 @@ model Company {
   fiscalSettings   FiscalSettings[]
   fiscalDocuments  FiscalDocument[]
   fiscalCertificateEvents FiscalCertificateEvent[]
+  fiscalSettingsEvents    FiscalSettingsEvent[]
 
   @@map("companies")
 }
@@ -303,7 +304,7 @@ model Establishment {
   financialEntries FinancialEntry[]
   cashRegisters    CashRegister[]
   cashSessions     CashSession[]
-  fiscalSettings   FiscalSettings?
+  fiscalSettings   FiscalSettings[]
   fiscalDocuments  FiscalDocument[]
 
   @@index([companyId])
@@ -751,16 +752,42 @@ model FiscalSettings {
   certificadoValidade DateTime?      @map("certificado_validade")
   /// Subject DN do certificado digital
   certificadoSubject String?         @map("certificado_subject")
+  /// Configuração em uso pelo estabelecimento. No máximo uma por estabelecimento
   ativo            Boolean           @default(true)
+  /// Liberação explícita para emitir em produção (checklist de ativação)
+  producaoLiberada Boolean           @default(false) @map("producao_liberada")
+  producaoLiberadaEm DateTime?       @map("producao_liberada_em")
+  producaoLiberadaPor String?        @map("producao_liberada_por")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   deletedAt        DateTime?         @map("deleted_at")
 
   certificateEvents FiscalCertificateEvent[]
+  settingsEvents    FiscalSettingsEvent[]
 
-  @@unique([establishmentId])
+  @@unique([establishmentId, ambiente])
   @@index([companyId])
   @@map("fiscal_settings")
+}
+
+/// Auditoria de mudanças na configuração fiscal: série, CSC, ambiente em uso
+/// e liberação de produção. O certificado tem auditoria própria.
+model FiscalSettingsEvent {
+  id               String         @id @default(uuid())
+  companyId        String         @map("company_id")
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fiscalSettingsId String         @map("fiscal_settings_id")
+  fiscalSettings   FiscalSettings @relation(fields: [fiscalSettingsId], references: [id], onDelete: Cascade)
+  /// "serie", "csc", "ambiente", "producao_liberada" ou "producao_revogada"
+  tipo             String
+  valorAnterior    String?        @map("valor_anterior")
+  valorNovo        String?        @map("valor_novo")
+  usuarioId        String?        @map("usuario_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([fiscalSettingsId])
+  @@map("fiscal_settings_events")
 }
 
 /// Auditoria de envio e substituição do certificado A1 de um estabelecimento.

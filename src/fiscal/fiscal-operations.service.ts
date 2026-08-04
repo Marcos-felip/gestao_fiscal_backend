@@ -82,6 +82,7 @@ export class FiscalOperationsService {
     const credentials = await this.certificates.loadCredentials(
       companyId,
       document.establishmentId,
+      document.ambiente,
     );
 
     const result = await this.engine.cancelar({
@@ -188,6 +189,7 @@ export class FiscalOperationsService {
     const credentials = await this.certificates.loadCredentials(
       companyId,
       document.establishmentId,
+      document.ambiente,
     );
 
     const result = await this.engine.consultar({
@@ -381,6 +383,7 @@ export class FiscalOperationsService {
     const credentials = await this.certificates.loadCredentials(
       companyId,
       establishmentId,
+      settings.ambiente,
     );
 
     return this.engine.statusServico({
