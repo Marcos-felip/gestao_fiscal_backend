@@ -45,7 +45,7 @@
 - [x] 5.1 Mapear `PaymentMethod` -> `tPag` (01 dinheiro, 03 credito, 04 debito, 15 boleto, 17 PIX, 90 vale, 99 outros)
 - [x] 5.2 Tratar pagamento dividido a partir de `SalePayment[]`
 - [x] 5.3 Validar soma dos pagamentos = total da venda
-- [ ] 5.4 Calcular troco (`vTroco`) a partir de `amountReceived`
+- [x] 5.4 Calcular troco (`vTroco`) a partir de `amountReceived` (no snapshot; o motor nao aceita vTroco)
 
 ## 6. Documento fiscal, snapshot e status [Fase A]
 

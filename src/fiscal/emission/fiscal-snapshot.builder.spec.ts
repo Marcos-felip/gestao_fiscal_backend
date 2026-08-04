@@ -239,6 +239,80 @@ describe('buildFiscalSnapshot', () => {
     });
   });
 
+  describe('recebimento e troco', () => {
+    it('não registra recebimento quando a venda não informa valor recebido', () => {
+      expect(buildFiscalSnapshot(empresa(), venda()).recebimento).toBeUndefined();
+    });
+
+    it('usa o troco registrado pelo caixa', () => {
+      const snapshot = buildFiscalSnapshot(
+        empresa(),
+        venda({
+          payments: [
+            {
+              method: PaymentMethod.DINHEIRO,
+              amount: 10,
+              amountReceived: 20,
+              changeGiven: 10,
+            },
+          ],
+        }),
+      );
+
+      expect(snapshot.recebimento).toEqual({ valorRecebido: 20, troco: 10 });
+    });
+
+    it('deriva o troco do valor recebido quando o caixa não registrou', () => {
+      const snapshot = buildFiscalSnapshot(
+        empresa(),
+        venda({
+          payments: [
+            { method: PaymentMethod.DINHEIRO, amount: 10, amountReceived: 15 },
+          ],
+        }),
+      );
+
+      expect(snapshot.recebimento).toEqual({ valorRecebido: 15, troco: 5 });
+    });
+
+    it('ignora as formas sem recebimento no pagamento dividido', () => {
+      const snapshot = buildFiscalSnapshot(
+        empresa(),
+        venda({
+          payments: [
+            { method: PaymentMethod.PIX, amount: 6 },
+            {
+              method: PaymentMethod.DINHEIRO,
+              amount: 4,
+              amountReceived: 10,
+              changeGiven: 6,
+            },
+          ],
+        }),
+      );
+
+      expect(snapshot.recebimento).toEqual({ valorRecebido: 10, troco: 6 });
+    });
+
+    it('não envia o troco ao motor — os pagamentos seguem só com tipo e valor', () => {
+      const snapshot = buildFiscalSnapshot(
+        empresa(),
+        venda({
+          payments: [
+            {
+              method: PaymentMethod.DINHEIRO,
+              amount: 10,
+              amountReceived: 20,
+              changeGiven: 10,
+            },
+          ],
+        }),
+      );
+
+      expect(snapshot.pagamentos).toEqual([{ tipo: 'dinheiro', valor: 10 }]);
+    });
+  });
+
   describe('pré-condições', () => {
     it('exige o CRT da empresa', () => {
       expect(() =>

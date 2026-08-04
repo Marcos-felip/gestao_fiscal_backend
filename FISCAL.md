@@ -89,7 +89,13 @@ Campos do topo: `emitente{}`, `destinatario?{}`, `itens[]`, `pagamentos[]`, `val
 `csosn`, e PIS/COFINS ficam com CST 07.
 
 **Consistência exigida:** Σ itens = `valorTotal` = Σ pagamentos, com tolerância de 0,01.
-Não existe grupo de troco no payload.
+
+**Troco:** o contrato do motor não tem grupo de troco (`vTroco`) — `pagamentos[]` só
+aceita `tipo` e `valor`. O valor recebido e o troco são calculados a partir dos
+`SalePayment` (`amountReceived`/`changeGiven`) e congelados no snapshot, em
+`recebimento: { valorRecebido, troco }`, para auditoria e reimpressão. **Não são
+enviados na emissão.** Levar `vTroco` ao XML depende de o `fiscal_service` passar a
+aceitar o campo.
 
 ### `POST /api/nfce/emit` — resposta
 

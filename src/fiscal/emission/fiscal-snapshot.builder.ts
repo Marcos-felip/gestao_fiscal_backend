@@ -50,6 +50,19 @@ export interface FiscalSnapshot {
   pagamentos: NfcePagamento[];
   /** Σ dos itens já com o desconto rateado */
   valorTotal: number;
+  /**
+   * Valor recebido e troco do pagamento em dinheiro.
+   *
+   * Fica no snapshot só para auditoria e reimpressão: o contrato do motor não
+   * tem grupo de troco (`vTroco`), então isto **não** é enviado na emissão.
+   */
+  recebimento?: FiscalRecebimento;
+}
+
+/** Dinheiro entregue pelo consumidor e troco devolvido. */
+export interface FiscalRecebimento {
+  valorRecebido: number;
+  troco: number;
 }
 
 /** Recorte da venda necessário para montar o snapshot. */
@@ -106,6 +119,7 @@ export function buildFiscalSnapshot(
     itens,
     pagamentos,
     valorTotal,
+    recebimento: montarRecebimento(sale),
   };
 }
 
@@ -390,6 +404,46 @@ function montarPagamentos(
   }
 
   return pagamentos;
+}
+
+/**
+ * Recebido e troco a partir dos pagamentos da venda.
+ *
+ * `changeGiven` é o que o caixa registrou e tem prioridade; sem ele, o troco
+ * é a sobra do valor recebido. Devolve `undefined` quando nenhum pagamento
+ * registrou recebimento — não há troco a documentar.
+ */
+function montarRecebimento(sale: SaleForSnapshot): FiscalRecebimento | undefined {
+  const informado = (valor: unknown) => valor !== null && valor !== undefined;
+
+  const comRecebimento = sale.payments.filter(
+    (pagamento) =>
+      informado(pagamento.amountReceived) || informado(pagamento.changeGiven),
+  );
+
+  if (comRecebimento.length === 0) return undefined;
+
+  const valorRecebido = arredondar(
+    somar(
+      comRecebimento.map((pagamento) =>
+        Number(pagamento.amountReceived ?? pagamento.amount),
+      ),
+    ),
+  );
+
+  const trocoRegistrado = somar(
+    comRecebimento.map((pagamento) => Number(pagamento.changeGiven ?? 0)),
+  );
+
+  const pago = somar(
+    comRecebimento.map((pagamento) => Number(pagamento.amount)),
+  );
+
+  const troco = arredondar(
+    trocoRegistrado > 0 ? trocoRegistrado : Math.max(0, valorRecebido - pago),
+  );
+
+  return { valorRecebido, troco };
 }
 
 function limitar(valor: string, tamanho: number): string {
