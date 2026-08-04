@@ -20,3 +20,32 @@ bloquear a venda.
 #### Scenario: Numeração nunca duplicada
 - **WHEN** múltiplas emissões concorrem no mesmo estabelecimento e série
 - **THEN** cada documento recebe um número sequencial único, sem repetição
+
+### Requirement: Consulta de situação
+O sistema SHALL consultar a situação de uma NFC-e na SEFAZ pela chave de acesso e
+atualizar o status local conforme o retorno.
+
+#### Scenario: Reconciliação após timeout
+- **WHEN** uma emissão sofre timeout mas a nota foi autorizada na SEFAZ
+- **THEN** a consulta identifica a autorização e o documento é atualizado para AUTORIZADO
+
+### Requirement: Cancelamento de NFC-e
+O sistema SHALL permitir cancelar uma NFC-e autorizada mediante justificativa de no
+mínimo 15 caracteres, enviando o evento de cancelamento e armazenando protocolo e
+XML de cancelamento. O sistema SHALL impedir cancelamento duplicado.
+
+#### Scenario: Cancelamento com justificativa válida
+- **WHEN** o usuário cancela uma nota autorizada com justificativa de 15+ caracteres
+- **THEN** o evento é enviado, o documento vira CANCELADO e o XML/protocolo de cancelamento são guardados
+
+#### Scenario: Justificativa curta
+- **WHEN** o usuário tenta cancelar com justificativa menor que 15 caracteres
+- **THEN** o cancelamento é recusado antes de enviar o evento
+
+### Requirement: Tratamento de rejeições e retry
+O sistema SHALL persistir código e mensagem de rejeição, permitir nova tentativa
+sem duplicar a nota e disponibilizar a consulta das rejeições.
+
+#### Scenario: Retry após corrigir o cadastro
+- **WHEN** uma nota é rejeitada, o cadastro é corrigido e o usuário aciona retry
+- **THEN** a mesma numeração/documento é reprocessado, sem criar duplicidade

@@ -21,17 +21,25 @@ configuração da empresa estiver incompleta.
 
 ### Requirement: Configuração fiscal do estabelecimento emissor
 O sistema SHALL manter, por estabelecimento, o ambiente (homologação/produção), a
-série e a próxima numeração da NFC-e, o CSC e o idCSC, e as referências do
-certificado A1 (validade e titular). O certificado SHALL nunca ser persistido ou
-registrado em texto claro.
+série e a próxima numeração da NFC-e, o CSC e o idCSC, e o certificado A1
+(armazenado criptografado). O certificado SHALL nunca ser persistido ou registrado
+em texto claro.
 
 #### Scenario: Gravar configuração do estabelecimento
 - **WHEN** o usuário grava a configuração fiscal de um estabelecimento
-- **THEN** o ambiente, a série, a próxima numeração, o CSC/idCSC e as referências do certificado são persistidos, e a resposta reflete os dados salvos
+- **THEN** o ambiente, a série, a próxima numeração, o CSC/idCSC são persistidos, e a resposta reflete os dados salvos
 
-#### Scenario: Certificado nunca em texto claro
-- **WHEN** o certificado A1 é armazenado
-- **THEN** apenas referências criptografadas e os metadados (validade, titular) são guardados, nunca o pfx/senha em texto claro
+#### Scenario: Upload de certificado A1
+- **WHEN** o usuário envia um certificado A1 válido com a senha
+- **THEN** o certificado é armazenado criptografado, e a validade e o titular são extraídos e exibidos
+
+#### Scenario: Certificado vencido
+- **WHEN** uma emissão é solicitada com o certificado do estabelecimento vencido
+- **THEN** a emissão é bloqueada e o usuário é avisado do vencimento
+
+#### Scenario: Teste de comunicação com a SEFAZ
+- **WHEN** o usuário aciona o teste de comunicação
+- **THEN** o sistema consulta o status do serviço da SEFAZ via motor fiscal e retorna disponível/indisponível
 
 ### Requirement: Dados fiscais dos produtos
 O sistema SHALL manter os dados fiscais de cada produto (NCM, CEST, origem, CFOP,

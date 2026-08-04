@@ -25,11 +25,11 @@
 - [x] 3.1 Tabela `FiscalSettings` (1:1 com establishment): ambiente, serie NFC-e, proximo numero, CSC, idCSC
 - [x] 3.2 Campos do certificado: ref criptografada do A1, ref da senha, validade, subject
 - [x] 3.3 Endpoint obter/gravar `FiscalSettings` do estabelecimento
-- [ ] 3.4 Upload de certificado A1 (armazenar criptografado em cofre/KMS, extrair validade/subject)
-- [ ] 3.5 Substituir certificado (mantendo auditoria)
-- [ ] 3.6 Alertar certificado a <=30 dias do vencimento
-- [ ] 3.7 Bloquear emissao com certificado vencido
-- [ ] 3.8 Endpoint "teste de comunicacao com a SEFAZ" (chama `IFiscalEngine.statusServico`)
+- [x] 3.4 Upload de certificado A1 (armazenar criptografado em cofre/KMS, extrair validade/subject)
+- [x] 3.5 Substituir certificado (mantendo auditoria)
+- [x] 3.6 Alertar certificado a <=30 dias do vencimento
+- [x] 3.7 Bloquear emissao com certificado vencido
+- [x] 3.8 Endpoint "teste de comunicacao com a SEFAZ" (chama `IFiscalEngine.statusServico`)
 
 ## 4. Dados fiscais dos produtos [Fase A]
 
@@ -44,7 +44,7 @@
 
 - [x] 5.1 Mapear `PaymentMethod` -> `tPag` (01 dinheiro, 03 credito, 04 debito, 15 boleto, 17 PIX, 90 vale, 99 outros)
 - [x] 5.2 Tratar pagamento dividido a partir de `SalePayment[]`
-- [ ] 5.3 Validar soma dos pagamentos = total da venda
+- [x] 5.3 Validar soma dos pagamentos = total da venda
 - [ ] 5.4 Calcular troco (`vTroco`) a partir de `amountReceived`
 
 ## 6. Documento fiscal, snapshot e status [Fase A]
@@ -70,23 +70,23 @@
 - [x] 8.3 Reservar numeracao sequencial atomica por serie+estabelecimento
 - [x] 8.4 Criar `FiscalDocument` (PENDENTE) + `idempotencyKey` e enfileirar (BullMQ)
 - [x] 8.5 Job de emissao: montar snapshot e chamar `IFiscalEngine.emitirNfce`
-- [ ] 8.6 Processar autorizacao: salvar chave, protocolo, XML autorizado, QR Code
-- [ ] 8.7 Upload XML/DANFE para Supabase Storage (S3): `fiscal/{companyId}/{ano}/{mes}/{chave}.xml`
-- [ ] 8.8 Atualizar status fiscal da venda (`Sale.fiscalStatus`)
-- [ ] 8.9 Endpoints de download: XML autorizado e DANFE (+ reimpressao)
+- [x] 8.6 Processar autorizacao: salvar chave, protocolo, XML autorizado, QR Code
+- [x] 8.7 Upload XML/DANFE para Supabase Storage (S3): `fiscal/{companyId}/{ano}/{mes}/{chave}.xml`
+- [x] 8.8 Atualizar status fiscal da venda (`Sale.fiscalStatus`)
+- [x] 8.9 Endpoints de download: XML autorizado e DANFE (+ reimpressao)
 
 ## 9. Consulta e cancelamento [Fase B]
 
-- [ ] 9.1 `POST /fiscal/documents/:id/consulta` (situacao na SEFAZ)
-- [ ] 9.2 `POST /fiscal/documents/:id/cancel { justificativa }` (min. 15 caracteres)
-- [ ] 9.3 Enviar evento de cancelamento e armazenar protocolo + XML de cancelamento
-- [ ] 9.4 Atualizar documento para CANCELADO e refletir na venda
-- [ ] 9.5 Impedir cancelamento duplicado e tratar cancelamento rejeitado
+- [x] 9.1 `POST /fiscal/documents/:id/consulta` (situacao na SEFAZ)
+- [x] 9.2 `POST /fiscal/documents/:id/cancel { justificativa }` (min. 15 caracteres)
+- [x] 9.3 Enviar evento de cancelamento e armazenar protocolo + XML de cancelamento
+- [x] 9.4 Atualizar documento para CANCELADO e refletir na venda
+- [x] 9.5 Impedir cancelamento duplicado e tratar cancelamento rejeitado
 
 ## 10. Rejeicoes, idempotencia e retry [Fase B]
 
-- [ ] 10.1 Persistir codigo + mensagem de rejeicao + retorno tecnico completo
-- [ ] 10.2 `POST /fiscal/documents/:id/retry` sem duplicar (respeita idempotencia)
+- [x] 10.1 Persistir codigo + mensagem de rejeicao + retorno tecnico completo
+- [x] 10.2 `POST /fiscal/documents/:id/retry` sem duplicar (respeita idempotencia)
 - [ ] 10.3 Contar tentativas (`attempts`) e registrar usuario/data de cada uma
 - [ ] 10.4 Endpoint da central de rejeicoes (listar/filtrar por status, periodo, estabelecimento)
 
@@ -99,11 +99,11 @@
 
 ## 12. Auditoria e storage [Fase C]
 
-- [ ] 12.1 Registrar emissao, cancelamento, download de XML, reimpressao
+- [x] 12.1 Registrar emissao, cancelamento, download de XML, reimpressao
 - [ ] 12.2 Registrar troca de certificado, alteracao de serie e de CSC
 - [ ] 12.3 Registrar mudanca de ambiente (homologacao<->producao)
-- [ ] 12.4 Storage de XML/DANFE via Supabase Storage (S3) com refs no banco
-- [ ] 12.5 Organizar arquivos por empresa/ano/mes
+- [x] 12.4 Storage de XML/DANFE via Supabase Storage (S3) com refs no banco
+- [x] 12.5 Organizar arquivos por empresa/ano/mes
 
 ## 13. Endpoints, listagem e docs [Fase C]
 
