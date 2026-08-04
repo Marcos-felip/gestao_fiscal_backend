@@ -91,6 +91,9 @@ export class UpdateCompanyDto {
   })
   @IsOptional()
   @IsString()
+  @Matches(/^\d{2,14}$/, {
+    message: 'Inscrição Estadual inválida. Esperado: 2 a 14 dígitos',
+  })
   inscricaoEstadual?: string;
 
   @ApiPropertyOptional({ example: '1234567' })

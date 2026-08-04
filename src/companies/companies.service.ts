@@ -172,6 +172,7 @@ export class CompaniesService {
           neighborhood: dto.neighborhood,
           city: dto.city,
           state: dto.state,
+          ibgeCode: dto.ibgeCode,
         },
       });
 
@@ -314,6 +315,8 @@ export class CompaniesService {
               establishmentUpdateData.city = addr.city;
             if (addr.state !== undefined)
               establishmentUpdateData.state = addr.state;
+            if (addr.ibgeCode !== undefined)
+              establishmentUpdateData.ibgeCode = addr.ibgeCode;
           }
 
           // Atualizar establishment se houver dados

@@ -15,8 +15,8 @@
 
 - [x] 2.1 Garantir/estender campos fiscais em `Company` (razao social, nome fantasia, CNPJ, IE, IM, CRT, contribuinte de ICMS)
 - [x] 2.2 Endereco fiscal + `codigoIbgeMunicipio` + UF + telefone/e-mail fiscal
-- [ ] 2.3 Validar CNPJ/CPF localmente (digitos verificadores)
-- [ ] 2.4 Validar formato de IE e de CEP/UF/codigo IBGE
+- [x] 2.3 Validar CNPJ/CPF localmente (digitos verificadores)
+- [x] 2.4 Validar formato de IE e de CEP/UF/codigo IBGE
 - [x] 2.5 Campo derivado `fiscalConfigComplete` na empresa
 - [x] 2.6 Bloquear emissao quando a configuracao da empresa estiver incompleta
 

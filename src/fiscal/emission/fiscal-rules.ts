@@ -3,6 +3,8 @@ import {
   PaymentMethod,
   TaxRegimeCode,
 } from '@prisma/client';
+import { cnpj, cpf } from 'cpf-cnpj-validator';
+import { isUf } from '../../common/validators/is-uf.validator';
 import {
   CSOSN_SUPORTADOS,
   CST_ICMS_SUPORTADOS,
@@ -106,6 +108,28 @@ export function isCodigoIbgeValido(codigo?: string | null): boolean {
 /** CEP tem 8 dígitos. */
 export function isCepValido(cep?: string | null): boolean {
   return /^\d{8}$/.test(apenasDigitos(cep));
+}
+
+/** UF precisa ser uma das 27 siglas oficiais. */
+export function isUfValida(uf?: string | null): boolean {
+  return isUf(uf);
+}
+
+/**
+ * Inscrição Estadual do emitente: só dígitos, de 2 a 14 posições (o motor
+ * recusa acima de 14). O dígito verificador varia por UF e não é conferido —
+ * quem valida a regra estadual é a SEFAZ.
+ */
+export function isInscricaoEstadualValida(ie?: string | null): boolean {
+  return /^\d{2,14}$/.test(apenasDigitos(ie));
+}
+
+/** CPF (11) ou CNPJ (14) com dígitos verificadores conferidos. */
+export function isCpfCnpjValido(valor?: string | null): boolean {
+  const digitos = apenasDigitos(valor);
+  if (digitos.length === 11) return cpf.isValid(digitos);
+  if (digitos.length === 14) return cnpj.isValid(digitos);
+  return false;
 }
 
 /** GTIN válido tem 8, 12, 13 ou 14 dígitos; vazio vira "SEM GTIN" no motor. */

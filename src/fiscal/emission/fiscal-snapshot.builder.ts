@@ -13,8 +13,11 @@ import {
   isCestValido,
   isCfopValido,
   isCodigoIbgeValido,
+  isCpfCnpjValido,
+  isInscricaoEstadualValida,
   isNcmValido,
   isOrigemValida,
+  isUfValida,
   mapCrt,
   mapFormaPagamento,
   normalizarGtin,
@@ -99,7 +102,7 @@ export function buildFiscalSnapshot(
       data: sale.saleDate.toISOString(),
     },
     emitente,
-    destinatario: montarDestinatario(sale),
+    destinatario: montarDestinatario(sale, problemas),
     itens,
     pagamentos,
     valorTotal,
@@ -139,11 +142,13 @@ function montarEmitente(
   const cep = apenasDigitos(establishment.cep);
   const uf = (establishment.state ?? '').trim().toUpperCase();
 
-  if (cnpj.length !== 14) {
+  if (!isCpfCnpjValido(cnpj) || cnpj.length !== 14) {
     problemas.push('CNPJ do estabelecimento emitente inválido');
   }
-  if (!inscricaoEstadual) {
-    problemas.push('informe a inscrição estadual do emitente');
+  if (!isInscricaoEstadualValida(inscricaoEstadual)) {
+    problemas.push(
+      'informe a inscrição estadual do emitente (2 a 14 dígitos)',
+    );
   }
   if (!isCodigoIbgeValido(codigoMunicipio)) {
     problemas.push(
@@ -153,8 +158,8 @@ function montarEmitente(
   if (!isCepValido(cep)) {
     problemas.push('informe o CEP do estabelecimento emitente');
   }
-  if (uf.length !== 2) {
-    problemas.push('informe a UF do estabelecimento emitente');
+  if (!isUfValida(uf)) {
+    problemas.push('informe uma UF válida no estabelecimento emitente');
   }
   if (!establishment.street || !establishment.number) {
     problemas.push('informe logradouro e número do estabelecimento emitente');
@@ -186,17 +191,27 @@ function montarEmitente(
   };
 }
 
-/** Consumidor não identificado: o bloco inteiro é omitido. */
+/**
+ * Consumidor não identificado: o bloco inteiro é omitido.
+ *
+ * Com cliente na venda, um CPF/CNPJ inválido para a emissão em vez de virar
+ * nota anônima — quem pediu o documento na nota espera vê-lo lá, e a SEFAZ
+ * rejeitaria a nota inteira depois de consumir a numeração.
+ */
 function montarDestinatario(
   sale: SaleForSnapshot,
+  problemas: string[],
 ): NfceDestinatario | undefined {
   if (!sale.customer) return undefined;
 
   const cpfCnpj = apenasDigitos(sale.customer.cpfCnpj);
 
+  if (cpfCnpj && !isCpfCnpjValido(cpfCnpj)) {
+    problemas.push('CPF/CNPJ do cliente da venda é inválido');
+  }
+
   return {
-    cpfCnpj:
-      cpfCnpj.length === 11 || cpfCnpj.length === 14 ? cpfCnpj : undefined,
+    cpfCnpj: isCpfCnpjValido(cpfCnpj) ? cpfCnpj : undefined,
     nome: sale.customer.name,
   };
 }
