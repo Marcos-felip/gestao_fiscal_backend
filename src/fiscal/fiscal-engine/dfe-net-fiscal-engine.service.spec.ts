@@ -409,4 +409,48 @@ describe('DfeNetFiscalEngine', () => {
       });
     });
   });
+
+  describe('health', () => {
+    it('chama GET /health sem X-Api-Key e devolve o motor disponível', async () => {
+      fetchMock.mockResolvedValue(httpResponse(200, 'Healthy'));
+
+      const result = await engine.health();
+
+      const { url, init } = lastCall();
+      expect(url).toBe('http://motor-fiscal:8080/health');
+      expect(init.method).toBe('GET');
+      expect(init.headers).toBeUndefined();
+      expect(result).toMatchObject({ disponivel: true, status: 'Healthy' });
+      expect(result.latenciaMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('lê o status quando o motor responde JSON', async () => {
+      fetchMock.mockResolvedValue(httpResponse(200, { status: 'Healthy' }));
+
+      const result = await engine.health();
+
+      expect(result).toMatchObject({ disponivel: true, status: 'Healthy' });
+    });
+
+    it('devolve indisponível quando o motor responde erro', async () => {
+      fetchMock.mockResolvedValue(httpResponse(503, 'Unhealthy'));
+
+      const result = await engine.health();
+
+      expect(result).toMatchObject({
+        disponivel: false,
+        status: 'Unhealthy',
+        mensagem: 'Motor fiscal respondeu HTTP 503 em /health',
+      });
+    });
+
+    it('devolve indisponível sem lançar quando a rede falha', async () => {
+      fetchMock.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const result = await engine.health();
+
+      expect(result.disponivel).toBe(false);
+      expect(result.mensagem).toContain('ECONNREFUSED');
+    });
+  });
 });

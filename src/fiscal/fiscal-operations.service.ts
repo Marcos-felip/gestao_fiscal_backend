@@ -11,7 +11,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { DfeNetFiscalEngine } from './fiscal-engine/dfe-net-fiscal-engine.service';
 import { FiscalCertificateService } from './certificates/fiscal-certificate.service';
-import { StatusServicoResult } from './fiscal-engine/fiscal-engine.interface';
+import {
+  FiscalEngineHealth,
+  StatusServicoResult,
+} from './fiscal-engine/fiscal-engine.interface';
 import { mapAmbiente } from './emission/fiscal-rules';
 import { buildFiscalStorageKey } from './emission/fiscal-storage';
 import { FISCAL_EMISSION_QUEUE } from '../queue/queue.constants';
@@ -385,6 +388,16 @@ export class FiscalOperationsService {
       uf,
       ...credentials,
     });
+  }
+
+  /**
+   * Sonda de saúde do motor fiscal, para monitoramento.
+   *
+   * Não exige certificado nem estabelecimento e não consulta a SEFAZ — só
+   * responde se o microserviço .NET está no ar.
+   */
+  engineHealth(): Promise<FiscalEngineHealth> {
+    return this.engine.health();
   }
 
   // ──────────────────────────────────────────────

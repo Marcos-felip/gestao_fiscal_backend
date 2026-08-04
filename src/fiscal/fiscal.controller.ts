@@ -371,6 +371,19 @@ export class FiscalController {
     return this.operationsService.retry(companyId, id, user.id);
   }
 
+  @Get('engine/health')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({
+    summary: 'Verificar se o motor fiscal (.NET) está no ar',
+    description:
+      'Sonda o `/health` do microserviço. Não consulta a SEFAZ e não usa certificado.',
+  })
+  @ApiResponse({ status: 200, description: 'Disponibilidade do motor fiscal' })
+  engineHealth() {
+    return this.operationsService.engineHealth();
+  }
+
   @Post('settings/:establishmentId/sefaz-status')
   @UseGuards(RequirePermissionGuard)
   @RequirePermission('fiscal.settings.read')

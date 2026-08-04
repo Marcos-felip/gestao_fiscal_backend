@@ -22,6 +22,9 @@ export interface IFiscalEngine {
 
   /** Testa a comunicação com a SEFAZ da UF. */
   statusServico(request: StatusServicoRequest): Promise<StatusServicoResult>;
+
+  /** Verifica se o próprio motor está no ar, sem falar com a SEFAZ. */
+  health(): Promise<FiscalEngineHealth>;
 }
 
 // ──────────────────────────────────────────────
@@ -237,6 +240,25 @@ export interface StatusServicoResult {
   mensagem?: string;
   /** Tempo médio de resposta informado pela SEFAZ, em segundos */
   tempoMedioResposta?: number;
+}
+
+// ──────────────────────────────────────────────
+// Saúde do motor
+// ──────────────────────────────────────────────
+
+/**
+ * Resultado da sonda `GET /health` do motor. Diferente de `statusServico`,
+ * não envolve certificado nem SEFAZ — responde apenas se o microserviço está
+ * de pé e respondendo. Nunca lança: indisponibilidade é um resultado válido.
+ */
+export interface FiscalEngineHealth {
+  disponivel: boolean;
+  /** Status textual devolvido pelo motor (ex.: `Healthy`) */
+  status?: string;
+  /** Motivo da indisponibilidade, quando `disponivel` for `false` */
+  mensagem?: string;
+  /** Tempo de resposta da sonda, em milissegundos */
+  latenciaMs: number;
 }
 
 // ──────────────────────────────────────────────

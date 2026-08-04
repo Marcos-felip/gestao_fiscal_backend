@@ -237,3 +237,4 @@ As seguintes operações **obrigatoriamente** usam `prisma.$transaction()`:
 - [REGRAS_DE_NEGOCIO.md](./REGRAS_DE_NEGOCIO.md) — regras de negócio
 - [BANCO_DE_DADOS.md](./BANCO_DE_DADOS.md) — modelagem do banco
 - [API.md](./API.md) — contratos de API para agentes frontend
+- [FISCAL.md](./FISCAL.md) — módulo fiscal: arquitetura NestJS ↔ motor .NET, contrato, certificados

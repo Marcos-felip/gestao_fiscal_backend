@@ -60,8 +60,8 @@
 
 - [x] 7.1 Repositorio `fiscal_service` criado em `/home/marcos/Projetos/fiscal_service` (estrutura DDD + Clean Architecture ja montada)
 - [x] 7.2 Porta `IFiscalEngine` no Nest + implementacao `DfeNetFiscalEngine` (HTTP client com API Key)
-- [ ] 7.3 Contrato de comunicacao NestJS <-> .NET documentado (headers, payload, response)
-- [ ] 7.4 Health check do motor fiscal (.NET `/health`) integrado ao monitoring do NestJS
+- [x] 7.3 Contrato de comunicacao NestJS <-> .NET documentado (headers, payload, response)
+- [x] 7.4 Health check do motor fiscal (.NET `/health`) integrado ao monitoring do NestJS
 
 ## 8. Emissao automatica de NFC-e [Fase A]
 
@@ -110,7 +110,7 @@
 - [x] 13.1 `GET /fiscal/documents` (filtros: status, periodo, estabelecimento, modelo) e `GET /fiscal/documents/:id`
 - [x] 13.2 Aplicar gating por permissao em todos os endpoints
 - [ ] 13.3 Atualizar `API.md`, `REGRAS_DE_NEGOCIO.md`, `BANCO_DE_DADOS.md`
-- [ ] 13.4 Criar `FISCAL.md` (arquitetura NestJS<->.NET, contrato do motor, politica de certificados, ambientes)
+- [x] 13.4 Criar `FISCAL.md` (arquitetura NestJS<->.NET, contrato do motor, politica de certificados, ambientes)
 
 ## 14. Criterio de conclusao do MVP [Fase C]
 
@@ -158,6 +158,6 @@
 - [x] 15.F4 Validar pre-condicoes de emissao com as mesmas regras do motor (falhar cedo com mensagem amigavel)
 
 ### G. Infra / docs
-- [ ] 15.G1 docker-compose: subir `fiscal_service` (8080) + `FISCAL_API_KEY`; Redis; setar `FISCAL_ENGINE_URL`/`FISCAL_ENGINE_API_KEY` no Nest
-- [ ] 15.G2 Health check do motor (`GET /health`) no monitoring (cumpre 7.4)
-- [ ] 15.G3 Documentar o contrato em FISCAL.md (cumpre 7.3/13.4; base em ENGINE_ALIGNMENT.md)
+- [x] 15.G1 docker-compose: subir `fiscal_service` (8080) + `FISCAL_API_KEY`; Redis; setar `FISCAL_ENGINE_URL`/`FISCAL_ENGINE_API_KEY` no Nest
+- [x] 15.G2 Health check do motor (`GET /health`) no monitoring (cumpre 7.4)
+- [x] 15.G3 Documentar o contrato em FISCAL.md (cumpre 7.3/13.4; base em ENGINE_ALIGNMENT.md)

@@ -22,6 +22,24 @@ services:
     volumes:
       - redis_data:/data
 
+  # Motor fiscal .NET (DFe.NET) — monta, assina e transmite a NFC-e.
+  # Opcional: sobe só com `docker compose --profile fiscal up -d`, porque exige
+  # o repositório do fiscal_service clonado ao lado deste (FISCAL_SERVICE_PATH).
+  fiscal_service:
+    profiles: ["fiscal"]
+    build:
+      context: ${FISCAL_SERVICE_PATH:-../fiscal_service}
+    image: gestao_fiscal/fiscal_service:latest
+    container_name: gestao_fiscal_engine
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${FISCAL_SERVICE_ENV:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      # O motor não sobe sem a chave; é a mesma de FISCAL_ENGINE_API_KEY no Nest
+      FISCAL_API_KEY: ${FISCAL_ENGINE_API_KEY}
+    ports:
+      - "${FISCAL_ENGINE_HOST_PORT:-8080}:8080"
+
   pgadmin:
     image: dpage/pgadmin4
     container_name: gestao_fiscal_pgadmin

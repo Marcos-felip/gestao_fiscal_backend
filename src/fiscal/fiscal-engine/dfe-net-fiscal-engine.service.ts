@@ -7,6 +7,7 @@ import {
   ConsultarNfceResult,
   EmitirNfceRequest,
   EmitirNfceResult,
+  FiscalEngineHealth,
   FiscalEngineTransportError,
   FiscalRejeicao,
   IFiscalEngine,
@@ -20,7 +21,12 @@ const ROUTES = {
   consulta: '/api/nfce/consulta',
   cancel: '/api/nfce/cancel',
   statusServico: '/api/sefaz/status-servico',
+  /** Isenta de autenticação no motor */
+  health: '/health',
 } as const;
+
+/** Timeout padrão da sonda de saúde, bem menor que o dos verbos fiscais. */
+const DEFAULT_HEALTH_TIMEOUT = 5000;
 
 /** Resposta HTTP já lida e decodificada. */
 interface EngineResponse {
@@ -47,6 +53,7 @@ export class DfeNetFiscalEngine implements IFiscalEngine {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly timeout: number;
+  private readonly healthTimeout: number;
 
   constructor(private readonly configService: ConfigService) {
     this.baseUrl = (
@@ -56,6 +63,9 @@ export class DfeNetFiscalEngine implements IFiscalEngine {
     this.apiKey = this.configService.get<string>('FISCAL_ENGINE_API_KEY') || '';
     this.timeout =
       this.configService.get<number>('FISCAL_ENGINE_TIMEOUT') || 30000;
+    this.healthTimeout =
+      this.configService.get<number>('FISCAL_ENGINE_HEALTH_TIMEOUT') ||
+      DEFAULT_HEALTH_TIMEOUT;
 
     if (!this.apiKey) {
       this.logger.warn(
@@ -182,6 +192,57 @@ export class DfeNetFiscalEngine implements IFiscalEngine {
       mensagem: this.text(body.mensagem),
       tempoMedioResposta: this.number(body.tempoMedioResposta),
     };
+  }
+
+  /**
+   * Sonda de monitoramento: `GET /health` do motor, isento de `X-Api-Key`.
+   *
+   * Não fala com a SEFAZ e nunca lança — motor fora do ar é um resultado
+   * (`disponivel: false`), não uma exceção, para não derrubar quem monitora.
+   */
+  async health(): Promise<FiscalEngineHealth> {
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.healthTimeout);
+
+    try {
+      const response = await fetch(`${this.baseUrl}${ROUTES.health}`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+
+      const raw = await response.text().catch(() => '');
+      const latenciaMs = Date.now() - startedAt;
+      const status = this.readHealthStatus(raw);
+
+      if (response.status !== 200) {
+        return {
+          disponivel: false,
+          status,
+          latenciaMs,
+          mensagem: `Motor fiscal respondeu HTTP ${response.status} em ${ROUTES.health}`,
+        };
+      }
+
+      return { disponivel: true, status, latenciaMs };
+    } catch (error) {
+      const latenciaMs = Date.now() - startedAt;
+      const mensagem = controller.signal.aborted
+        ? `Motor fiscal não respondeu em ${this.healthTimeout}ms`
+        : `Falha de comunicação com o motor fiscal: ${this.describe(error)}`;
+
+      this.logger.warn(`Motor fiscal indisponível: ${mensagem}`);
+
+      return { disponivel: false, latenciaMs, mensagem };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /** O `/health` do ASP.NET responde texto puro (`Healthy`) ou JSON com `status`. */
+  private readHealthStatus(raw: string): string | undefined {
+    const payload = this.parseJson(raw);
+    return this.isRecord(payload) ? this.text(payload.status) : this.text(raw);
   }
 
   // ──────────────────────────────────────────────

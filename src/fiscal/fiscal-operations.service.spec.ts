@@ -42,6 +42,7 @@ const mockEngine = {
   cancelar: jest.fn(),
   consultar: jest.fn(),
   statusServico: jest.fn(),
+  health: jest.fn(),
 };
 const mockCertificates = { loadCredentials: jest.fn() };
 const mockStorage = { isConfigured: jest.fn(), upload: jest.fn() };
@@ -328,6 +329,26 @@ describe('FiscalOperationsService', () => {
       await expect(
         service.statusServico('company-1', 'estab-1'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('engineHealth', () => {
+    it('sonda o motor sem exigir certificado nem estabelecimento', async () => {
+      mockEngine.health.mockResolvedValue({
+        disponivel: true,
+        status: 'Healthy',
+        latenciaMs: 12,
+      });
+
+      const resultado = await service.engineHealth();
+
+      expect(mockEngine.health).toHaveBeenCalledWith();
+      expect(mockCertificates.loadCredentials).not.toHaveBeenCalled();
+      expect(resultado).toEqual({
+        disponivel: true,
+        status: 'Healthy',
+        latenciaMs: 12,
+      });
     });
   });
 });
