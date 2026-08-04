@@ -109,7 +109,7 @@
 
 - [x] 13.1 `GET /fiscal/documents` (filtros: status, periodo, estabelecimento, modelo) e `GET /fiscal/documents/:id`
 - [x] 13.2 Aplicar gating por permissao em todos os endpoints
-- [ ] 13.3 Atualizar `API.md`, `REGRAS_DE_NEGOCIO.md`, `BANCO_DE_DADOS.md`
+- [x] 13.3 Atualizar `API.md`, `REGRAS_DE_NEGOCIO.md`, `BANCO_DE_DADOS.md`
 - [x] 13.4 Criar `FISCAL.md` (arquitetura NestJS<->.NET, contrato do motor, politica de certificados, ambientes)
 
 ## 14. Criterio de conclusao do MVP [Fase C]

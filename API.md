@@ -356,6 +356,13 @@ O usuário precisa ser membro da empresa ativa, e não é possível editar quem 
 
 > Ao criar, automaticamente cria um Membership OWNER e define como empresa ativa.
 
+> **Dados fiscais da empresa** entram pelo `PATCH /companies/:id`: `razaoSocial`,
+> `nomeFantasia`, `inscricaoEstadual` (2 a 14 dígitos), `inscricaoMunicipal`, `crt`,
+> `contribuinteIcms`, `codigoIbgeMunicipio` (7 dígitos), `telefoneFiscal` e `emailFiscal`.
+> O endereço fiscal do emitente vem do estabelecimento (`cep`, `street`, `number`,
+> `neighborhood`, `city`, `state` e `ibgeCode`). O backend deriva `fiscalConfigComplete`;
+> enquanto for falso a emissão é bloqueada.
+
 ---
 
 ### GET /companies — Listar empresas do usuário
@@ -943,15 +950,59 @@ Os mesmos códigos estão marcados com 🔹 na coluna **Perfil sugerido** do [ca
   "costPrice": "number (opcional)",
   "salePrice": "number (opcional)",
   "minStock": "number >= 0 (opcional)",
-  "ncm": "string (opcional)",
-  "cest": "string (opcional)",
-  "cfop": "string (opcional)",
+  "ncm": "string 8 dígitos (opcional)",
+  "cest": "string 7 dígitos (opcional)",
+  "cfop": "string 4 dígitos iniciando em 5 (opcional)",
   "origin": "number 0-8 (opcional)",
+  "csosn": "102 | 103 | 300 | 400 | 500 — emitente do Simples (opcional)",
+  "cstIcms": "40 | 41 | 50 — emitente do Regime Normal (opcional)",
+  "cstPis": "string (opcional)",
+  "cstCofins": "string (opcional)",
+  "aliquotaIcms": "number >= 0 (opcional)",
+  "aliquotaPis": "number >= 0 (opcional)",
+  "aliquotaCofins": "number >= 0 (opcional)",
   "technicalAttributes": "{ ... } objeto JSON com atributos técnicos (opcional)"
 }
 ```
 
+O backend deriva **`fiscalComplete`** na gravação, com as mesmas regras do motor fiscal: NCM
+de 8 dígitos, CFOP começando com 5, origem de 0 a 8 e situação tributária dentro do conjunto
+aceito (CSOSN para o Simples, CST de ICMS para o Regime Normal). Produto incompleto bloqueia
+a emissão da NFC-e da venda que o contém.
+
 **Erros:** `409` SKU ou código de barras já cadastrado
+
+---
+
+### GET /products/fiscal-pending — Produtos com pendência fiscal
+
+> **Permissão:** `products.list`
+
+Produtos que bloqueariam a emissão, com o motivo de cada pendência.
+
+**Query params:** `page`, `limit`, `search`
+
+**Resposta 200:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "Refrigerante Lata 350ml",
+      "sku": "REF350",
+      "ncm": "2202",
+      "cfop": "5102",
+      "origin": 0,
+      "csosn": "102",
+      "cstIcms": null,
+      "pendencias": ["NCM ausente ou fora do formato de 8 dígitos"]
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20
+}
+```
 
 ---
 
@@ -1921,6 +1972,301 @@ que o operador tenha uma sessão aberta. Sem ela: `400` **"Abra um caixa para re
 
 ---
 
+## Fiscal (NFC-e)
+
+> Todos requerem empresa ativa. Detalhes de arquitetura e do contrato com o motor .NET em
+> [FISCAL.md](./FISCAL.md).
+
+A emissão é **assíncrona**: finalizar uma venda dispara o evento interno `sale.confirmed`, o
+backend valida as pré-condições, reserva a numeração, cria o documento em `PENDENTE` e
+enfileira. O frontend acompanha por `GET /fiscal/documents/sale/:saleId` ou pelo
+`fiscalStatus` da venda.
+
+**Configuração por ambiente.** Cada estabelecimento tem uma configuração de `HOMOLOGACAO` e
+outra de `PRODUCAO`, com série, numeração, CSC e certificado próprios. A que está `ativo` é a
+em uso — as rotas sem `?ambiente=` operam nela.
+
+### Configuração fiscal
+
+#### POST /fiscal/settings — Criar configuração de um ambiente
+
+> **Permissão:** `fiscal.settings.edit`
+
+**Body:**
+```json
+{
+  "establishmentId": "uuid (obrigatório)",
+  "ambiente": "HOMOLOGACAO | PRODUCAO (default: HOMOLOGACAO)",
+  "serieNfce": "number 1-999 (default: 1)",
+  "codigoCsc": "string (opcional)",
+  "idCsc": "string (opcional)"
+}
+```
+
+A primeira configuração do estabelecimento já nasce em uso; as seguintes entram em uso pela
+rota de ativação.
+
+**Erros:** `400` Já existe configuração desse ambiente · `404` Estabelecimento não encontrado
+
+---
+
+#### GET /fiscal/settings — Listar as configurações da empresa
+
+> **Permissão:** `fiscal.settings.read`
+
+---
+
+#### GET /fiscal/settings/:establishmentId — Configuração em uso
+
+> **Permissão:** `fiscal.settings.read`
+
+---
+
+#### GET /fiscal/settings/:establishmentId/ambientes — Uma linha por ambiente
+
+> **Permissão:** `fiscal.settings.read`
+
+Devolve as configurações de homologação e de produção, com `ativo` marcando a em uso.
+
+---
+
+#### PATCH /fiscal/settings/:establishmentId — Atualizar a configuração em uso
+
+> **Permissão:** `fiscal.settings.edit`
+
+**Body:** `serieNfce`, `proximoNumeroNfce`, `codigoCsc`, `idCsc`, `ativo`
+
+Trocar `ambiente` por aqui é recusado com `400` — use a rota de ativação. Alterações de série
+e de CSC ficam registradas na auditoria.
+
+---
+
+#### POST /fiscal/settings/:establishmentId/ambientes/:ambiente/ativar — Trocar de ambiente
+
+> **Permissão:** `fiscal.settings.edit`
+
+**Erros:** `400` Produção ainda não liberada · `404` Configuração daquele ambiente não existe
+
+---
+
+#### GET /fiscal/settings/:establishmentId/history — Auditoria da configuração
+
+> **Permissão:** `fiscal.settings.read`
+
+Trocas de série, de CSC, de ambiente e liberação/revogação de produção. O valor do CSC nunca
+é gravado — só o idCSC.
+
+---
+
+### Certificado digital A1
+
+#### POST /fiscal/settings/:establishmentId/certificate — Enviar ou substituir
+
+> **Permissão:** `fiscal.settings.edit` · **`multipart/form-data`**
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `certificado` | file | Arquivo `.pfx`/`.p12`, até 512 KB |
+| `senha` | string | Senha do certificado |
+
+**Query param opcional:** `ambiente` — envia o certificado para a configuração daquele
+ambiente. É como se prepara a produção sem sair da homologação.
+
+**Resposta 201:**
+```json
+{
+  "configurado": true,
+  "titular": "EMPRESA TESTE LTDA:11222333000181",
+  "subject": "CN=...",
+  "validoAte": "2027-08-04T12:00:00.000Z",
+  "diasParaVencer": 365,
+  "vencido": false
+}
+```
+
+O arquivo e a senha ficam cifrados (AES-256-GCM) e **nunca** voltam em resposta nem em log.
+
+**Erros:** `400` Arquivo inválido, senha incorreta, certificado vencido ou cofre não configurado
+
+---
+
+#### GET /fiscal/settings/:establishmentId/certificate — Situação do certificado
+
+> **Permissão:** `fiscal.settings.read` · aceita `?ambiente=`
+
+Use `diasParaVencer` para alertar o usuário a partir de 30 dias.
+
+---
+
+#### GET /fiscal/settings/:establishmentId/certificate/history — Auditoria do certificado
+
+> **Permissão:** `fiscal.settings.read` · aceita `?ambiente=`
+
+---
+
+#### POST /fiscal/settings/:establishmentId/sefaz-status — Testar comunicação com a SEFAZ
+
+> **Permissão:** `fiscal.settings.read`
+
+**Resposta 201:** `{ "disponivel": true, "mensagem": "Serviço em Operação", "tempoMedioResposta": 1 }`
+
+---
+
+#### GET /fiscal/engine/health — Motor fiscal está no ar?
+
+> **Permissão:** `fiscal.settings.read`
+
+Sonda o microserviço, sem certificado e sem SEFAZ. Nunca falha: motor fora do ar responde
+`{ "disponivel": false, "mensagem": "...", "latenciaMs": 5000 }`.
+
+---
+
+### Ativação da produção
+
+#### GET /fiscal/settings/:establishmentId/producao/checklist
+
+> **Permissão:** `fiscal.settings.read`
+
+**Resposta 200:**
+```json
+{
+  "liberada": false,
+  "liberadaEm": null,
+  "itens": [
+    { "item": "Certificado digital A1 enviado", "ok": true, "detalhe": "04/08/2027" },
+    { "item": "Certificado dentro da validade", "ok": true },
+    { "item": "CSC e ID do CSC de produção configurados", "ok": false, "detalhe": "..." },
+    { "item": "Série entre 1 e 999", "ok": true, "detalhe": "série atual: 1" },
+    { "item": "Próximo número entre 1 e 999999999", "ok": true, "detalhe": "próximo número: 1" }
+  ]
+}
+```
+
+---
+
+#### POST /fiscal/settings/:establishmentId/producao/liberar
+
+> **Permissão:** `fiscal.settings.edit`
+
+**Erros:** `400` com a lista do que falta · `404` Configuração de produção não existe
+
+---
+
+#### POST /fiscal/settings/:establishmentId/producao/revogar
+
+> **Permissão:** `fiscal.settings.edit`
+
+Revoga a liberação e devolve o estabelecimento à homologação.
+
+---
+
+### Documentos fiscais
+
+#### GET /fiscal/documents — Listar
+
+> **Permissão:** `fiscal.read`
+
+**Query params:** `page`, `limit`, `status`, `modelo`, `saleId`, `establishmentId`,
+`startDate`, `endDate`
+
+---
+
+#### GET /fiscal/documents/:id — Detalhar
+
+> **Permissão:** `fiscal.read`
+
+Traz o documento com `statusHistory`, `events`, `chaveAcesso`, `protocolo`, `qrCode`,
+`rejeicaoCodigo`/`rejeicaoMensagem` e o `snapshot` da venda.
+
+---
+
+#### GET /fiscal/documents/sale/:saleId — Documento de uma venda
+
+> **Permissão:** `fiscal.read` — é o endpoint de acompanhamento pós-venda
+
+---
+
+#### POST /fiscal/documents/nfce — Emitir manualmente
+
+> **Permissão:** `fiscal.emit`
+
+**Body:** `{ "saleId": "uuid", "establishmentId": "uuid (opcional)" }`
+
+**Resposta 201:** o documento em `PENDENTE`, já enfileirado.
+
+**Erros:** `400` Venda já possui documento ativo, configuração incompleta, produto sem dado
+fiscal, certificado vencido ou produção não liberada — a mensagem lista todas as pendências
+de uma vez
+
+---
+
+#### GET /fiscal/documents/:id/history — Histórico de status
+
+> **Permissão:** `fiscal.read` — cada transição com motivo, usuário e data
+
+---
+
+#### GET /fiscal/documents/:id/events — Eventos do documento
+
+> **Permissão:** `fiscal.read`
+
+---
+
+#### GET /fiscal/documents/:id/danfe — Baixar o DANFE (PDF)
+
+> **Permissão:** `fiscal.read` · responde `application/pdf`
+
+---
+
+#### GET /fiscal/documents/:id/xml/:tipo — Baixar o XML
+
+> **Permissão:** `fiscal.read` · `tipo`: `enviado`, `autorizado` ou `cancelamento`
+
+---
+
+### Consulta, cancelamento e rejeições
+
+#### POST /fiscal/documents/:id/consulta — Consultar a situação na SEFAZ
+
+> **Permissão:** `fiscal.read`
+
+Reconcilia o status local. Resolve o caso de timeout com a nota autorizada do outro lado.
+
+**Resposta 201:** `{ "situacao": "...", "protocolo": "...", "status": "AUTORIZADO", "atualizado": true }`
+
+---
+
+#### POST /fiscal/documents/:id/cancel — Cancelar
+
+> **Permissão:** `fiscal.cancel`
+
+**Body:** `{ "justificativa": "string de 15 a 255 caracteres" }`
+
+**Erros:** `400` Documento não autorizado, já cancelado ou cancelamento recusado pela SEFAZ
+
+---
+
+#### POST /fiscal/documents/:id/retry — Reprocessar
+
+> **Permissão:** `fiscal.emit`
+
+Reenfileira mantendo série, número e documento — não duplica a nota. Aceita `ERRO`,
+`REJEITADO` e `PENDENTE`.
+
+---
+
+#### GET /fiscal/rejections — Central de rejeições
+
+> **Permissão:** `fiscal.read`
+
+**Query params:** `page`, `limit`, `search` (texto da mensagem), `status` (`REJEITADO` ou
+`ERRO`; sem filtro traz os dois), `establishmentId`, `rejeicaoCodigo`, `startDate`, `endDate`
+
+**Resposta 200:** cada linha traz o documento com `rejeicaoCodigo`, `rejeicaoMensagem`,
+`attempts`, `reprocessavel` e `ultimaTentativa: { data, usuarioId, motivo }`.
+
+---
+
 ## Paginação
 
 Todos os endpoints de listagem suportam paginação:
@@ -2066,6 +2412,16 @@ compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao mo
 | `partners.edit` | Editar parceiro | ✅ | ✅ | 🔹 | `PATCH /partners/:id` |
 | `partners.delete` | Deletar parceiro | ✅ | ✅ | 🔹 | `DELETE /partners/:id` |
 
+### Fiscal (`fiscal`)
+
+| Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
+|--------|-----------|:-----:|:-----:|:---------------:|----------|
+| `fiscal.read` | Ler documentos fiscais, XML, DANFE e rejeições | ✅ | ✅ | 🔹 | `GET /fiscal/documents*`, `GET /fiscal/rejections`, `POST /fiscal/documents/:id/consulta` |
+| `fiscal.emit` | Emitir e reprocessar NFC-e | ✅ | ✅ | 🔹 | `POST /fiscal/documents/nfce`, `POST /fiscal/documents/:id/retry` |
+| `fiscal.cancel` | Cancelar documento autorizado | ✅ | ✅ | | `POST /fiscal/documents/:id/cancel` |
+| `fiscal.settings.read` | Ler configuração fiscal, certificado e checklist | ✅ | ✅ | 🔹 | `GET /fiscal/settings*`, `GET /fiscal/engine/health` |
+| `fiscal.settings.edit` | Editar configuração, certificado e ambientes | ✅ | ✅ | | `POST/PATCH /fiscal/settings*` |
+
 ### Vendas (`sales`)
 
 | Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
@@ -2191,6 +2547,10 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | `CashMovementType` | `SANGRIA` (tira da gaveta), `SUPRIMENTO` (coloca) |
 | `FinancialType` | `RECEBER` (`/receivables`), `PAGAR` (`/payables`) |
 | `FinancialStatus` | `ABERTO`, `PARCIAL`, `PAGO`, `VENCIDO`, `CANCELADO` |
+| `FiscalDocumentModel` | `NFE` (55), `NFCE` (65) — o MVP emite NFC-e |
+| `FiscalEnvironment` | `HOMOLOGACAO`, `PRODUCAO` |
+| `FiscalDocumentStatus` | `NAO_EMITIDO`, `PENDENTE`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `ERRO`, `CONTINGENCIA`, `CANCELAMENTO_PENDENTE`, `CANCELADO`, `INUTILIZADO` |
+| `TaxRegimeCode` (CRT) | `SIMPLES_NACIONAL` (1), `SIMPLES_EXCESSO` (2), `REGIME_NORMAL` (3) |
 
 > `FinancialStatus.VENCIDO` existe no enum mas **nunca é gravado** — o vencimento é derivado na
 > leitura via `isOverdue`. Ver [Contas a receber](#contas-a-receber) e [Contas a pagar](#contas-a-pagar).

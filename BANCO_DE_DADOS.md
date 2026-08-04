@@ -118,6 +118,34 @@
                                                │ (FK: session ON DEL CASC)│
                                                └──────────────────────────┘
 
+  ── Fiscal ──
+
+                  ┌──────────────────────────┐          ┌──────────────────────────┐
+                  │     fiscal_settings      │          │     fiscal_documents     │  append-only
+                  │──────────────────────────│          │──────────────────────────│
+                  │ id (PK)                  │          │ id (PK)                  │
+                  │ establishment_id (FK)    │          │ company_id (FK)          │
+                  │ ambiente (HOMOL/PROD)    │          │ establishment_id (FK)    │
+                  │  UQ (establishment,      │          │ sale_id (FK, UQ, opc)    │──> sales
+                  │      ambiente)           │          │ modelo (NFE/NFCE)        │
+                  │ serie_nfce               │          │ serie, numero            │
+                  │ proximo_numero_nfce      │          │ chave_acesso (UQ)        │
+                  │ codigo_csc, id_csc       │          │ ambiente                 │
+                  │ certificado_ref  (cifr.) │          │ status                   │
+                  │ certificado_senha_ref    │          │ protocolo                │
+                  │ certificado_validade     │          │ rejeicao_codigo/mensagem │
+                  │ ativo  (config. em uso)  │          │ xml_*/danfe_url/qr_code  │
+                  │ producao_liberada        │          │ idempotency_key (UQ)     │
+                  └───────┬──────────────────┘          │ attempts, snapshot(JSONB)│
+                          │1:N                          └────────────┬─────────────┘
+       ┌──────────────────┴───────────────────┐                      │1:N
+       │                                      │          ┌───────────┴──────────────┐
+┌──────┴───────────────────┐  ┌───────────────┴───────┐  │  fiscal_status_history   │  de/para
+│ fiscal_certificate_events│  │ fiscal_settings_events│  │──────────────────────────│
+│ upload / substituicao    │  │ serie/csc/ambiente/   │  │  fiscal_document_events  │  emissao,
+└──────────────────────────┘  │ producao (auditoria)  │  │  (detalhes JSONB)        │  consulta,
+                              └───────────────────────┘  └──────────────────────────┘  cancelamento
+
   ── Financeiro (RECEBER → /receivables · PAGAR → /payables) ──
 
            ┌───────────────────────────┐
@@ -359,7 +387,7 @@ Colunas de parcelamento, espelhando `sales`:
 |------|--------|-----------|
 | Comercial | `status` | módulo de vendas (`confirm`, `cancel`) |
 | Financeiro | `payment_status` | módulo financeiro — **só o cancelamento mexe nele**, levando `APROVADO` → `ESTORNADO` |
-| Fiscal | `fiscal_status` | módulo fiscal (ainda não implementado); hoje é apenas coluna |
+| Fiscal | `fiscal_status` | módulo fiscal — espelha o status do `fiscal_documents` da venda |
 
 - **UNIQUE:** `(company_id, sale_number)` · **Índices:** `company_id`, `(company_id, status)`, `(company_id, sale_date)`
 - `ORCAMENTO` **não reserva nem baixa estoque.** A validação de saldo e as movimentações `SAIDA`
@@ -622,6 +650,117 @@ Colunas de parcelamento, espelhando `sales`:
 - Como o baseline do MEMBER é vazio, na prática **é esta tabela que decide** o acesso de um MEMBER:
   sem linha aqui, ele recebe `403` em tudo
 
+### `fiscal_settings` — Configuração fiscal por estabelecimento e ambiente
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `establishment_id` | UUID (FK) | ✅ | Estabelecimento emissor |
+| `company_id` | UUID (FK) | ✅ | Tenant |
+| `ambiente` | ENUM `FiscalEnvironment` | ✅ | Default `HOMOLOGACAO` |
+| `serie_nfce` | INT | ✅ | Série da NFC-e (1 a 999), default 1 |
+| `proximo_numero_nfce` | INT | ✅ | Próximo número a reservar, default 1 |
+| `codigo_csc` | VARCHAR | ❌ | CSC do ambiente (segredo; não sai em auditoria) |
+| `id_csc` | VARCHAR | ❌ | Identificador do CSC |
+| `certificado_ref` | TEXT | ❌ | .pfx cifrado em AES-256-GCM |
+| `certificado_senha_ref` | TEXT | ❌ | Senha cifrada em AES-256-GCM |
+| `certificado_validade` | TIMESTAMP | ❌ | Validade extraída do certificado |
+| `certificado_subject` | VARCHAR | ❌ | Subject DN do certificado |
+| `ativo` | BOOLEAN | ✅ | Configuração **em uso**; no máximo uma por estabelecimento |
+| `producao_liberada` | BOOLEAN | ✅ | Default `false`; libera a emissão em produção |
+| `producao_liberada_em` | TIMESTAMP | ❌ | Quando foi liberada |
+| `producao_liberada_por` | TEXT | ❌ | Usuário que liberou |
+| `created_at` / `updated_at` / `deleted_at` | TIMESTAMP | | Padrão |
+
+- **UNIQUE:** `(establishment_id, ambiente)` — homologação e produção são linhas distintas,
+  com série, numeração, CSC e certificado próprios · **Índice:** `company_id`
+- O certificado **nunca** é gravado em texto claro; só é decifrado na chamada ao motor fiscal
+
+### `fiscal_certificate_events` — Auditoria do certificado A1
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Tenant |
+| `fiscal_settings_id` | UUID (FK) | ✅ | Configuração afetada |
+| `tipo` | VARCHAR | ✅ | `upload` ou `substituicao` |
+| `subject` / `titular` | VARCHAR | ❌ | Identificação do certificado enviado |
+| `valido_ate` | TIMESTAMP | ❌ | Validade do certificado enviado |
+| `subject_anterior` | VARCHAR | ❌ | Certificado que estava configurado antes |
+| `usuario_id` | TEXT | ❌ | Quem enviou ou substituiu |
+| `created_at` | TIMESTAMP | ✅ | Data do evento |
+
+- **Índices:** `company_id`, `fiscal_settings_id` · **FKs:** `ON DELETE CASCADE`
+
+### `fiscal_settings_events` — Auditoria da configuração fiscal
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Tenant |
+| `fiscal_settings_id` | UUID (FK) | ✅ | Configuração afetada |
+| `tipo` | VARCHAR | ✅ | `serie`, `csc`, `ambiente`, `producao_liberada`, `producao_revogada` |
+| `valor_anterior` | VARCHAR | ❌ | Valor antes da alteração |
+| `valor_novo` | VARCHAR | ❌ | Valor depois |
+| `usuario_id` | TEXT | ❌ | Quem alterou |
+| `created_at` | TIMESTAMP | ✅ | Data do evento |
+
+- **Índices:** `company_id`, `fiscal_settings_id` · **FKs:** `ON DELETE CASCADE`
+- O **valor do CSC não é gravado** — o evento registra apenas o idCSC, que o identifica
+
+### `fiscal_documents` — Documento fiscal
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `company_id` | UUID (FK) | ✅ | Tenant |
+| `establishment_id` | UUID (FK) | ✅ | Estabelecimento emissor |
+| `sale_id` | UUID (FK) | ❌ | Venda de origem (único) |
+| `modelo` | ENUM `FiscalDocumentModel` | ✅ | `NFE` (55) ou `NFCE` (65) |
+| `serie` / `numero` | INT | ✅ | Numeração reservada na criação |
+| `chave_acesso` | VARCHAR(44) | ❌ | Único; devolvido pela SEFAZ |
+| `ambiente` | ENUM `FiscalEnvironment` | ✅ | Carimbado na criação; define qual CSC/certificado usar |
+| `status` | ENUM `FiscalDocumentStatus` | ✅ | Default `PENDENTE` |
+| `protocolo` | VARCHAR | ❌ | Protocolo de autorização (15 dígitos) |
+| `rejeicao_codigo` / `rejeicao_mensagem` | VARCHAR | ❌ | Motivo da recusa |
+| `data_emissao` / `data_autorizacao` / `data_cancelamento` | TIMESTAMP | ❌ | Marcos do documento |
+| `valor_total` | DECIMAL(15,2) | ❌ | Total transmitido |
+| `xml_enviado` / `xml_autorizado` / `xml_cancelamento` | TEXT | ❌ | Chave do storage ou conteúdo |
+| `danfe_url` | TEXT | ❌ | Chave do PDF no storage |
+| `qr_code` | TEXT | ❌ | URL do QR Code da NFC-e |
+| `idempotency_key` | VARCHAR | ❌ | Único; impede emissão duplicada |
+| `attempts` | INT | ✅ | Tentativas de emissão, default 0 |
+| `engine` | VARCHAR | ❌ | Motor usado (`dfe-net`) |
+| `snapshot` | JSONB | ❌ | Retrato imutável da venda no momento da emissão |
+| `created_at` / `updated_at` / `deleted_at` | TIMESTAMP | | Padrão |
+
+- **UNIQUE:** `chave_acesso`, `sale_id`, `idempotency_key`
+- **Índices:** `company_id`, `(company_id, status)`, `sale_id`
+- **Append-only:** documento fiscal não tem exclusão física
+
+### `fiscal_status_history` — Transições de status
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `fiscal_document_id` | UUID (FK) | ✅ | Documento |
+| `status_from` / `status_to` | ENUM `FiscalDocumentStatus` | ✅ | Origem e destino |
+| `motivo` | TEXT | ❌ | Ex.: `Tentativa de emissão #2` |
+| `usuario_id` | TEXT | ❌ | Quem originou (nulo na emissão sem operador) |
+| `created_at` | TIMESTAMP | ✅ | Data da transição |
+
+### `fiscal_document_events` — Eventos do documento
+
+| Coluna | Tipo | Obrig. | Descrição |
+|--------|------|--------|-----------|
+| `id` | UUID | ✅ | Chave primária |
+| `fiscal_document_id` | UUID (FK) | ✅ | Documento |
+| `tipo` | VARCHAR | ✅ | `emissao`, `consulta`, `cancelamento`, `retry` |
+| `detalhes` | JSONB | ❌ | Retorno técnico completo da operação |
+| `usuario_id` | TEXT | ❌ | Quem acionou |
+| `created_at` | TIMESTAMP | ✅ | Data do evento |
+
+
 ---
 
 ## Enums
@@ -646,6 +785,11 @@ Colunas de parcelamento, espelhando `sales`:
 | `UnitOfMeasure` | `UN`, `KG`, `LT`, `MT`, `CX`, `PC`, `PCT`, `DZ` |
 | `CashSessionStatus` | `ABERTA`, `FECHADA` |
 | `CashMovementType` | `SANGRIA`, `SUPRIMENTO` |
+| `FiscalDocumentModel` | `NFE` (55), `NFCE` (65) |
+| `FiscalEnvironment` | `HOMOLOGACAO`, `PRODUCAO` |
+| `FiscalDocumentStatus` | `NAO_EMITIDO`, `PENDENTE`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `ERRO`, `CONTINGENCIA`, `CANCELAMENTO_PENDENTE`, `CANCELADO`, `INUTILIZADO` |
+| `TaxRegimeCode` | `SIMPLES_NACIONAL` (CRT 1), `SIMPLES_EXCESSO` (CRT 2), `REGIME_NORMAL` (CRT 3) |
+| `FiscalPaymentCode` | `DINHEIRO`, `CHEQUE`, `CARTAO_CREDITO`, `CARTAO_DEBITO`, `CREDITO_LOJA`, `VALE_ALIMENTACAO`, `VALE_REFEICAO`, `VALE_PRESENTE`, `VALE_COMBUSTIVEL`, `BOLETO`, `PIX`, `SEM_PAGAMENTO`, `OUTRO` |
 
 ---
 
@@ -694,6 +838,14 @@ Colunas de parcelamento, espelhando `sales`:
 | `cash_movements` | INDEX | `company_id` |
 | `cash_movements` | FK CASCADE | `session_id → cash_sessions(id)`, `company_id → companies(id)` |
 | `cash_movements` | FK RESTRICT | `created_by_id → users(id)` |
+| `fiscal_settings` | UNIQUE | `(establishment_id, ambiente)` |
+| `fiscal_settings` | INDEX | `company_id` |
+| `fiscal_documents` | UNIQUE | `chave_acesso`, `sale_id`, `idempotency_key` |
+| `fiscal_documents` | INDEX | `company_id`, `(company_id, status)`, `sale_id` |
+| `fiscal_status_history` | INDEX | `fiscal_document_id` |
+| `fiscal_document_events` | INDEX | `fiscal_document_id` |
+| `fiscal_certificate_events` | INDEX | `company_id`, `fiscal_settings_id` |
+| `fiscal_settings_events` | INDEX | `company_id`, `fiscal_settings_id` |
 | `financial_entries` | INDEX | `(company_id, type, status)` |
 | `financial_entries` | INDEX | `(company_id, due_date)` |
 | `financial_entries` | FK CASCADE | `company_id → companies(id)` |
@@ -754,6 +906,9 @@ As migrations ficam em `prisma/migrations/`.
 | `20260731132618_purchase_payment_condition_and_payables` | Adiciona as mesmas quatro colunas de parcelamento em `purchases`; acrescenta os 5 códigos `payables.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora). Nenhuma tabela nova: contas a pagar reusa `financial_entries` / `financial_payments` |
 | `20260731144625_sale_payments` | Cria `sale_payments` (várias formas de pagamento por venda, com valor recebido e troco). Sem permissões novas: o pagamento entra pelas rotas de venda já existentes |
 | `20260731153056_cash_registers_and_sessions` | Cria `cash_registers`, `cash_sessions` e `cash_movements` e os enums `CashSessionStatus` e `CashMovementType`; adiciona `companies.cash_blind_close` e `sales.cash_session_id`; acrescenta os 10 códigos `cash-registers.*` e `cash.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
+| `20260804120000_fiscal_module_mvp` | Cria `fiscal_settings`, `fiscal_documents`, `fiscal_status_history` e `fiscal_document_events` e os enums `FiscalDocumentModel`, `FiscalEnvironment`, `FiscalDocumentStatus`, `TaxRegimeCode` e `FiscalPaymentCode`; estende `companies` e `products` com os campos fiscais; acrescenta os 5 códigos `fiscal.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
+| `20260804154411_fiscal_certificate_events` | Cria `fiscal_certificate_events` para auditar o envio e a substituição do certificado A1 |
+| `20260804180000_fiscal_settings_por_ambiente` | Troca o UNIQUE de `fiscal_settings` de `establishment_id` para `(establishment_id, ambiente)` — homologação e produção passam a ter série, numeração, CSC e certificado próprios; adiciona `producao_liberada`, `producao_liberada_em` e `producao_liberada_por`; cria `fiscal_settings_events` para auditar série, CSC, troca de ambiente e liberação de produção |
 
 > As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
 >
