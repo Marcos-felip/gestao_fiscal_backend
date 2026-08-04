@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
@@ -19,10 +20,14 @@ import { CashRegistersModule } from './cash-registers/cash-registers.module';
 import { CashSessionsModule } from './cash-sessions/cash-sessions.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PermissionProfilesModule } from './permission-profiles/permission-profiles.module';
+import { QueueModule } from './queue/queue.module';
+import { StorageModule } from './storage/storage.module';
+import { FiscalModule } from './fiscal/fiscal.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot(),
     PrismaModule,
     CommonModule,
     AuthModule,
@@ -41,6 +46,9 @@ import { PermissionProfilesModule } from './permission-profiles/permission-profi
     CashSessionsModule,
     PermissionsModule,
     PermissionProfilesModule,
+    QueueModule,
+    StorageModule,
+    FiscalModule,
   ],
 })
 export class AppModule {}

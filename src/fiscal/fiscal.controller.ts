@@ -1,0 +1,236 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Logger,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CompanyTenantGuard } from '../common/guards/company-tenant.guard';
+import { RequirePermissionGuard } from '../common/guards/require-permission.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
+import { CurrentCompany } from '../common/decorators/current-company.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { FiscalService } from './fiscal.service';
+import { CreateFiscalSettingsDto } from './dto/create-fiscal-settings.dto';
+import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
+import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
+import { EmitNfceDto } from './dto/emit-nfce.dto';
+import { FISCAL_EMISSION_QUEUE } from '../queue/queue.constants';
+
+@ApiTags('fiscal')
+@ApiBearerAuth()
+@Controller('fiscal')
+@UseGuards(JwtAuthGuard, CompanyTenantGuard)
+export class FiscalController {
+  private readonly logger = new Logger(FiscalController.name);
+
+  constructor(
+    private readonly fiscalService: FiscalService,
+    @InjectQueue(FISCAL_EMISSION_QUEUE)
+    private readonly fiscalQueue: Queue,
+  ) {}
+
+  // ──────────────────────────────────────────────
+  // Fiscal Settings
+  // ──────────────────────────────────────────────
+
+  @Post('settings')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.edit')
+  @ApiOperation({
+    summary: 'Criar configuração fiscal para um estabelecimento',
+  })
+  @ApiResponse({ status: 201, description: 'Configuração fiscal criada' })
+  @ApiResponse({
+    status: 400,
+    description: 'Estabelecimento já possui configuração',
+  })
+  createSettings(
+    @CurrentCompany() companyId: string,
+    @Body() dto: CreateFiscalSettingsDto,
+  ) {
+    return this.fiscalService.createSettings(companyId, dto);
+  }
+
+  @Get('settings')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({ summary: 'Listar todas as configurações fiscais da empresa' })
+  @ApiResponse({ status: 200 })
+  findAllSettings(@CurrentCompany() companyId: string) {
+    return this.fiscalService.findAllSettings(companyId);
+  }
+
+  @Get('settings/:establishmentId')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({ summary: 'Buscar configuração fiscal de um estabelecimento' })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404, description: 'Configuração não encontrada' })
+  findSettings(
+    @CurrentCompany() companyId: string,
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.fiscalService.findSettings(companyId, establishmentId);
+  }
+
+  @Patch('settings/:establishmentId')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.edit')
+  @ApiOperation({
+    summary: 'Atualizar configuração fiscal de um estabelecimento',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 200, description: 'Configuração fiscal atualizada' })
+  updateSettings(
+    @CurrentCompany() companyId: string,
+    @Param('establishmentId') establishmentId: string,
+    @Body() dto: UpdateFiscalSettingsDto,
+  ) {
+    return this.fiscalService.updateSettings(companyId, establishmentId, dto);
+  }
+
+  // ──────────────────────────────────────────────
+  // Fiscal Documents
+  // ──────────────────────────────────────────────
+
+  @Get('documents')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({ summary: 'Listar documentos fiscais da empresa' })
+  @ApiResponse({ status: 200 })
+  findAllDocuments(
+    @CurrentCompany() companyId: string,
+    @Query() query: QueryFiscalDocumentsDto,
+  ) {
+    return this.fiscalService.findAllDocuments(companyId, query);
+  }
+
+  @Get('documents/:id')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({ summary: 'Detalhar documento fiscal' })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404, description: 'Documento fiscal não encontrado' })
+  findDocumentById(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+  ) {
+    return this.fiscalService.findDocumentById(id, companyId);
+  }
+
+  @Get('documents/sale/:saleId')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({ summary: 'Buscar documento fiscal por venda' })
+  @ApiParam({ name: 'saleId', description: 'ID da venda' })
+  @ApiResponse({ status: 200 })
+  findDocumentBySale(
+    @Param('saleId') saleId: string,
+    @CurrentCompany() companyId: string,
+  ) {
+    return this.fiscalService.findDocumentBySale(saleId, companyId);
+  }
+
+  @Post('documents/nfce')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.emit')
+  @ApiOperation({
+    summary: 'Emitir NFC-e manualmente para uma venda concluída',
+  })
+  @ApiResponse({ status: 201, description: 'Emissão enfileirada' })
+  @ApiResponse({
+    status: 400,
+    description: 'Venda já possui documento fiscal ativo',
+  })
+  async emitNfce(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Body() dto: EmitNfceDto,
+  ) {
+    const fiscalDocument = await this.fiscalService.createManualEmission(
+      companyId,
+      dto,
+      user.id,
+    );
+
+    // Enfileira a emissão
+    await this.fiscalQueue.add(
+      'emitir',
+      {
+        fiscalDocumentId: fiscalDocument.id,
+        companyId,
+      },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        jobId: `fiscal-${fiscalDocument.id}`,
+      },
+    );
+
+    this.logger.log(
+      `Emissão manual enfileirada: documento=${fiscalDocument.id}`,
+    );
+
+    return fiscalDocument;
+  }
+
+  @Get('documents/:id/history')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({ summary: 'Histórico de status de um documento fiscal' })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 200 })
+  getStatusHistory(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+  ) {
+    return this.fiscalService.getStatusHistory(id, companyId);
+  }
+
+  @Get('documents/:id/events')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({ summary: 'Eventos de um documento fiscal' })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 200 })
+  getEvents(@Param('id') id: string, @CurrentCompany() companyId: string) {
+    return this.fiscalService.getEvents(id, companyId);
+  }
+
+  @Get('documents/:id/xml/:tipo')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({ summary: 'Download do XML de um documento fiscal' })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiParam({
+    name: 'tipo',
+    description: 'Tipo do XML',
+    enum: ['enviado', 'autorizado', 'cancelamento'],
+  })
+  @ApiResponse({ status: 200, description: 'Conteúdo do XML' })
+  @ApiResponse({ status: 404, description: 'XML não disponível' })
+  getXml(
+    @Param('id') id: string,
+    @Param('tipo') tipo: 'enviado' | 'autorizado' | 'cancelamento',
+    @CurrentCompany() companyId: string,
+  ) {
+    return this.fiscalService.getXml(id, companyId, tipo);
+  }
+}

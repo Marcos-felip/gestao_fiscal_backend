@@ -136,6 +136,51 @@ enum UnitOfMeasure {
   DZ
 }
 
+enum FiscalDocumentModel {
+  NFE
+  NFCE
+}
+
+enum FiscalEnvironment {
+  HOMOLOGACAO
+  PRODUCAO
+}
+
+enum FiscalDocumentStatus {
+  NAO_EMITIDO
+  PENDENTE
+  PROCESSANDO
+  AUTORIZADO
+  REJEITADO
+  ERRO
+  CONTINGENCIA
+  CANCELAMENTO_PENDENTE
+  CANCELADO
+  INUTILIZADO
+}
+
+enum TaxRegimeCode {
+  SIMPLES_NACIONAL
+  SIMPLES_EXCESSO
+  REGIME_NORMAL
+}
+
+enum FiscalPaymentCode {
+  DINHEIRO
+  CHEQUE
+  CARTAO_CREDITO
+  CARTAO_DEBITO
+  CREDITO_LOJA
+  VALE_ALIMENTACAO
+  VALE_REFEICAO
+  VALE_PRESENTE
+  VALE_COMBUSTIVEL
+  BOLETO
+  PIX
+  SEM_PAGAMENTO
+  OUTRO
+}
+
 model User {
   id                  String    @id @default(uuid())
   name                String
@@ -168,6 +213,26 @@ model Company {
   isOnboarded     Boolean          @default(false) @map("is_onboarded")
   /// Fechamento às cegas: o operador não vê o valor esperado antes de contar
   cashBlindClose  Boolean          @default(false) @map("cash_blind_close")
+  /// Razão social da empresa
+  razaoSocial     String?          @map("razao_social")
+  /// Nome fantasia
+  nomeFantasia    String?          @map("nome_fantasia")
+  /// Inscrição estadual
+  inscricaoEstadual String?        @map("inscricao_estadual")
+  /// Inscrição municipal
+  inscricaoMunicipal String?       @map("inscricao_municipal")
+  /// Código de Regime Tributário (CRT) — usado na emissão fiscal
+  crt             TaxRegimeCode?
+  /// Empresa é contribuinte do ICMS
+  contribuinteIcms Boolean         @default(false) @map("contribuinte_icms")
+  /// Configuração fiscal completa para emissão
+  fiscalConfigComplete Boolean     @default(false) @map("fiscal_config_complete")
+  /// Código IBGE do município da empresa
+  codigoIbgeMunicipio String?      @map("codigo_ibge_municipio")
+  /// Telefone de contato fiscal
+  telefoneFiscal  String?          @map("telefone_fiscal")
+  /// E-mail de contato fiscal
+  emailFiscal     String?          @map("email_fiscal")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   deletedAt       DateTime?        @map("deleted_at")
@@ -187,6 +252,8 @@ model Company {
   cashRegisters    CashRegister[]
   cashSessions     CashSession[]
   cashMovements    CashMovement[]
+  fiscalSettings   FiscalSettings[]
+  fiscalDocuments  FiscalDocument[]
 
   @@map("companies")
 }
@@ -235,6 +302,8 @@ model Establishment {
   financialEntries FinancialEntry[]
   cashRegisters    CashRegister[]
   cashSessions     CashSession[]
+  fiscalSettings   FiscalSettings?
+  fiscalDocuments  FiscalDocument[]
 
   @@index([companyId])
   @@map("establishments")
@@ -258,6 +327,22 @@ model Product {
   cfop                String?
   origin              Int?          @db.SmallInt
   technicalAttributes Json?         @map("technical_attributes")
+  /// CSOSN — Código de Situação da Operação para o Simples Nacional
+  csosn               String?
+  /// CST do ICMS — Código de Situação Tributária (regime normal)
+  cstIcms             String?       @map("cst_icms")
+  /// CST do PIS
+  cstPis              String?       @map("cst_pis")
+  /// CST do COFINS
+  cstCofins           String?       @map("cst_cofins")
+  /// Alíquota de ICMS
+  aliquotaIcms        Decimal?      @map("aliquota_icms") @db.Decimal(12, 4)
+  /// Alíquota de PIS
+  aliquotaPis         Decimal?      @map("aliquota_pis") @db.Decimal(12, 4)
+  /// Alíquota de COFINS
+  aliquotaCofins      Decimal?      @map("aliquota_cofins") @db.Decimal(12, 4)
+  /// Produto com dados fiscais completos para emissão
+  fiscalComplete      Boolean       @default(false) @map("fiscal_complete")
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
   deletedAt           DateTime?     @map("deleted_at")
@@ -402,6 +487,7 @@ model Sale {
   items            SaleItem[]
   payments         SalePayment[]
   financialEntries FinancialEntry[]
+  fiscalDocument   FiscalDocument?
 
   @@unique([companyId, saleNumber])
   @@index([companyId])
@@ -642,4 +728,117 @@ model MembershipProfile {
   @@id([membershipId, profileId])
   @@index([profileId])
   @@map("membership_profiles")
+}
+
+/// Configuração fiscal por estabelecimento: série, numeração, certificado e CSC.
+model FiscalSettings {
+  id               String            @id @default(uuid())
+  establishmentId  String            @map("establishment_id")
+  establishment    Establishment     @relation(fields: [establishmentId], references: [id])
+  companyId        String            @map("company_id")
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ambiente         FiscalEnvironment @default(HOMOLOGACAO)
+  serieNfce        Int               @default(1) @map("serie_nfce")
+  proximoNumeroNfce Int              @default(1) @map("proximo_numero_nfce")
+  codigoCsc        String?           @map("codigo_csc")
+  idCsc            String?           @map("id_csc")
+  /// Referência criptografada ao certificado A1 no cofre (KMS/Vault)
+  certificadoRef   String?           @map("certificado_ref")
+  /// Referência criptografada à senha do certificado
+  certificadoSenhaRef String?        @map("certificado_senha_ref")
+  /// Validade do certificado digital
+  certificadoValidade DateTime?      @map("certificado_validade")
+  /// Subject DN do certificado digital
+  certificadoSubject String?         @map("certificado_subject")
+  ativo            Boolean           @default(true)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  deletedAt        DateTime?         @map("deleted_at")
+
+  @@unique([establishmentId])
+  @@index([companyId])
+  @@map("fiscal_settings")
+}
+
+/// Documento fiscal emitido (NF-e ou NFC-e): um por venda, com status, XML e histórico.
+model FiscalDocument {
+  id               String               @id @default(uuid())
+  companyId        String               @map("company_id")
+  company          Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  establishmentId  String               @map("establishment_id")
+  establishment    Establishment        @relation(fields: [establishmentId], references: [id])
+  saleId           String?              @unique @map("sale_id")
+  sale             Sale?                @relation(fields: [saleId], references: [id])
+  modelo           FiscalDocumentModel
+  serie            Int
+  numero           Int
+  chaveAcesso      String?              @unique @map("chave_acesso")
+  ambiente         FiscalEnvironment
+  status           FiscalDocumentStatus @default(PENDENTE)
+  protocolo        String?
+  rejeicaoCodigo   String?              @map("rejeicao_codigo")
+  rejeicaoMensagem String?              @map("rejeicao_mensagem")
+  dataEmissao      DateTime?            @map("data_emissao")
+  dataAutorizacao  DateTime?            @map("data_autorizacao")
+  dataCancelamento DateTime?            @map("data_cancelamento")
+  valorTotal       Decimal?             @map("valor_total") @db.Decimal(15, 2)
+  /// XML enviado (base64 ou referência S3)
+  xmlEnviado       String?              @map("xml_enviado")
+  /// XML autorizado pela SEFAZ (base64 ou referência S3)
+  xmlAutorizado    String?              @map("xml_autorizado")
+  /// XML de cancelamento (base64 ou referência S3)
+  xmlCancelamento  String?              @map("xml_cancelamento")
+  /// URL do DANFE no storage (S3)
+  danfeUrl         String?              @map("danfe_url")
+  /// QR Code da NFC-e
+  qrCode           String?              @map("qr_code")
+  /// Chave de idempotência para evitar emissão duplicada
+  idempotencyKey   String?              @unique @map("idempotency_key")
+  /// Tentativas de emissão
+  attempts         Int                  @default(0)
+  /// Motor de emissão: "dfe-net" ou futuro
+  engine           String?
+  /// Snapshot imutável dos dados no momento da emissão (JSONB)
+  snapshot         Json?
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  deletedAt        DateTime?            @map("deleted_at")
+
+  statusHistory FiscalStatusHistory[]
+  events        FiscalDocumentEvent[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([saleId])
+  @@map("fiscal_documents")
+}
+
+/// Histórico de transições de status de um documento fiscal.
+model FiscalStatusHistory {
+  id               String               @id @default(uuid())
+  fiscalDocumentId String               @map("fiscal_document_id")
+  fiscalDocument   FiscalDocument       @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+  statusFrom       FiscalDocumentStatus @map("status_from")
+  statusTo         FiscalDocumentStatus @map("status_to")
+  motivo           String?
+  usuarioId        String?              @map("usuario_id")
+  createdAt        DateTime             @default(now()) @map("created_at")
+
+  @@index([fiscalDocumentId])
+  @@map("fiscal_status_history")
+}
+
+/// Eventos auditáveis de um documento fiscal (emissão, cancelamento, download, etc.).
+model FiscalDocumentEvent {
+  id               String         @id @default(uuid())
+  fiscalDocumentId String         @map("fiscal_document_id")
+  fiscalDocument   FiscalDocument @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+  /// Tipo do evento: "emissao", "cancelamento", "consulta", "retry", "download_xml", "download_danfe", "reimpressao"
+  tipo             String
+  detalhes         Json?
+  usuarioId        String?        @map("usuario_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@index([fiscalDocumentId])
+  @@map("fiscal_document_events")
 }

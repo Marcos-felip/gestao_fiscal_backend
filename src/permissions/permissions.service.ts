@@ -31,6 +31,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   cash: 'Operação de caixa',
   stock: 'Estoque',
   partners: 'Parceiros',
+  fiscal: 'Fiscal',
 };
 
 @Injectable()
