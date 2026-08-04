@@ -37,7 +37,7 @@
 - [x] 4.2 CSOSN (Simples) e CST de ICMS/PIS/COFINS (Normal)
 - [x] 4.3 Aliquotas ICMS/PIS/COFINS, unidade comercial, GTIN
 - [x] 4.4 Campo derivado `fiscalComplete` por produto
-- [ ] 4.5 Endpoint/relatorio de produtos com pendencia fiscal
+- [x] 4.5 Endpoint/relatorio de produtos com pendencia fiscal
 - [x] 4.6 Bloquear emissao quando algum item da venda estiver fiscalmente incompleto
 
 ## 5. Formas de pagamento fiscais [Fase A]

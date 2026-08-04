@@ -255,4 +255,56 @@ describe('ProductsService', () => {
       );
     });
   });
+
+  describe('findFiscalPending', () => {
+    it('filtra por fiscalComplete false e detalha o que falta em cada produto', async () => {
+      mockPrismaService.product.findMany.mockResolvedValue([
+        {
+          id: 'prod-1',
+          name: 'Refrigerante',
+          sku: 'REF-1',
+          ncm: '2202',
+          cfop: '5102',
+          origin: 0,
+          csosn: '102',
+          cstIcms: null,
+        },
+      ]);
+      mockPrismaService.product.count.mockResolvedValue(1);
+
+      const resultado = await service.findFiscalPending('company-1', {
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: 'company-1',
+            deletedAt: null,
+            fiscalComplete: false,
+          }),
+        }),
+      );
+      expect(resultado.total).toBe(1);
+      expect(resultado.data[0].pendencias).toEqual([
+        'NCM ausente ou fora do formato de 8 dígitos',
+      ]);
+    });
+
+    it('aplica o filtro de busca por nome', async () => {
+      mockPrismaService.product.findMany.mockResolvedValue([]);
+      mockPrismaService.product.count.mockResolvedValue(0);
+
+      await service.findFiscalPending('company-1', { search: 'Refri' });
+
+      expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            name: { contains: 'Refri', mode: 'insensitive' },
+          }),
+        }),
+      );
+    });
+  });
 });

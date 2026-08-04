@@ -6,8 +6,17 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import {
   isProductFiscalComplete,
+  listarPendenciasFiscais,
   ProductFiscalFields,
 } from '../fiscal/emission/fiscal-rules';
+
+/** Produto que ainda não pode ser vendido em NFC-e, com o que falta nele. */
+export interface ProductFiscalPendency extends ProductFiscalFields {
+  id: string;
+  name: string;
+  sku: string | null;
+  pendencias: string[];
+}
 
 @Injectable()
 export class ProductsService {
@@ -143,6 +152,68 @@ export class ProductsService {
         isActive: dto.isActive,
       },
     });
+  }
+
+  /**
+   * Produtos que travariam uma emissão, com o motivo de cada pendência.
+   *
+   * Filtra por `fiscalComplete: false` — a coluna já é derivada das regras do
+   * motor na escrita — e recalcula os motivos para exibir ao usuário.
+   */
+  async findFiscalPending(
+    companyId: string,
+    pagination: PaginationDto,
+  ): Promise<{
+    data: ProductFiscalPendency[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = pagination.page ?? 1;
+    const limit = pagination.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ProductWhereInput = {
+      companyId,
+      deletedAt: null,
+      isActive: true,
+      fiscalComplete: false,
+    };
+
+    if (pagination.search) {
+      where.name = { contains: pagination.search, mode: 'insensitive' };
+    }
+
+    const [company, produtos, total] = await Promise.all([
+      this.prisma.company.findFirst({
+        where: { id: companyId, deletedAt: null },
+        select: { crt: true },
+      }),
+      this.prisma.product.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          ncm: true,
+          cfop: true,
+          origin: true,
+          csosn: true,
+          cstIcms: true,
+        },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    const data = produtos.map((produto) => ({
+      ...produto,
+      pendencias: listarPendenciasFiscais(produto, company?.crt),
+    }));
+
+    return { data, total, page, limit };
   }
 
   /**

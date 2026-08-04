@@ -180,16 +180,44 @@ export function isProductFiscalComplete(
   produto: ProductFiscalFields,
   crt?: TaxRegimeCode | null,
 ): boolean {
+  return listarPendenciasFiscais(produto, crt).length === 0;
+}
+
+/**
+ * O que impede o produto de entrar numa NFC-e, em texto para o usuário.
+ *
+ * É a mesma checagem de {@link isProductFiscalComplete}, só que dizendo o que
+ * falta — alimenta o relatório de pendências fiscais.
+ */
+export function listarPendenciasFiscais(
+  produto: ProductFiscalFields,
+  crt?: TaxRegimeCode | null,
+): string[] {
+  const pendencias: string[] = [];
+
+  if (!isNcmValido(produto.ncm)) {
+    pendencias.push('NCM ausente ou fora do formato de 8 dígitos');
+  }
+  if (!isCfopValido(produto.cfop)) {
+    pendencias.push('CFOP ausente ou não é uma operação dentro do estado (5xxx)');
+  }
+  if (!isOrigemValida(produto.origin)) {
+    pendencias.push('origem da mercadoria ausente ou fora da faixa 0 a 8');
+  }
+
   const situacaoOk = crt
     ? !!situacaoTributaria(mapCrt(crt), produto.csosn, produto.cstIcms)
     : isCsosnSuportado(produto.csosn) || isCstIcmsSuportado(produto.cstIcms);
 
-  return (
-    isNcmValido(produto.ncm) &&
-    isCfopValido(produto.cfop) &&
-    isOrigemValida(produto.origin) &&
-    situacaoOk
-  );
+  if (!situacaoOk) {
+    pendencias.push(
+      crt && !usaCsosn(mapCrt(crt))
+        ? `CST de ICMS ausente ou não suportado (aceitos: ${CST_ICMS_SUPORTADOS.join(', ')})`
+        : `CSOSN ausente ou não suportado (aceitos: ${CSOSN_SUPORTADOS.join(', ')})`,
+    );
+  }
+
+  return pendencias;
 }
 
 /** Converte o CRT da empresa para a string esperada pelo motor. */
