@@ -145,11 +145,11 @@
 - [x] 15.D3 Atualizar `Sale.fiscalStatus` (PROCESSANDO->AUTORIZADO/REJEITADO/CANCELADO) (cumpre 8.8)
 
 ### E. Rotas Fase B + orquestracao
-- [ ] 15.E1 `POST /fiscal/documents/:id/cancel {justificativa}` (15-255) -> cancelar + gravar `xmlCancelamento`/`dataCancelamento`/CANCELADO + Sale (cumpre 9.x)
-- [ ] 15.E2 `POST /fiscal/documents/:id/consulta` -> reconciliar situacao (cumpre 9.1)
-- [ ] 15.E3 `POST /fiscal/documents/:id/retry` idempotente (cumpre 10.2)
-- [ ] 15.E4 Endpoint teste SEFAZ -> `statusServico` (cumpre 3.8)
-- [ ] 15.E5 `GET /fiscal/documents/:id/danfe` (PDF do storage) + expor `qrCode` (cumpre 8.9)
+- [x] 15.E1 `POST /fiscal/documents/:id/cancel {justificativa}` (15-255) -> cancelar + gravar `xmlCancelamento`/`dataCancelamento`/CANCELADO + Sale (cumpre 9.x)
+- [x] 15.E2 `POST /fiscal/documents/:id/consulta` -> reconciliar situacao (cumpre 9.1)
+- [x] 15.E3 `POST /fiscal/documents/:id/retry` idempotente (cumpre 10.2)
+- [x] 15.E4 Endpoint teste SEFAZ -> `statusServico` (cumpre 3.8)
+- [x] 15.E5 `GET /fiscal/documents/:id/danfe` (PDF do storage) + expor `qrCode` (cumpre 8.9)
 
 ### F. Gaps de DTO/validacao (detectados pelo frontend)
 - [ ] 15.F1 `UpdateCompanyDto` aceitar campos fiscais (ou `PATCH /companies/:id/fiscal`) — desbloqueia tela fiscal da empresa

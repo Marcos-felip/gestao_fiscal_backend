@@ -7,11 +7,14 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -35,6 +38,8 @@ import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
 import { UploadCertificateDto } from './dto/upload-certificate.dto';
+import { CancelFiscalDocumentDto } from './dto/cancel-fiscal-document.dto';
+import { FiscalOperationsService } from './fiscal-operations.service';
 import {
   FiscalCertificateService,
   MAX_CERTIFICATE_BYTES,
@@ -51,6 +56,7 @@ export class FiscalController {
   constructor(
     private readonly fiscalService: FiscalService,
     private readonly certificateService: FiscalCertificateService,
+    private readonly operationsService: FiscalOperationsService,
     @InjectQueue(FISCAL_EMISSION_QUEUE)
     private readonly fiscalQueue: Queue,
   ) {}
@@ -301,6 +307,104 @@ export class FiscalController {
   @ApiResponse({ status: 200 })
   getEvents(@Param('id') id: string, @CurrentCompany() companyId: string) {
     return this.fiscalService.getEvents(id, companyId);
+  }
+
+  @Post('documents/:id/cancel')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.cancel')
+  @ApiOperation({ summary: 'Cancelar um documento fiscal autorizado' })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 201, description: 'Cancelamento homologado' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Documento não autorizado, já cancelado ou recusado pela SEFAZ',
+  })
+  cancelDocument(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Body() dto: CancelFiscalDocumentDto,
+  ) {
+    return this.operationsService.cancel(
+      companyId,
+      id,
+      dto.justificativa,
+      user.id,
+    );
+  }
+
+  @Post('documents/:id/consulta')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({
+    summary:
+      'Consultar a situação do documento na SEFAZ e reconciliar o status',
+  })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 201, description: 'Situação consultada' })
+  consultarDocument(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+  ) {
+    return this.operationsService.consultar(companyId, id, user.id);
+  }
+
+  @Post('documents/:id/retry')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.emit')
+  @ApiOperation({
+    summary: 'Reprocessar a emissão mantendo série e número do documento',
+  })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 201, description: 'Emissão reenfileirada' })
+  @ApiResponse({
+    status: 400,
+    description: 'Documento não está em estado reprocessável',
+  })
+  retryDocument(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+  ) {
+    return this.operationsService.retry(companyId, id, user.id);
+  }
+
+  @Post('settings/:establishmentId/sefaz-status')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({ summary: 'Testar a comunicação com a SEFAZ' })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 201, description: 'Disponibilidade do serviço' })
+  testarSefaz(
+    @CurrentCompany() companyId: string,
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.operationsService.statusServico(companyId, establishmentId);
+  }
+
+  @Get('documents/:id/danfe')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({ summary: 'Download do DANFE (PDF) de um documento fiscal' })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 200, description: 'PDF do DANFE' })
+  @ApiResponse({ status: 404, description: 'DANFE não disponível' })
+  async getDanfe(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const pdf = await this.fiscalService.getDanfe(id, companyId);
+
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename="danfe-${id}.pdf"`,
+    );
+
+    return new StreamableFile(pdf);
   }
 
   @Get('documents/:id/xml/:tipo')
