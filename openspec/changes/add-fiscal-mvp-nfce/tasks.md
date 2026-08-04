@@ -140,9 +140,9 @@
 - [x] 15.C2 Garantir consistencia Sigma itens = valorTotal = Sigma pagamentos (tol. 0,01); mapear `PaymentMethod`->tipo textual (cumpre 5.1-5.4)
 
 ### D. Processar resposta + storage
-- [ ] 15.D1 Gravar chave/protocolo/dataAutorizacao; decodificar `xmlAutorizadoBase64`/`danfeBase64`; gravar `qrCode`; rejeicao->REJEITADO vs ERRO (cumpre 8.6)
-- [ ] 15.D2 Wire `StorageService`: upload XML+DANFE em `fiscal/{companyId}/{ano}/{mes}/{chave}.(xml|pdf)`; refs no banco; servir do storage (cumpre 8.7/12.4)
-- [ ] 15.D3 Atualizar `Sale.fiscalStatus` (PROCESSANDO->AUTORIZADO/REJEITADO/CANCELADO) (cumpre 8.8)
+- [x] 15.D1 Gravar chave/protocolo/dataAutorizacao; decodificar `xmlAutorizadoBase64`/`danfeBase64`; gravar `qrCode`; rejeicao->REJEITADO vs ERRO (cumpre 8.6)
+- [x] 15.D2 Wire `StorageService`: upload XML+DANFE em `fiscal/{companyId}/{ano}/{mes}/{chave}.(xml|pdf)`; refs no banco; servir do storage (cumpre 8.7/12.4)
+- [x] 15.D3 Atualizar `Sale.fiscalStatus` (PROCESSANDO->AUTORIZADO/REJEITADO/CANCELADO) (cumpre 8.8)
 
 ### E. Rotas Fase B + orquestracao
 - [ ] 15.E1 `POST /fiscal/documents/:id/cancel {justificativa}` (15-255) -> cancelar + gravar `xmlCancelamento`/`dataCancelamento`/CANCELADO + Sale (cumpre 9.x)

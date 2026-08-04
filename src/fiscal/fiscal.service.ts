@@ -16,6 +16,7 @@ import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
 import { buildFiscalSnapshot } from './emission/fiscal-snapshot.builder';
+import { isFiscalStorageKey } from './emission/fiscal-storage';
 import { StorageService } from '../storage/storage.service';
 
 @Injectable()
@@ -479,6 +480,60 @@ export class FiscalService {
       },
     });
 
-    return xmlContent;
+    // O conteúdo pode estar no storage (referência) ou gravado na coluna.
+    if (!isFiscalStorageKey(xmlContent)) {
+      return xmlContent;
+    }
+
+    try {
+      return await this.storageService.download(xmlContent);
+    } catch (error) {
+      this.logger.error(
+        `Falha ao ler o XML ${tipo} do storage (${xmlContent}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new NotFoundException(
+        `XML ${tipo} não pôde ser recuperado do armazenamento`,
+      );
+    }
+  }
+
+  /**
+   * Retorna o PDF do DANFE de um documento fiscal autorizado.
+   */
+  async getDanfe(fiscalDocumentId: string, companyId: string): Promise<Buffer> {
+    const document = await this.prisma.fiscalDocument.findFirst({
+      where: { id: fiscalDocumentId, companyId, deletedAt: null },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Documento fiscal não encontrado');
+    }
+
+    if (!document.danfeUrl) {
+      throw new NotFoundException('DANFE não disponível para este documento');
+    }
+
+    await this.prisma.fiscalDocumentEvent.create({
+      data: {
+        fiscalDocumentId,
+        tipo: 'download_danfe',
+        detalhes: { chaveAcesso: document.chaveAcesso },
+      },
+    });
+
+    if (!isFiscalStorageKey(document.danfeUrl)) {
+      return Buffer.from(document.danfeUrl, 'base64');
+    }
+
+    try {
+      return await this.storageService.downloadBuffer(document.danfeUrl);
+    } catch (error) {
+      this.logger.error(
+        `Falha ao ler o DANFE do storage (${document.danfeUrl}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new NotFoundException(
+        'DANFE não pôde ser recuperado do armazenamento',
+      );
+    }
   }
 }

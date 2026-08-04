@@ -77,6 +77,15 @@ export class StorageService {
    * @returns Conteúdo como string
    */
   async download(key: string): Promise<string> {
+    return (await this.downloadBuffer(key)).toString('utf-8');
+  }
+
+  /**
+   * Faz download de um conteúdo binário do storage (ex.: PDF do DANFE).
+   *
+   * @param key Caminho completo do objeto
+   */
+  async downloadBuffer(key: string): Promise<Buffer> {
     this.logger.log(`Download: ${key}`);
 
     const response = await this.client.send(
@@ -90,13 +99,12 @@ export class StorageService {
       throw new Error(`Objeto não encontrado: ${key}`);
     }
 
-    // Converte o stream para string
     const stream = response.Body as Readable;
     const chunks: Uint8Array[] = [];
     for await (const chunk of stream) {
       chunks.push(Buffer.from(chunk));
     }
-    return Buffer.concat(chunks).toString('utf-8');
+    return Buffer.concat(chunks);
   }
 
   /**

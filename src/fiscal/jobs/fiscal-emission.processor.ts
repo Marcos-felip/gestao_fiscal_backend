@@ -5,12 +5,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DfeNetFiscalEngine } from '../fiscal-engine/dfe-net-fiscal-engine.service';
 import {
   EmitirNfceRequest,
+  EmitirNfceResult,
   FiscalCertificateCredentials,
 } from '../fiscal-engine/fiscal-engine.interface';
 import { FiscalCertificateService } from '../certificates/fiscal-certificate.service';
 import { buildEmitirNfceRequest } from '../emission/emit-request.builder';
+import { buildFiscalStorageKey } from '../emission/fiscal-storage';
+import { StorageService } from '../../storage/storage.service';
 import { FISCAL_EMISSION_QUEUE } from '../../queue/queue.constants';
-import { FiscalDocumentStatus } from '@prisma/client';
+import { FiscalDocumentStatus, FiscalStatus } from '@prisma/client';
 
 export interface FiscalEmissionJobData {
   fiscalDocumentId: string;
@@ -35,6 +38,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly engine: DfeNetFiscalEngine,
     private readonly certificates: FiscalCertificateService,
+    private readonly storage: StorageService,
   ) {
     super();
   }
@@ -73,6 +77,13 @@ export class FiscalEmissionProcessor extends WorkerHost {
         status: FiscalDocumentStatus.PROCESSANDO,
       },
     });
+
+    if (document.saleId) {
+      await this.prisma.sale.update({
+        where: { id: document.saleId },
+        data: { fiscalStatus: FiscalStatus.PROCESSANDO },
+      });
+    }
 
     // Adiciona histórico de transição
     await this.prisma.fiscalStatusHistory.create({
@@ -119,10 +130,12 @@ export class FiscalEmissionProcessor extends WorkerHost {
       this.logger.warn(
         `Emissão bloqueada: documento=${fiscalDocumentId}, motivo=${motivo}`,
       );
-      await this.registerFailure(fiscalDocumentId, motivo, {
-        etapa: 'preparacao',
-        tentativa: document.attempts + 1,
-      });
+      await this.registerFailure(
+        fiscalDocumentId,
+        motivo,
+        { etapa: 'preparacao', tentativa: document.attempts + 1 },
+        document.saleId,
+      );
       return;
     }
 
@@ -132,6 +145,18 @@ export class FiscalEmissionProcessor extends WorkerHost {
       const newStatus = result.sucesso
         ? FiscalDocumentStatus.AUTORIZADO
         : FiscalDocumentStatus.REJEITADO;
+      const dataAutorizacao = result.sucesso ? new Date() : undefined;
+
+      // Arquivos vão para o storage antes da transação: upload não pode
+      // segurar conexão de banco aberta.
+      const arquivos = result.sucesso
+        ? await this.persistirArquivos(
+            companyId,
+            result,
+            result.chaveAcesso!,
+            dataAutorizacao!,
+          )
+        : {};
 
       await this.prisma.$transaction(async (tx) => {
         await tx.fiscalDocument.update({
@@ -142,9 +167,22 @@ export class FiscalEmissionProcessor extends WorkerHost {
             chaveAcesso: result.chaveAcesso,
             rejeicaoCodigo: result.rejeicao?.codigo,
             rejeicaoMensagem: result.rejeicao?.mensagem,
-            dataAutorizacao: result.sucesso ? new Date() : undefined,
+            dataAutorizacao,
+            qrCode: result.qrCode,
+            ...arquivos,
           },
         });
+
+        if (document.saleId) {
+          await tx.sale.update({
+            where: { id: document.saleId },
+            data: {
+              fiscalStatus: result.sucesso
+                ? FiscalStatus.AUTORIZADO
+                : FiscalStatus.REJEITADO,
+            },
+          });
+        }
 
         await tx.fiscalStatusHistory.create({
           data: {
@@ -183,10 +221,75 @@ export class FiscalEmissionProcessor extends WorkerHost {
       await this.registerFailure(
         fiscalDocumentId,
         `Erro inesperado: ${motivo}`,
+        undefined,
+        document.saleId,
       );
 
       throw error; // BullMQ faz retry
     }
+  }
+
+  /**
+   * Envia XML autorizado e DANFE para o storage e devolve as referências que
+   * ficam no banco. Sem storage configurado o XML fica gravado na própria
+   * coluna e o DANFE é descartado — o motor só o devolve na autorização.
+   */
+  private async persistirArquivos(
+    companyId: string,
+    result: EmitirNfceResult,
+    chaveAcesso: string,
+    dataAutorizacao: Date,
+  ): Promise<{ xmlAutorizado?: string; danfeUrl?: string }> {
+    const xml = result.xmlAutorizadoBase64
+      ? Buffer.from(result.xmlAutorizadoBase64, 'base64').toString('utf-8')
+      : undefined;
+
+    if (!this.storage.isConfigured()) {
+      if (result.danfeBase64) {
+        this.logger.warn(
+          `Storage não configurado: DANFE da chave ${chaveAcesso} não foi guardado`,
+        );
+      }
+      return { xmlAutorizado: xml };
+    }
+
+    const arquivos: { xmlAutorizado?: string; danfeUrl?: string } = {};
+
+    try {
+      if (xml) {
+        const chave = buildFiscalStorageKey(
+          companyId,
+          chaveAcesso,
+          'xml',
+          dataAutorizacao,
+        );
+        await this.storage.upload(chave, xml, 'application/xml');
+        arquivos.xmlAutorizado = chave;
+      }
+
+      if (result.danfeBase64) {
+        const chave = buildFiscalStorageKey(
+          companyId,
+          chaveAcesso,
+          'pdf',
+          dataAutorizacao,
+        );
+        await this.storage.upload(
+          chave,
+          Buffer.from(result.danfeBase64, 'base64'),
+          'application/pdf',
+        );
+        arquivos.danfeUrl = chave;
+      }
+    } catch (error) {
+      // Nota autorizada não pode virar erro por causa do storage.
+      this.logger.error(
+        `Falha ao guardar arquivos da chave ${chaveAcesso}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { xmlAutorizado: arquivos.xmlAutorizado ?? xml };
+    }
+
+    return arquivos;
   }
 
   /** Marca o documento como ERRO, com histórico e evento de auditoria. */
@@ -194,12 +297,20 @@ export class FiscalEmissionProcessor extends WorkerHost {
     fiscalDocumentId: string,
     motivo: string,
     detalhes?: Record<string, unknown>,
+    saleId?: string | null,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await tx.fiscalDocument.update({
         where: { id: fiscalDocumentId },
         data: { status: FiscalDocumentStatus.ERRO },
       });
+
+      if (saleId) {
+        await tx.sale.update({
+          where: { id: saleId },
+          data: { fiscalStatus: FiscalStatus.REJEITADO },
+        });
+      }
 
       await tx.fiscalStatusHistory.create({
         data: {
