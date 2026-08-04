@@ -1,9 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DfeNetFiscalEngine } from '../fiscal-engine/dfe-net-fiscal-engine.service';
-import { EmitirNfceRequest } from '../fiscal-engine/fiscal-engine.interface';
+import {
+  EmitirNfceRequest,
+  FiscalCertificateCredentials,
+} from '../fiscal-engine/fiscal-engine.interface';
+import { FiscalCertificateService } from '../certificates/fiscal-certificate.service';
 import { FISCAL_EMISSION_QUEUE } from '../../queue/queue.constants';
 import { FiscalDocumentStatus } from '@prisma/client';
 
@@ -29,6 +33,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly engine: DfeNetFiscalEngine,
+    private readonly certificates: FiscalCertificateService,
   ) {
     super();
   }
@@ -78,10 +83,35 @@ export class FiscalEmissionProcessor extends WorkerHost {
       },
     });
 
+    // Certificado decriptado só aqui, na borda da chamada ao motor. Sem
+    // certificado válido a emissão para de vez: reprocessar não resolve.
+    let credentials: FiscalCertificateCredentials;
     try {
-      // TODO(15.C1): montar o EmitirNfceRequest a partir do snapshot da venda,
-      // das FiscalSettings (CSC, série, ambiente) e do certificado decriptado.
-      const request = this.buildEmissionRequest();
+      credentials = await this.certificates.loadCredentials(
+        companyId,
+        document.establishmentId,
+      );
+    } catch (error) {
+      if (!(error instanceof BadRequestException)) throw error;
+
+      const motivo = error.message;
+      this.logger.warn(
+        `Emissão bloqueada por certificado: documento=${fiscalDocumentId}, motivo=${motivo}`,
+      );
+      await this.registerFailure(fiscalDocumentId, motivo, {
+        etapa: 'certificado',
+        tentativa: document.attempts + 1,
+      });
+      return;
+    }
+
+    try {
+      // TODO(15.C1): montar o EmitirNfceRequest a partir do snapshot da venda
+      // e das FiscalSettings (CSC, série, ambiente).
+      const request: EmitirNfceRequest = {
+        ...this.buildEmissionRequest(),
+        ...credentials,
+      };
 
       const result = await this.engine.emitir(request);
 
@@ -133,36 +163,61 @@ export class FiscalEmissionProcessor extends WorkerHost {
         `Emissão concluída: documento=${fiscalDocumentId}, status=${newStatus}`,
       );
     } catch (error) {
-      this.logger.error(
-        `Erro inesperado na emissão: ${error instanceof Error ? error.message : String(error)}`,
+      const motivo = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Erro inesperado na emissão: ${motivo}`);
+
+      await this.registerFailure(
+        fiscalDocumentId,
+        `Erro inesperado: ${motivo}`,
       );
-
-      await this.prisma.$transaction(async (tx) => {
-        await tx.fiscalDocument.update({
-          where: { id: fiscalDocumentId },
-          data: { status: FiscalDocumentStatus.ERRO },
-        });
-
-        await tx.fiscalStatusHistory.create({
-          data: {
-            fiscalDocumentId,
-            statusFrom: FiscalDocumentStatus.PROCESSANDO,
-            statusTo: FiscalDocumentStatus.ERRO,
-            motivo: `Erro inesperado: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        });
-      });
 
       throw error; // BullMQ faz retry
     }
   }
 
+  /** Marca o documento como ERRO, com histórico e evento de auditoria. */
+  private async registerFailure(
+    fiscalDocumentId: string,
+    motivo: string,
+    detalhes?: Record<string, unknown>,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.fiscalDocument.update({
+        where: { id: fiscalDocumentId },
+        data: { status: FiscalDocumentStatus.ERRO },
+      });
+
+      await tx.fiscalStatusHistory.create({
+        data: {
+          fiscalDocumentId,
+          statusFrom: FiscalDocumentStatus.PROCESSANDO,
+          statusTo: FiscalDocumentStatus.ERRO,
+          motivo,
+        },
+      });
+
+      if (detalhes) {
+        await tx.fiscalDocumentEvent.create({
+          data: {
+            fiscalDocumentId,
+            tipo: 'emissao',
+            detalhes: { sucesso: false, motivo, ...detalhes },
+          },
+        });
+      }
+    });
+  }
+
   /**
-   * Monta o payload estruturado exigido pelo motor .NET.
+   * Monta o payload estruturado exigido pelo motor .NET, sem o certificado —
+   * ele é acrescentado só na borda da chamada.
    *
    * Pendente da tarefa 15.C1 — sem ele a emissão não tem como sair do backend.
    */
-  private buildEmissionRequest(): EmitirNfceRequest {
+  private buildEmissionRequest(): Omit<
+    EmitirNfceRequest,
+    keyof FiscalCertificateCredentials
+  > {
     throw new Error(
       'Montagem do payload de emissão ainda não implementada (tarefa 15.C1)',
     );

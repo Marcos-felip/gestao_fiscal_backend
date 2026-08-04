@@ -131,9 +131,9 @@
 - [x] 15.A3 Redesenhar `IFiscalEngine`/`DfeNetFiscalEngine`: request estruturado; result com `xmlAutorizadoBase64`/`danfeBase64`/`qrCode`/`rejeicao{}`; tratar HTTP 400 como rejeicao; add `statusServico`; parse/validacao da resposta; timeout em todos
 
 ### B. Certificado A1
-- [ ] 15.B1 Endpoint de upload do .pfx + senha: validar, extrair validade/titular, armazenar criptografado em FiscalSettings (cumpre 3.4)
-- [ ] 15.B2 Substituir certificado + bloquear emissao com certificado vencido (cumpre 3.5/3.7)
-- [ ] 15.B3 Decriptar o pfx so na borda e enviar `certificadoBase64`+`certificadoSenha` ao motor
+- [x] 15.B1 Endpoint de upload do .pfx + senha: validar, extrair validade/titular, armazenar criptografado em FiscalSettings (cumpre 3.4)
+- [x] 15.B2 Substituir certificado + bloquear emissao com certificado vencido (cumpre 3.5/3.7)
+- [x] 15.B3 Decriptar o pfx so na borda e enviar `certificadoBase64`+`certificadoSenha` ao motor
 
 ### C. Builder do payload estruturado + mapeamentos
 - [ ] 15.C1 Montar `EmitirNfceRequest` do snapshot+settings+company/establishment (emitente com `crt` string, itens com cfop/origem/csosn suportado, pagamentos `tipo` textual, cert, csc/idcsc, serie/numero, ambiente string)

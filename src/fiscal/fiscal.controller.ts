@@ -7,10 +7,15 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -29,6 +34,11 @@ import { CreateFiscalSettingsDto } from './dto/create-fiscal-settings.dto';
 import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
+import { UploadCertificateDto } from './dto/upload-certificate.dto';
+import {
+  FiscalCertificateService,
+  MAX_CERTIFICATE_BYTES,
+} from './certificates/fiscal-certificate.service';
 import { FISCAL_EMISSION_QUEUE } from '../queue/queue.constants';
 
 @ApiTags('fiscal')
@@ -40,6 +50,7 @@ export class FiscalController {
 
   constructor(
     private readonly fiscalService: FiscalService,
+    private readonly certificateService: FiscalCertificateService,
     @InjectQueue(FISCAL_EMISSION_QUEUE)
     private readonly fiscalQueue: Queue,
   ) {}
@@ -47,6 +58,84 @@ export class FiscalController {
   // ──────────────────────────────────────────────
   // Fiscal Settings
   // ──────────────────────────────────────────────
+
+  @Post('settings/:establishmentId/certificate')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.edit')
+  @UseInterceptors(
+    FileInterceptor('certificado', {
+      limits: { fileSize: MAX_CERTIFICATE_BYTES },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Enviar ou substituir o certificado digital A1 (.pfx)',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['certificado', 'senha'],
+      properties: {
+        certificado: {
+          type: 'string',
+          format: 'binary',
+          description: 'Arquivo .pfx/.p12 do certificado A1',
+        },
+        senha: { type: 'string', description: 'Senha do certificado' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Certificado armazenado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Arquivo inválido, senha incorreta ou certificado vencido',
+  })
+  uploadCertificate(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Param('establishmentId') establishmentId: string,
+    @UploadedFile() certificado: Express.Multer.File | undefined,
+    @Body() dto: UploadCertificateDto,
+  ) {
+    return this.certificateService.upload(
+      companyId,
+      establishmentId,
+      certificado?.buffer ?? Buffer.alloc(0),
+      dto.senha,
+      user.id,
+    );
+  }
+
+  @Get('settings/:establishmentId/certificate')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({
+    summary: 'Situação do certificado digital do estabelecimento',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 200 })
+  getCertificateStatus(
+    @CurrentCompany() companyId: string,
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.certificateService.getStatus(companyId, establishmentId);
+  }
+
+  @Get('settings/:establishmentId/certificate/history')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.read')
+  @ApiOperation({
+    summary: 'Histórico de envio e substituição do certificado digital',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 200 })
+  getCertificateHistory(
+    @CurrentCompany() companyId: string,
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.certificateService.getHistory(companyId, establishmentId);
+  }
 
   @Post('settings')
   @UseGuards(RequirePermissionGuard)

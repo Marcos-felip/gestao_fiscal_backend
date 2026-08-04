@@ -254,6 +254,7 @@ model Company {
   cashMovements    CashMovement[]
   fiscalSettings   FiscalSettings[]
   fiscalDocuments  FiscalDocument[]
+  fiscalCertificateEvents FiscalCertificateEvent[]
 
   @@map("companies")
 }
@@ -755,9 +756,36 @@ model FiscalSettings {
   updatedAt        DateTime          @updatedAt @map("updated_at")
   deletedAt        DateTime?         @map("deleted_at")
 
+  certificateEvents FiscalCertificateEvent[]
+
   @@unique([establishmentId])
   @@index([companyId])
   @@map("fiscal_settings")
+}
+
+/// Auditoria de envio e substituição do certificado A1 de um estabelecimento.
+model FiscalCertificateEvent {
+  id               String         @id @default(uuid())
+  companyId        String         @map("company_id")
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fiscalSettingsId String         @map("fiscal_settings_id")
+  fiscalSettings   FiscalSettings @relation(fields: [fiscalSettingsId], references: [id], onDelete: Cascade)
+  /// Tipo do evento: "upload" ou "substituicao"
+  tipo             String
+  /// Subject DN do certificado enviado
+  subject          String?
+  /// Common Name do titular
+  titular          String?
+  /// Validade final do certificado enviado
+  validoAte        DateTime?      @map("valido_ate")
+  /// Subject DN do certificado que estava configurado antes da substituição
+  subjectAnterior  String?        @map("subject_anterior")
+  usuarioId        String?        @map("usuario_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([fiscalSettingsId])
+  @@map("fiscal_certificate_events")
 }
 
 /// Documento fiscal emitido (NF-e ou NFC-e): um por venda, com status, XML e histórico.
