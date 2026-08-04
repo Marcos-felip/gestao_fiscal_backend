@@ -152,10 +152,10 @@
 - [x] 15.E5 `GET /fiscal/documents/:id/danfe` (PDF do storage) + expor `qrCode` (cumpre 8.9)
 
 ### F. Gaps de DTO/validacao (detectados pelo frontend)
-- [ ] 15.F1 `UpdateCompanyDto` aceitar campos fiscais (ou `PATCH /companies/:id/fiscal`) — desbloqueia tela fiscal da empresa
-- [ ] 15.F2 `CreateProductDto`/`UpdateProductDto` declarar csosn/cstIcms/cstPis/cstCofins/aliquotas (hoje `whitelist` descarta)
-- [ ] 15.F3 Derivar `Product.fiscalComplete` no service, validando contra as regras do motor (NCM 8, CFOP inicia com 5, csosn/cst suportado, origem 0-8)
-- [ ] 15.F4 Validar pre-condicoes de emissao com as mesmas regras do motor (falhar cedo com mensagem amigavel)
+- [x] 15.F1 `UpdateCompanyDto` aceitar campos fiscais (ou `PATCH /companies/:id/fiscal`) — desbloqueia tela fiscal da empresa
+- [x] 15.F2 `CreateProductDto`/`UpdateProductDto` declarar csosn/cstIcms/cstPis/cstCofins/aliquotas (hoje `whitelist` descarta)
+- [x] 15.F3 Derivar `Product.fiscalComplete` no service, validando contra as regras do motor (NCM 8, CFOP inicia com 5, csosn/cst suportado, origem 0-8)
+- [x] 15.F4 Validar pre-condicoes de emissao com as mesmas regras do motor (falhar cedo com mensagem amigavel)
 
 ### G. Infra / docs
 - [ ] 15.G1 docker-compose: subir `fiscal_service` (8080) + `FISCAL_API_KEY`; Redis; setar `FISCAL_ENGINE_URL`/`FISCAL_ENGINE_API_KEY` no Nest

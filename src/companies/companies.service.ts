@@ -5,8 +5,13 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { MembershipRole, EstablishmentType } from '@prisma/client';
+import {
+  MembershipRole,
+  EstablishmentType,
+  TaxRegimeCode,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { isCompanyFiscalComplete } from '../fiscal/emission/fiscal-rules';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { OnboardingDto } from './dto/onboarding.dto';
@@ -212,6 +217,38 @@ export class CompaniesService {
     if (dto.taxRegime !== undefined) updateData.taxRegime = dto.taxRegime;
     if (dto.cashBlindClose !== undefined)
       updateData.cashBlindClose = dto.cashBlindClose;
+
+    // Dados fiscais do emitente
+    if (dto.razaoSocial !== undefined) updateData.razaoSocial = dto.razaoSocial;
+    if (dto.nomeFantasia !== undefined)
+      updateData.nomeFantasia = dto.nomeFantasia;
+    if (dto.inscricaoEstadual !== undefined)
+      updateData.inscricaoEstadual = dto.inscricaoEstadual;
+    if (dto.inscricaoMunicipal !== undefined)
+      updateData.inscricaoMunicipal = dto.inscricaoMunicipal;
+    if (dto.crt !== undefined) updateData.crt = dto.crt;
+    if (dto.contribuinteIcms !== undefined)
+      updateData.contribuinteIcms = dto.contribuinteIcms;
+    if (dto.codigoIbgeMunicipio !== undefined)
+      updateData.codigoIbgeMunicipio = dto.codigoIbgeMunicipio;
+    if (dto.telefoneFiscal !== undefined)
+      updateData.telefoneFiscal = dto.telefoneFiscal;
+    if (dto.emailFiscal !== undefined) updateData.emailFiscal = dto.emailFiscal;
+
+    // `fiscalConfigComplete` é derivado: vale para os dados já gravados
+    // somados aos que estão chegando agora.
+    updateData.fiscalConfigComplete = isCompanyFiscalComplete({
+      cnpj: (updateData.cnpj as string | undefined) ?? company.cnpj,
+      razaoSocial:
+        (updateData.razaoSocial as string | undefined) ?? company.razaoSocial,
+      inscricaoEstadual:
+        (updateData.inscricaoEstadual as string | undefined) ??
+        company.inscricaoEstadual,
+      crt: (updateData.crt as TaxRegimeCode | undefined) ?? company.crt,
+      codigoIbgeMunicipio:
+        (updateData.codigoIbgeMunicipio as string | undefined) ??
+        company.codigoIbgeMunicipio,
+    });
 
     // Se establishment foi fornecido, fazer operação em transação
     if (dto.establishment !== undefined && dto.establishment !== null) {

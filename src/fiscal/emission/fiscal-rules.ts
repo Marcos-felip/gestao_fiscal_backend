@@ -114,6 +114,60 @@ export function normalizarGtin(barcode?: string | null): string | undefined {
   return [8, 12, 13, 14].includes(digitos.length) ? digitos : undefined;
 }
 
+/** Campos fiscais da empresa exigidos para emitir. */
+export interface CompanyFiscalFields {
+  cnpj?: string | null;
+  razaoSocial?: string | null;
+  inscricaoEstadual?: string | null;
+  crt?: TaxRegimeCode | null;
+  codigoIbgeMunicipio?: string | null;
+}
+
+/**
+ * A empresa está fiscalmente configurada quando tem identificação, regime e
+ * município — o resto do endereço vem do estabelecimento emitente.
+ */
+export function isCompanyFiscalComplete(company: CompanyFiscalFields): boolean {
+  return (
+    apenasDigitos(company.cnpj).length === 14 &&
+    !!company.razaoSocial?.trim() &&
+    !!company.inscricaoEstadual?.trim() &&
+    !!company.crt &&
+    isCodigoIbgeValido(company.codigoIbgeMunicipio)
+  );
+}
+
+/** Campos fiscais do produto exigidos para compor um item da NFC-e. */
+export interface ProductFiscalFields {
+  ncm?: string | null;
+  cfop?: string | null;
+  origin?: number | null;
+  csosn?: string | null;
+  cstIcms?: string | null;
+}
+
+/**
+ * O produto está fiscalmente completo quando passa nas mesmas regras do motor.
+ *
+ * Sem o CRT da empresa não dá para saber se o item usa CSOSN ou CST, então
+ * qualquer um dos dois válidos serve.
+ */
+export function isProductFiscalComplete(
+  produto: ProductFiscalFields,
+  crt?: TaxRegimeCode | null,
+): boolean {
+  const situacaoOk = crt
+    ? !!situacaoTributaria(mapCrt(crt), produto.csosn, produto.cstIcms)
+    : isCsosnSuportado(produto.csosn) || isCstIcmsSuportado(produto.cstIcms);
+
+  return (
+    isNcmValido(produto.ncm) &&
+    isCfopValido(produto.cfop) &&
+    isOrigemValida(produto.origin) &&
+    situacaoOk
+  );
+}
+
 /** Converte o CRT da empresa para a string esperada pelo motor. */
 export function mapCrt(crt: TaxRegimeCode): FiscalCrt {
   switch (crt) {

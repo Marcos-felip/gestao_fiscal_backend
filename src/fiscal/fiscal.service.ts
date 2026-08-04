@@ -17,6 +17,7 @@ import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
 import { buildFiscalSnapshot } from './emission/fiscal-snapshot.builder';
 import { isFiscalStorageKey } from './emission/fiscal-storage';
+import { assertEmissionSettings } from './emission/fiscal-preconditions';
 import { StorageService } from '../storage/storage.service';
 
 @Injectable()
@@ -330,7 +331,8 @@ export class FiscalService {
       );
     }
 
-    // Monta e valida o snapshot antes de reservar numeração
+    // Pré-condições e snapshot antes de reservar numeração
+    assertEmissionSettings(fiscalSettings);
     const snapshot = buildFiscalSnapshot(company, sale);
 
     // Reserva o próximo número atomicamente

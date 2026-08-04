@@ -286,7 +286,7 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { name: 'Updated Name' },
+        data: expect.objectContaining({ name: 'Updated Name' }) as unknown,
       });
       expect(result).toEqual(updatedCompany);
     });
@@ -300,7 +300,7 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { type: 'LTDA' },
+        data: expect.objectContaining({ type: 'LTDA' }) as unknown,
       });
       expect(result).toEqual(updatedCompany);
     });
@@ -318,7 +318,9 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { cnpj: '12.345.678/0001-95' },
+        data: expect.objectContaining({
+          cnpj: '12.345.678/0001-95',
+        }) as unknown,
       });
       expect(result).toEqual(updatedCompany);
     });
@@ -334,7 +336,9 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { phone: '(11) 9999-9999' },
+        data: expect.objectContaining({
+          phone: '(11) 9999-9999',
+        }) as unknown,
       });
       expect(result).toEqual(updatedCompany);
     });
@@ -353,7 +357,9 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { taxRegime: TaxRegime.LUCRO_REAL },
+        data: expect.objectContaining({
+          taxRegime: TaxRegime.LUCRO_REAL,
+        }) as unknown,
       });
       expect(result).toEqual(updatedCompany);
     });
@@ -405,12 +411,12 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: {
+        data: expect.objectContaining({
           name: 'New Name',
           type: 'LTDA',
           phone: '(11) 9999-9999',
           taxRegime: TaxRegime.SIMPLES_NACIONAL,
-        },
+        }) as unknown,
       });
       expect(result).toEqual(updatedCompany);
     });

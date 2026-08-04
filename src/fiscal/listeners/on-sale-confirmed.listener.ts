@@ -10,6 +10,7 @@ import {
   buildFiscalSnapshot,
   FiscalSnapshot,
 } from '../emission/fiscal-snapshot.builder';
+import { checkEmissionSettings } from '../emission/fiscal-preconditions';
 import { FiscalDocumentModel, FiscalDocumentStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
@@ -49,6 +50,16 @@ export class OnSaleConfirmedListener {
     if (!fiscalSettings) {
       this.logger.log(
         `Estabelecimento ${event.establishmentId} sem configuração fiscal ativa, pulando emissão automática`,
+      );
+      return;
+    }
+
+    // Certificado e CSC conferidos antes de reservar numeração.
+    const pendencias = checkEmissionSettings(fiscalSettings);
+
+    if (pendencias.length > 0) {
+      this.logger.warn(
+        `Emissão automática cancelada para a venda ${event.saleId}: ${pendencias.join('; ')}`,
       );
       return;
     }

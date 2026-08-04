@@ -4,6 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import {
+  isProductFiscalComplete,
+  ProductFiscalFields,
+} from '../fiscal/emission/fiscal-rules';
 
 @Injectable()
 export class ProductsService {
@@ -53,6 +57,20 @@ export class ProductsService {
   }
 
   async create(companyId: string, dto: CreateProductDto): Promise<Product> {
+    const dadosFiscais = {
+      ncm: dto.ncm,
+      cest: dto.cest,
+      cfop: dto.cfop,
+      origin: dto.origin,
+      csosn: dto.csosn,
+      cstIcms: dto.cstIcms,
+      cstPis: dto.cstPis,
+      cstCofins: dto.cstCofins,
+      aliquotaIcms: dto.aliquotaIcms,
+      aliquotaPis: dto.aliquotaPis,
+      aliquotaCofins: dto.aliquotaCofins,
+    };
+
     return this.prisma.product.create({
       data: {
         companyId,
@@ -64,10 +82,11 @@ export class ProductsService {
         costPrice: dto.costPrice,
         salePrice: dto.salePrice,
         minStock: dto.minStock,
-        ncm: dto.ncm,
-        cest: dto.cest,
-        cfop: dto.cfop,
-        origin: dto.origin,
+        ...dadosFiscais,
+        fiscalComplete: await this.derivarFiscalComplete(
+          companyId,
+          dadosFiscais,
+        ),
         technicalAttributes: dto.technicalAttributes as
           | Prisma.InputJsonValue
           | undefined,
@@ -80,7 +99,17 @@ export class ProductsService {
     companyId: string,
     dto: UpdateProductDto,
   ): Promise<Product> {
-    await this.findOne(id, companyId);
+    const atual = await this.findOne(id, companyId);
+
+    // O campo derivado vale para o cadastro depois da atualização.
+    const dadosFiscais = {
+      ncm: dto.ncm ?? atual.ncm,
+      cest: dto.cest ?? atual.cest,
+      cfop: dto.cfop ?? atual.cfop,
+      origin: dto.origin ?? atual.origin,
+      csosn: dto.csosn ?? atual.csosn,
+      cstIcms: dto.cstIcms ?? atual.cstIcms,
+    };
 
     return this.prisma.product.update({
       where: { id },
@@ -97,12 +126,39 @@ export class ProductsService {
         cest: dto.cest,
         cfop: dto.cfop,
         origin: dto.origin,
+        csosn: dto.csosn,
+        cstIcms: dto.cstIcms,
+        cstPis: dto.cstPis,
+        cstCofins: dto.cstCofins,
+        aliquotaIcms: dto.aliquotaIcms,
+        aliquotaPis: dto.aliquotaPis,
+        aliquotaCofins: dto.aliquotaCofins,
+        fiscalComplete: await this.derivarFiscalComplete(
+          companyId,
+          dadosFiscais,
+        ),
         technicalAttributes: dto.technicalAttributes as
           | Prisma.InputJsonValue
           | undefined,
         isActive: dto.isActive,
       },
     });
+  }
+
+  /**
+   * `fiscalComplete` é derivado das mesmas regras que o motor fiscal aplica —
+   * o produto só entra numa NFC-e se passar por elas.
+   */
+  private async derivarFiscalComplete(
+    companyId: string,
+    dadosFiscais: ProductFiscalFields,
+  ): Promise<boolean> {
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: { crt: true },
+    });
+
+    return isProductFiscalComplete(dadosFiscais, company?.crt);
   }
 
   async remove(id: string, companyId: string): Promise<void> {
