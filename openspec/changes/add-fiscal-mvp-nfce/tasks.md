@@ -136,8 +136,8 @@
 - [x] 15.B3 Decriptar o pfx so na borda e enviar `certificadoBase64`+`certificadoSenha` ao motor
 
 ### C. Builder do payload estruturado + mapeamentos
-- [ ] 15.C1 Montar `EmitirNfceRequest` do snapshot+settings+company/establishment (emitente com `crt` string, itens com cfop/origem/csosn suportado, pagamentos `tipo` textual, cert, csc/idcsc, serie/numero, ambiente string)
-- [ ] 15.C2 Garantir consistencia Sigma itens = valorTotal = Sigma pagamentos (tol. 0,01); mapear `PaymentMethod`->tipo textual (cumpre 5.1-5.4)
+- [x] 15.C1 Montar `EmitirNfceRequest` do snapshot+settings+company/establishment (emitente com `crt` string, itens com cfop/origem/csosn suportado, pagamentos `tipo` textual, cert, csc/idcsc, serie/numero, ambiente string)
+- [x] 15.C2 Garantir consistencia Sigma itens = valorTotal = Sigma pagamentos (tol. 0,01); mapear `PaymentMethod`->tipo textual (cumpre 5.1-5.4)
 
 ### D. Processar resposta + storage
 - [ ] 15.D1 Gravar chave/protocolo/dataAutorizacao; decodificar `xmlAutorizadoBase64`/`danfeBase64`; gravar `qrCode`; rejeicao->REJEITADO vs ERRO (cumpre 8.6)

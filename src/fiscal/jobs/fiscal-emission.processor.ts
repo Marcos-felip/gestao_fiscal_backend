@@ -8,6 +8,7 @@ import {
   FiscalCertificateCredentials,
 } from '../fiscal-engine/fiscal-engine.interface';
 import { FiscalCertificateService } from '../certificates/fiscal-certificate.service';
+import { buildEmitirNfceRequest } from '../emission/emit-request.builder';
 import { FISCAL_EMISSION_QUEUE } from '../../queue/queue.constants';
 import { FiscalDocumentStatus } from '@prisma/client';
 
@@ -83,36 +84,49 @@ export class FiscalEmissionProcessor extends WorkerHost {
       },
     });
 
-    // Certificado decriptado só aqui, na borda da chamada ao motor. Sem
-    // certificado válido a emissão para de vez: reprocessar não resolve.
-    let credentials: FiscalCertificateCredentials;
+    // Payload e certificado: pré-condição inválida ou certificado vencido
+    // param a emissão de vez — reprocessar não resolve.
+    let request: EmitirNfceRequest;
     try {
-      credentials = await this.certificates.loadCredentials(
-        companyId,
-        document.establishmentId,
-      );
+      const settings = await this.prisma.fiscalSettings.findFirst({
+        where: {
+          establishmentId: document.establishmentId,
+          companyId,
+          deletedAt: null,
+        },
+      });
+
+      const payload = buildEmitirNfceRequest(document.snapshot, {
+        serie: document.serie,
+        numero: document.numero,
+        ambiente: document.ambiente,
+        codigoCsc: settings?.codigoCsc,
+        idCsc: settings?.idCsc,
+      });
+
+      // Certificado decriptado só aqui, na borda da chamada ao motor.
+      const credentials: FiscalCertificateCredentials =
+        await this.certificates.loadCredentials(
+          companyId,
+          document.establishmentId,
+        );
+
+      request = { ...payload, ...credentials };
     } catch (error) {
       if (!(error instanceof BadRequestException)) throw error;
 
       const motivo = error.message;
       this.logger.warn(
-        `Emissão bloqueada por certificado: documento=${fiscalDocumentId}, motivo=${motivo}`,
+        `Emissão bloqueada: documento=${fiscalDocumentId}, motivo=${motivo}`,
       );
       await this.registerFailure(fiscalDocumentId, motivo, {
-        etapa: 'certificado',
+        etapa: 'preparacao',
         tentativa: document.attempts + 1,
       });
       return;
     }
 
     try {
-      // TODO(15.C1): montar o EmitirNfceRequest a partir do snapshot da venda
-      // e das FiscalSettings (CSC, série, ambiente).
-      const request: EmitirNfceRequest = {
-        ...this.buildEmissionRequest(),
-        ...credentials,
-      };
-
       const result = await this.engine.emitir(request);
 
       const newStatus = result.sucesso
@@ -206,20 +220,5 @@ export class FiscalEmissionProcessor extends WorkerHost {
         });
       }
     });
-  }
-
-  /**
-   * Monta o payload estruturado exigido pelo motor .NET, sem o certificado —
-   * ele é acrescentado só na borda da chamada.
-   *
-   * Pendente da tarefa 15.C1 — sem ele a emissão não tem como sair do backend.
-   */
-  private buildEmissionRequest(): Omit<
-    EmitirNfceRequest,
-    keyof FiscalCertificateCredentials
-  > {
-    throw new Error(
-      'Montagem do payload de emissão ainda não implementada (tarefa 15.C1)',
-    );
   }
 }

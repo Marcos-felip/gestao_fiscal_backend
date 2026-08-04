@@ -6,6 +6,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SALE_CONFIRMED_EVENT } from '../events/sale-confirmed.event';
 import type { SaleConfirmedEvent } from '../events/sale-confirmed.event';
 import { FISCAL_EMISSION_QUEUE } from '../../queue/queue.constants';
+import {
+  buildFiscalSnapshot,
+  FiscalSnapshot,
+} from '../emission/fiscal-snapshot.builder';
 import { FiscalDocumentModel, FiscalDocumentStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
@@ -49,82 +53,46 @@ export class OnSaleConfirmedListener {
       return;
     }
 
-    // Busca a venda para montar o snapshot
-    const sale = await this.prisma.sale.findFirst({
-      where: {
-        id: event.saleId,
-        companyId: event.companyId,
-        deletedAt: null,
-      },
-      include: {
-        items: {
-          include: {
-            product: true,
-          },
+    // Busca a venda e a empresa para montar o snapshot
+    const [sale, company] = await Promise.all([
+      this.prisma.sale.findFirst({
+        where: {
+          id: event.saleId,
+          companyId: event.companyId,
+          deletedAt: null,
         },
-        payments: true,
-        customer: true,
-        establishment: true,
-      },
-    });
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+          payments: true,
+          customer: true,
+          establishment: true,
+        },
+      }),
+      this.prisma.company.findFirst({
+        where: { id: event.companyId, deletedAt: null },
+      }),
+    ]);
 
-    if (!sale) {
+    if (!sale || !company) {
       this.logger.warn(`Venda não encontrada: ${event.saleId}`);
       return;
     }
 
-    // Monta o snapshot imutável
-    const snapshot = {
-      sale: {
-        id: sale.id,
-        saleNumber: sale.saleNumber,
-        totalAmount: Number(sale.totalAmount),
-        subtotal: Number(sale.subtotal),
-        discount: Number(sale.discount),
-        saleDate: sale.saleDate,
-      },
-      establishment: {
-        id: sale.establishment.id,
-        name: sale.establishment.name,
-        cnpj: sale.establishment.cnpj,
-        inscricaoEstadual: sale.establishment.inscricaoEstadual,
-        ibgeCode: sale.establishment.ibgeCode,
-        address: {
-          street: sale.establishment.street,
-          number: sale.establishment.number,
-          complement: sale.establishment.complement,
-          neighborhood: sale.establishment.neighborhood,
-          city: sale.establishment.city,
-          state: sale.establishment.state,
-          cep: sale.establishment.cep,
-        },
-      },
-      customer: sale.customer
-        ? {
-            id: sale.customer.id,
-            name: sale.customer.name,
-            cpfCnpj: sale.customer.cpfCnpj,
-          }
-        : null,
-      items: sale.items.map((item) => ({
-        productId: item.productId,
-        name: item.product.name,
-        ncm: item.product.ncm,
-        cest: item.product.cest,
-        cfop: item.product.cfop,
-        unit: item.product.unit,
-        quantity: Number(item.quantity),
-        unitPrice: Number(item.unitPrice),
-        total: Number(item.total),
-        ncm_code: item.product.ncm,
-        csosn: item.product.csosn,
-        cstIcms: item.product.cstIcms,
-      })),
-      payments: sale.payments.map((p) => ({
-        method: p.method,
-        amount: Number(p.amount),
-      })),
-    };
+    // Monta o snapshot imutável. Pré-condição fiscal inválida derruba a
+    // emissão automática aqui, antes de reservar numeração.
+    let snapshot: FiscalSnapshot;
+    try {
+      snapshot = buildFiscalSnapshot(company, sale);
+    } catch (error) {
+      this.logger.warn(
+        `Emissão automática cancelada para a venda ${event.saleId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
 
     // Reserva o próximo número de NFC-e atomicamente
     await this.prisma.fiscalSettings.update({

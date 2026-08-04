@@ -15,6 +15,7 @@ import { CreateFiscalSettingsDto } from './dto/create-fiscal-settings.dto';
 import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
+import { buildFiscalSnapshot } from './emission/fiscal-snapshot.builder';
 import { StorageService } from '../storage/storage.service';
 
 @Injectable()
@@ -262,21 +263,27 @@ export class FiscalService {
     userId: string,
   ): Promise<Prisma.FiscalDocumentGetPayload<null>> {
     // Valida a venda
-    const sale = await this.prisma.sale.findFirst({
-      where: {
-        id: dto.saleId,
-        companyId,
-        deletedAt: null,
-        status: 'CONCLUIDA',
-      },
-      include: {
-        items: { include: { product: true } },
-        payments: true,
-        establishment: true,
-      },
-    });
+    const [sale, company] = await Promise.all([
+      this.prisma.sale.findFirst({
+        where: {
+          id: dto.saleId,
+          companyId,
+          deletedAt: null,
+          status: 'CONCLUIDA',
+        },
+        include: {
+          items: { include: { product: true } },
+          payments: true,
+          customer: true,
+          establishment: true,
+        },
+      }),
+      this.prisma.company.findFirst({
+        where: { id: companyId, deletedAt: null },
+      }),
+    ]);
 
-    if (!sale) {
+    if (!sale || !company) {
       throw new NotFoundException(
         'Venda concluída não encontrada para emissão fiscal',
       );
@@ -322,6 +329,9 @@ export class FiscalService {
       );
     }
 
+    // Monta e valida o snapshot antes de reservar numeração
+    const snapshot = buildFiscalSnapshot(company, sale);
+
     // Reserva o próximo número atomicamente
     await this.prisma.fiscalSettings.update({
       where: { id: fiscalSettings.id },
@@ -346,21 +356,7 @@ export class FiscalService {
         engine: 'dfe-net',
         valorTotal: sale.totalAmount,
         dataEmissao: new Date(),
-        snapshot: {
-          sale: {
-            id: sale.id,
-            saleNumber: sale.saleNumber,
-            totalAmount: Number(sale.totalAmount),
-          },
-          items: sale.items.map((item) => ({
-            productId: item.productId,
-            name: item.product.name,
-            ncm: item.product.ncm,
-            quantity: Number(item.quantity),
-            unitPrice: Number(item.unitPrice),
-            total: Number(item.total),
-          })),
-        },
+        snapshot: snapshot as unknown as Prisma.InputJsonValue,
       },
       include: {
         establishment: { select: { id: true, name: true } },
