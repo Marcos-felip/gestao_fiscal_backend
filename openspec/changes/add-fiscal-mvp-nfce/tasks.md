@@ -126,9 +126,9 @@
 > `fiscal_service` (dados estruturados, cert no corpo, DANFE/QR no retorno, X-Api-Key, :8080).
 
 ### A. Contrato/transporte do engine
-- [ ] 15.A1 `FISCAL_ENGINE_URL` -> `:8080`; add `FISCAL_ENGINE_API_KEY`; enviar header `X-Api-Key` em toda chamada
-- [ ] 15.A2 Corrigir rotas: `POST /api/nfce/emit`, `POST /api/nfce/consulta`, `POST /api/nfce/cancel`, `POST /api/sefaz/status-servico` (remover `/api/v1`; consulta vira POST)
-- [ ] 15.A3 Redesenhar `IFiscalEngine`/`DfeNetFiscalEngine`: request estruturado; result com `xmlAutorizadoBase64`/`danfeBase64`/`qrCode`/`rejeicao{}`; tratar HTTP 400 como rejeicao; add `statusServico`; parse/validacao da resposta; timeout em todos
+- [x] 15.A1 `FISCAL_ENGINE_URL` -> `:8080`; add `FISCAL_ENGINE_API_KEY`; enviar header `X-Api-Key` em toda chamada
+- [x] 15.A2 Corrigir rotas: `POST /api/nfce/emit`, `POST /api/nfce/consulta`, `POST /api/nfce/cancel`, `POST /api/sefaz/status-servico` (remover `/api/v1`; consulta vira POST)
+- [x] 15.A3 Redesenhar `IFiscalEngine`/`DfeNetFiscalEngine`: request estruturado; result com `xmlAutorizadoBase64`/`danfeBase64`/`qrCode`/`rejeicao{}`; tratar HTTP 400 como rejeicao; add `statusServico`; parse/validacao da resposta; timeout em todos
 
 ### B. Certificado A1
 - [ ] 15.B1 Endpoint de upload do .pfx + senha: validar, extrair validade/titular, armazenar criptografado em FiscalSettings (cumpre 3.4)

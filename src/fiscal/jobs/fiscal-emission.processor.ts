@@ -3,6 +3,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DfeNetFiscalEngine } from '../fiscal-engine/dfe-net-fiscal-engine.service';
+import { EmitirNfceRequest } from '../fiscal-engine/fiscal-engine.interface';
 import { FISCAL_EMISSION_QUEUE } from '../../queue/queue.constants';
 import { FiscalDocumentStatus } from '@prisma/client';
 
@@ -78,22 +79,15 @@ export class FiscalEmissionProcessor extends WorkerHost {
     });
 
     try {
-      // TODO: Fase B — montar XML assinado a partir do snapshot + produtos
-      // Por agora, o engine recebe um payload mínimo para teste de integração
-      const result = await this.engine.emitir({
-        idempotencyKey: document.idempotencyKey ?? document.id,
-        ambiente: document.ambiente,
-        xml: document.xmlEnviado ?? '',
-        modelo: document.modelo,
-        serie: document.serie,
-        numero: document.numero,
-      });
+      // TODO(15.C1): montar o EmitirNfceRequest a partir do snapshot da venda,
+      // das FiscalSettings (CSC, série, ambiente) e do certificado decriptado.
+      const request = this.buildEmissionRequest();
 
-      const newStatus = result.success
+      const result = await this.engine.emitir(request);
+
+      const newStatus = result.sucesso
         ? FiscalDocumentStatus.AUTORIZADO
-        : result.rejeicaoCodigo
-          ? FiscalDocumentStatus.REJEITADO
-          : FiscalDocumentStatus.ERRO;
+        : FiscalDocumentStatus.REJEITADO;
 
       await this.prisma.$transaction(async (tx) => {
         await tx.fiscalDocument.update({
@@ -102,10 +96,9 @@ export class FiscalEmissionProcessor extends WorkerHost {
             status: newStatus,
             protocolo: result.protocolo,
             chaveAcesso: result.chaveAcesso,
-            xmlAutorizado: result.xmlAutorizado,
-            rejeicaoCodigo: result.rejeicaoCodigo,
-            rejeicaoMensagem: result.rejeicaoMensagem,
-            dataAutorizacao: result.success ? new Date() : undefined,
+            rejeicaoCodigo: result.rejeicao?.codigo,
+            rejeicaoMensagem: result.rejeicao?.mensagem,
+            dataAutorizacao: result.sucesso ? new Date() : undefined,
           },
         });
 
@@ -114,9 +107,9 @@ export class FiscalEmissionProcessor extends WorkerHost {
             fiscalDocumentId,
             statusFrom: FiscalDocumentStatus.PROCESSANDO,
             statusTo: newStatus,
-            motivo: result.success
+            motivo: result.sucesso
               ? `Documento autorizado: protocolo ${result.protocolo}`
-              : `Rejeição: ${result.rejeicaoCodigo} - ${result.rejeicaoMensagem}`,
+              : `Rejeição: ${result.rejeicao?.codigo} - ${result.rejeicao?.mensagem}`,
           },
         });
 
@@ -126,10 +119,10 @@ export class FiscalEmissionProcessor extends WorkerHost {
             fiscalDocumentId,
             tipo: 'emissao',
             detalhes: {
-              success: result.success,
+              sucesso: result.sucesso,
               status: newStatus,
               protocolo: result.protocolo,
-              rejeicaoCodigo: result.rejeicaoCodigo,
+              rejeicaoCodigo: result.rejeicao?.codigo,
               tentativa: document.attempts + 1,
             },
           },
@@ -162,5 +155,16 @@ export class FiscalEmissionProcessor extends WorkerHost {
 
       throw error; // BullMQ faz retry
     }
+  }
+
+  /**
+   * Monta o payload estruturado exigido pelo motor .NET.
+   *
+   * Pendente da tarefa 15.C1 — sem ele a emissão não tem como sair do backend.
+   */
+  private buildEmissionRequest(): EmitirNfceRequest {
+    throw new Error(
+      'Montagem do payload de emissão ainda não implementada (tarefa 15.C1)',
+    );
   }
 }
