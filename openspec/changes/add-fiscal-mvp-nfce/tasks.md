@@ -118,3 +118,46 @@
 - [ ] 14.2 Consultar situacao, gerar/baixar DANFE e XML, reimprimir
 - [ ] 14.3 Cancelar, exibir rejeicoes, evitar duplicidade
 - [ ] 14.4 Manter historico e auditoria completos
+
+## 15. Alinhamento com o motor .NET (contrato real) [Fase A/B]
+
+> Detalhes completos (campos, rotas, enums, gaps) em `ENGINE_ALIGNMENT.md` (mesma pasta).
+> Consolida/termina os stubs das secoes 3, 5, 8, 9 e 10 conforme o contrato REAL do
+> `fiscal_service` (dados estruturados, cert no corpo, DANFE/QR no retorno, X-Api-Key, :8080).
+
+### A. Contrato/transporte do engine
+- [ ] 15.A1 `FISCAL_ENGINE_URL` -> `:8080`; add `FISCAL_ENGINE_API_KEY`; enviar header `X-Api-Key` em toda chamada
+- [ ] 15.A2 Corrigir rotas: `POST /api/nfce/emit`, `POST /api/nfce/consulta`, `POST /api/nfce/cancel`, `POST /api/sefaz/status-servico` (remover `/api/v1`; consulta vira POST)
+- [ ] 15.A3 Redesenhar `IFiscalEngine`/`DfeNetFiscalEngine`: request estruturado; result com `xmlAutorizadoBase64`/`danfeBase64`/`qrCode`/`rejeicao{}`; tratar HTTP 400 como rejeicao; add `statusServico`; parse/validacao da resposta; timeout em todos
+
+### B. Certificado A1
+- [ ] 15.B1 Endpoint de upload do .pfx + senha: validar, extrair validade/titular, armazenar criptografado em FiscalSettings (cumpre 3.4)
+- [ ] 15.B2 Substituir certificado + bloquear emissao com certificado vencido (cumpre 3.5/3.7)
+- [ ] 15.B3 Decriptar o pfx so na borda e enviar `certificadoBase64`+`certificadoSenha` ao motor
+
+### C. Builder do payload estruturado + mapeamentos
+- [ ] 15.C1 Montar `EmitirNfceRequest` do snapshot+settings+company/establishment (emitente com `crt` string, itens com cfop/origem/csosn suportado, pagamentos `tipo` textual, cert, csc/idcsc, serie/numero, ambiente string)
+- [ ] 15.C2 Garantir consistencia Sigma itens = valorTotal = Sigma pagamentos (tol. 0,01); mapear `PaymentMethod`->tipo textual (cumpre 5.1-5.4)
+
+### D. Processar resposta + storage
+- [ ] 15.D1 Gravar chave/protocolo/dataAutorizacao; decodificar `xmlAutorizadoBase64`/`danfeBase64`; gravar `qrCode`; rejeicao->REJEITADO vs ERRO (cumpre 8.6)
+- [ ] 15.D2 Wire `StorageService`: upload XML+DANFE em `fiscal/{companyId}/{ano}/{mes}/{chave}.(xml|pdf)`; refs no banco; servir do storage (cumpre 8.7/12.4)
+- [ ] 15.D3 Atualizar `Sale.fiscalStatus` (PROCESSANDO->AUTORIZADO/REJEITADO/CANCELADO) (cumpre 8.8)
+
+### E. Rotas Fase B + orquestracao
+- [ ] 15.E1 `POST /fiscal/documents/:id/cancel {justificativa}` (15-255) -> cancelar + gravar `xmlCancelamento`/`dataCancelamento`/CANCELADO + Sale (cumpre 9.x)
+- [ ] 15.E2 `POST /fiscal/documents/:id/consulta` -> reconciliar situacao (cumpre 9.1)
+- [ ] 15.E3 `POST /fiscal/documents/:id/retry` idempotente (cumpre 10.2)
+- [ ] 15.E4 Endpoint teste SEFAZ -> `statusServico` (cumpre 3.8)
+- [ ] 15.E5 `GET /fiscal/documents/:id/danfe` (PDF do storage) + expor `qrCode` (cumpre 8.9)
+
+### F. Gaps de DTO/validacao (detectados pelo frontend)
+- [ ] 15.F1 `UpdateCompanyDto` aceitar campos fiscais (ou `PATCH /companies/:id/fiscal`) — desbloqueia tela fiscal da empresa
+- [ ] 15.F2 `CreateProductDto`/`UpdateProductDto` declarar csosn/cstIcms/cstPis/cstCofins/aliquotas (hoje `whitelist` descarta)
+- [ ] 15.F3 Derivar `Product.fiscalComplete` no service, validando contra as regras do motor (NCM 8, CFOP inicia com 5, csosn/cst suportado, origem 0-8)
+- [ ] 15.F4 Validar pre-condicoes de emissao com as mesmas regras do motor (falhar cedo com mensagem amigavel)
+
+### G. Infra / docs
+- [ ] 15.G1 docker-compose: subir `fiscal_service` (8080) + `FISCAL_API_KEY`; Redis; setar `FISCAL_ENGINE_URL`/`FISCAL_ENGINE_API_KEY` no Nest
+- [ ] 15.G2 Health check do motor (`GET /health`) no monitoring (cumpre 7.4)
+- [ ] 15.G3 Documentar o contrato em FISCAL.md (cumpre 7.3/13.4; base em ENGINE_ALIGNMENT.md)
