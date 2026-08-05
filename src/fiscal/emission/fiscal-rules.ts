@@ -199,7 +199,9 @@ export function listarPendenciasFiscais(
     pendencias.push('NCM ausente ou fora do formato de 8 dígitos');
   }
   if (!isCfopValido(produto.cfop)) {
-    pendencias.push('CFOP ausente ou não é uma operação dentro do estado (5xxx)');
+    pendencias.push(
+      'CFOP ausente ou não é uma operação dentro do estado (5xxx)',
+    );
   }
   if (!isOrigemValida(produto.origin)) {
     pendencias.push('origem da mercadoria ausente ou fora da faixa 0 a 8');

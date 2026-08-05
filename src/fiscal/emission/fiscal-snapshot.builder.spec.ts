@@ -241,7 +241,9 @@ describe('buildFiscalSnapshot', () => {
 
   describe('recebimento e troco', () => {
     it('não registra recebimento quando a venda não informa valor recebido', () => {
-      expect(buildFiscalSnapshot(empresa(), venda()).recebimento).toBeUndefined();
+      expect(
+        buildFiscalSnapshot(empresa(), venda()).recebimento,
+      ).toBeUndefined();
     });
 
     it('usa o troco registrado pelo caixa', () => {

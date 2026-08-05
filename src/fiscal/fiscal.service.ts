@@ -23,7 +23,10 @@ import {
   buildProductionChecklist,
   ProductionChecklistItem,
 } from './emission/fiscal-preconditions';
+import { mapAmbiente } from './emission/fiscal-rules';
 import { StorageService } from '../storage/storage.service';
+import { DfeNetFiscalEngine } from './fiscal-engine/dfe-net-fiscal-engine.service';
+import { FiscalCertificateService } from './certificates/fiscal-certificate.service';
 
 /** Status que o `POST /fiscal/documents/:id/retry` aceita reprocessar. */
 const STATUS_REPROCESSAVEL: FiscalDocumentStatus[] = [
@@ -33,8 +36,7 @@ const STATUS_REPROCESSAVEL: FiscalDocumentStatus[] = [
 ];
 
 /** Linha da central de rejeições. */
-export interface FiscalRejectionItem
-  extends Prisma.FiscalDocumentGetPayload<null> {
+export interface FiscalRejectionItem extends Prisma.FiscalDocumentGetPayload<null> {
   reprocessavel: boolean;
   ultimaTentativa?: {
     data: Date;
@@ -50,6 +52,8 @@ export class FiscalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
+    private readonly engine: DfeNetFiscalEngine,
+    private readonly certificates: FiscalCertificateService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -102,7 +106,11 @@ export class FiscalService {
     // A primeira configuração do estabelecimento nasce em uso; as seguintes
     // só entram em uso pela troca explícita de ambiente.
     const jaExisteAlguma = await this.prisma.fiscalSettings.count({
-      where: { establishmentId: dto.establishmentId, companyId, deletedAt: null },
+      where: {
+        establishmentId: dto.establishmentId,
+        companyId,
+        deletedAt: null,
+      },
     });
 
     return this.prisma.fiscalSettings.create({
@@ -355,7 +363,7 @@ export class FiscalService {
     );
 
     const pendentes = buildProductionChecklist(settings).filter(
-      (item) => !item.ok,
+      (item) => !item.ok && item.bloqueante !== false,
     );
 
     if (pendentes.length > 0) {
@@ -435,6 +443,100 @@ export class FiscalService {
     ]);
 
     return revogada;
+  }
+
+  /**
+   * Valida que a primeira nota autorizada em produção pode ser consultada
+   * publicamente na SEFAZ, confirmando que todo o pipeline de produção
+   * funciona end-to-end.
+   */
+  async validarConsultaPublica(
+    companyId: string,
+    establishmentId: string,
+    userId?: string,
+  ): Promise<{ validada: boolean; chaveAcesso: string; situacao: string }> {
+    const settings = await this.requireProductionSettings(
+      companyId,
+      establishmentId,
+    );
+
+    if (!settings.producaoLiberada) {
+      throw new BadRequestException(
+        'Libere a produção antes de validar a consulta pública',
+      );
+    }
+
+    const documento = await this.prisma.fiscalDocument.findFirst({
+      where: {
+        establishmentId,
+        companyId,
+        ambiente: FiscalEnvironment.PRODUCAO,
+        status: FiscalDocumentStatus.AUTORIZADO,
+        deletedAt: null,
+      },
+      orderBy: { dataAutorizacao: 'desc' },
+    });
+
+    if (!documento || !documento.chaveAcesso) {
+      throw new BadRequestException(
+        'Nenhuma nota autorizada em produção encontrada para validar a consulta pública',
+      );
+    }
+
+    const credentials = await this.certificates.loadCredentials(
+      companyId,
+      establishmentId,
+      FiscalEnvironment.PRODUCAO,
+    );
+
+    const result = await this.engine.consultar({
+      chaveAcesso: documento.chaveAcesso,
+      ambiente: mapAmbiente(FiscalEnvironment.PRODUCAO),
+      ...credentials,
+    });
+
+    if (!result.sucesso) {
+      throw new BadRequestException(
+        `Falha ao consultar a nota na SEFAZ: ${result.mensagemErro ?? 'erro desconhecido'}`,
+      );
+    }
+
+    if (!/autorizad/i.test(result.status ?? '')) {
+      throw new BadRequestException(
+        `A nota não está autorizada na consulta pública: ${result.status ?? 'situação desconhecida'}`,
+      );
+    }
+
+    const agora = new Date();
+
+    await this.prisma.$transaction([
+      this.prisma.fiscalSettings.update({
+        where: { id: settings.id },
+        data: {
+          consultaPublicaValidadaEm: agora,
+          consultaPublicaValidadaPor: userId,
+        },
+      }),
+      this.prisma.fiscalSettingsEvent.create({
+        data: {
+          companyId,
+          fiscalSettingsId: settings.id,
+          tipo: 'consulta_publica_validada',
+          valorNovo: documento.chaveAcesso,
+          usuarioId: userId,
+        },
+      }),
+    ]);
+
+    this.logger.log(
+      `Consulta pública validada: estabelecimento=${establishmentId}, chave=${documento.chaveAcesso}`,
+    );
+
+    return {
+      validada: true,
+      chaveAcesso: documento.chaveAcesso,
+      situacao: result.status ?? 'Autorizado',
+    };
   }
 
   /** Histórico de alterações da configuração fiscal do estabelecimento. */

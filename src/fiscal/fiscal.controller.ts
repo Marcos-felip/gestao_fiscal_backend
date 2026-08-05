@@ -338,12 +338,40 @@ export class FiscalController {
     );
   }
 
+  @Post('settings/:establishmentId/producao/validar-consulta')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.settings.edit')
+  @ApiOperation({
+    summary: 'Validar consulta pública da nota autorizada em produção',
+    description:
+      'Consulta a SEFAZ para confirmar que a nota autorizada em produção é visível na consulta pública.',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 201, description: 'Consulta pública validada' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Produção não liberada, nenhuma nota autorizada ou falha na SEFAZ',
+  })
+  validarConsultaPublica(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Param('establishmentId') establishmentId: string,
+  ) {
+    return this.fiscalService.validarConsultaPublica(
+      companyId,
+      establishmentId,
+      user.id,
+    );
+  }
+
   @Get('settings/:establishmentId/history')
   @UseGuards(RequirePermissionGuard)
   @RequirePermission('fiscal.settings.read')
   @ApiOperation({
     summary: 'Histórico de alterações da configuração fiscal',
-    description: 'Trocas de série, de CSC, de ambiente e liberação de produção.',
+    description:
+      'Trocas de série, de CSC, de ambiente e liberação de produção.',
   })
   @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
   @ApiResponse({ status: 200 })

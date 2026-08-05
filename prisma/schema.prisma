@@ -758,6 +758,9 @@ model FiscalSettings {
   producaoLiberada Boolean           @default(false) @map("producao_liberada")
   producaoLiberadaEm DateTime?       @map("producao_liberada_em")
   producaoLiberadaPor String?        @map("producao_liberada_por")
+  /// Validação da consulta pública da nota autorizada em produção
+  consultaPublicaValidadaEm DateTime? @map("consulta_publica_validada_em")
+  consultaPublicaValidadaPor String?  @map("consulta_publica_validada_por")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   deletedAt        DateTime?         @map("deleted_at")

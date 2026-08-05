@@ -4,6 +4,8 @@ import { FiscalDocumentStatus, FiscalEnvironment } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { FiscalService } from './fiscal.service';
+import { DfeNetFiscalEngine } from './fiscal-engine/dfe-net-fiscal-engine.service';
+import { FiscalCertificateService } from './certificates/fiscal-certificate.service';
 
 const documento = (overrides: Record<string, unknown> = {}) => ({
   id: 'doc-1',
@@ -44,7 +46,11 @@ const configuracao = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const mockPrisma = {
-  fiscalDocument: { findMany: jest.fn(), count: jest.fn() },
+  fiscalDocument: {
+    findMany: jest.fn(),
+    count: jest.fn(),
+    findFirst: jest.fn(),
+  },
   fiscalSettings: {
     findFirst: jest.fn(),
     findMany: jest.fn(),
@@ -57,6 +63,8 @@ const mockPrisma = {
 };
 
 const mockStorage = { isConfigured: jest.fn(), download: jest.fn() };
+const mockEngine = { consultar: jest.fn() };
+const mockCertificates = { loadCredentials: jest.fn() };
 
 /** Filtro `where` usado na consulta da central. */
 const whereDaConsulta = (): Record<string, unknown> => {
@@ -75,6 +83,8 @@ describe('FiscalService', () => {
         FiscalService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: StorageService, useValue: mockStorage },
+        { provide: DfeNetFiscalEngine, useValue: mockEngine },
+        { provide: FiscalCertificateService, useValue: mockCertificates },
       ],
     }).compile();
 
@@ -88,8 +98,8 @@ describe('FiscalService', () => {
       ({ data }: { data: Record<string, unknown> }) =>
         Promise.resolve({ ...configuracao(), ...data }),
     );
-    mockPrisma.$transaction.mockImplementation((operacoes: Promise<unknown>[]) =>
-      Promise.all(operacoes),
+    mockPrisma.$transaction.mockImplementation(
+      (operacoes: Promise<unknown>[]) => Promise.all(operacoes),
     );
   });
 
@@ -377,7 +387,128 @@ describe('FiscalService', () => {
 
       expect(resultado.liberada).toBe(true);
       expect(resultado.liberadaEm).toEqual(new Date('2026-08-04T12:00:00Z'));
-      expect(resultado.itens.every((item) => item.ok)).toBe(true);
+      expect(resultado.itens).toHaveLength(6);
+    });
+
+    it('inclui o item de consulta pública validada', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          producaoLiberada: true,
+          consultaPublicaValidadaEm: null,
+        }),
+      );
+
+      const resultado = await service.getProductionChecklist(
+        'company-1',
+        'estab-1',
+      );
+
+      const itemConsulta = resultado.itens.find(
+        (i) => i.item === 'Consulta pública validada em produção',
+      );
+      expect(itemConsulta).toBeDefined();
+      expect(itemConsulta?.ok).toBe(false);
+    });
+  });
+
+  describe('validarConsultaPublica', () => {
+    beforeEach(() => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          producaoLiberada: true,
+        }),
+      );
+      mockPrisma.fiscalDocument.findFirst.mockResolvedValue(
+        documento({
+          status: FiscalDocumentStatus.AUTORIZADO,
+          chaveAcesso: '1'.repeat(44),
+          ambiente: FiscalEnvironment.PRODUCAO,
+        }),
+      );
+      mockCertificates.loadCredentials.mockResolvedValue({
+        certificadoBase64: 'cert',
+        certificadoSenha: 'senha',
+      });
+      mockEngine.consultar.mockResolvedValue({
+        sucesso: true,
+        status: 'Autorizado o uso da NF-e',
+        protocolo: '135210000123456',
+      });
+    });
+
+    it('valida a consulta pública e registra a validação', async () => {
+      const resultado = await service.validarConsultaPublica(
+        'company-1',
+        'estab-1',
+        'user-1',
+      );
+
+      expect(resultado.validada).toBe(true);
+      expect(resultado.chaveAcesso).toBe('1'.repeat(44));
+      expect(mockEngine.consultar).toHaveBeenCalledWith({
+        chaveAcesso: '1'.repeat(44),
+        ambiente: 'producao',
+        certificadoBase64: 'cert',
+        certificadoSenha: 'senha',
+      });
+      expect(mockPrisma.fiscalSettings.update).toHaveBeenCalledWith({
+        where: { id: 'settings-1' },
+        data: expect.objectContaining({
+          consultaPublicaValidadaEm: expect.any(Date),
+          consultaPublicaValidadaPor: 'user-1',
+        }),
+      });
+      expect(mockPrisma.fiscalSettingsEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          tipo: 'consulta_publica_validada',
+          valorNovo: '1'.repeat(44),
+        }),
+      });
+    });
+
+    it('recusa validar sem produção liberada', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          producaoLiberada: false,
+        }),
+      );
+
+      await expect(
+        service.validarConsultaPublica('company-1', 'estab-1'),
+      ).rejects.toThrow(/Libere a produção/);
+    });
+
+    it('recusa validar sem nota autorizada em produção', async () => {
+      mockPrisma.fiscalDocument.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.validarConsultaPublica('company-1', 'estab-1'),
+      ).rejects.toThrow(/Nenhuma nota autorizada/);
+    });
+
+    it('recusa quando a SEFAZ não confirma a autorização', async () => {
+      mockEngine.consultar.mockResolvedValue({
+        sucesso: true,
+        status: 'Cancelamento homologado',
+      });
+
+      await expect(
+        service.validarConsultaPublica('company-1', 'estab-1'),
+      ).rejects.toThrow(/não está autorizada/);
+    });
+
+    it('propaga falha de comunicação com a SEFAZ', async () => {
+      mockEngine.consultar.mockResolvedValue({
+        sucesso: false,
+        mensagemErro: 'Serviço indisponível',
+      });
+
+      await expect(
+        service.validarConsultaPublica('company-1', 'estab-1'),
+      ).rejects.toThrow(/Serviço indisponível/);
     });
   });
 });

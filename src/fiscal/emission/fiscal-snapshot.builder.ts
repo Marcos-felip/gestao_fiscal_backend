@@ -160,9 +160,7 @@ function montarEmitente(
     problemas.push('CNPJ do estabelecimento emitente inválido');
   }
   if (!isInscricaoEstadualValida(inscricaoEstadual)) {
-    problemas.push(
-      'informe a inscrição estadual do emitente (2 a 14 dígitos)',
-    );
+    problemas.push('informe a inscrição estadual do emitente (2 a 14 dígitos)');
   }
   if (!isCodigoIbgeValido(codigoMunicipio)) {
     problemas.push(
@@ -413,7 +411,9 @@ function montarPagamentos(
  * é a sobra do valor recebido. Devolve `undefined` quando nenhum pagamento
  * registrou recebimento — não há troco a documentar.
  */
-function montarRecebimento(sale: SaleForSnapshot): FiscalRecebimento | undefined {
+function montarRecebimento(
+  sale: SaleForSnapshot,
+): FiscalRecebimento | undefined {
   const informado = (valor: unknown) => valor !== null && valor !== undefined;
 
   const comRecebimento = sale.payments.filter(

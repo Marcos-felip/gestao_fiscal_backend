@@ -110,6 +110,7 @@ describe('buildProductionChecklist', () => {
     ...settings(),
     serieNfce: 1,
     proximoNumeroNfce: 1,
+    consultaPublicaValidadaEm: new Date('2026-08-04T12:00:00Z'),
     ...overrides,
   });
 
@@ -123,7 +124,7 @@ describe('buildProductionChecklist', () => {
   });
 
   it('devolve todos os itens, inclusive os já concluídos', () => {
-    expect(buildProductionChecklist(producao())).toHaveLength(5);
+    expect(buildProductionChecklist(producao())).toHaveLength(6);
   });
 
   it('aponta certificado ausente', () => {
@@ -154,5 +155,19 @@ describe('buildProductionChecklist', () => {
     ],
   ])('aponta %s', (_caso, override, esperado) => {
     expect(pendentes(override)).toEqual([esperado]);
+  });
+
+  it('aponta consulta pública não validada', () => {
+    expect(pendentes({ consultaPublicaValidadaEm: null })).toEqual([
+      'Consulta pública validada em produção',
+    ]);
+  });
+
+  it('aprova consulta pública quando já foi validada', () => {
+    expect(
+      pendentes({
+        consultaPublicaValidadaEm: new Date('2026-08-04T12:00:00Z'),
+      }),
+    ).toEqual([]);
   });
 });

@@ -64,6 +64,7 @@ export function assertEmissionSettings(settings: EmissionSettings): void {
 export interface ProductionChecklistSettings extends EmissionSettings {
   serieNfce: number;
   proximoNumeroNfce: number;
+  consultaPublicaValidadaEm?: Date | null;
 }
 
 /** Item do checklist de ativação da produção. */
@@ -71,6 +72,7 @@ export interface ProductionChecklistItem {
   item: string;
   ok: boolean;
   detalhe?: string;
+  bloqueante?: boolean;
 }
 
 /**
@@ -98,22 +100,26 @@ export function buildProductionChecklist(
       detalhe: temCertificado
         ? settings.certificadoValidade?.toLocaleDateString('pt-BR')
         : 'envie o certificado de produção do estabelecimento',
+      bloqueante: true,
     },
     {
       item: 'Certificado dentro da validade',
       ok: certificadoVigente,
       detalhe: certificadoVigente ? undefined : 'certificado vencido',
+      bloqueante: true,
     },
     {
       item: 'CSC e ID do CSC de produção configurados',
       ok: !!settings.codigoCsc?.trim() && !!settings.idCsc?.trim(),
       detalhe:
         'o CSC de produção é diferente do de homologação e vem do portal da SEFAZ',
+      bloqueante: true,
     },
     {
       item: 'Série entre 1 e 999',
       ok: settings.serieNfce >= 1 && settings.serieNfce <= 999,
       detalhe: `série atual: ${settings.serieNfce}`,
+      bloqueante: true,
     },
     {
       item: 'Próximo número entre 1 e 999999999',
@@ -121,6 +127,15 @@ export function buildProductionChecklist(
         settings.proximoNumeroNfce >= 1 &&
         settings.proximoNumeroNfce <= 999999999,
       detalhe: `próximo número: ${settings.proximoNumeroNfce}`,
+      bloqueante: true,
+    },
+    {
+      item: 'Consulta pública validada em produção',
+      ok: !!settings.consultaPublicaValidadaEm,
+      detalhe: settings.consultaPublicaValidadaEm
+        ? `validada em ${settings.consultaPublicaValidadaEm.toLocaleDateString('pt-BR')}`
+        : 'após liberar e emitir a primeira nota, valide a consulta pública',
+      bloqueante: false,
     },
   ];
 }

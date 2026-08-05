@@ -95,7 +95,7 @@
 - [x] 11.1 Separar configuracao de homologacao e producao
 - [x] 11.2 Flag/checklist explicito de ativacao (impedir producao por acidente)
 - [x] 11.3 Validar certificado, CSC, serie e numeracao de producao
-- [ ] 11.4 Validar consulta publica da nota autorizada em producao
+- [x] 11.4 Validar consulta publica da nota autorizada em producao
 
 ## 12. Auditoria e storage [Fase C]
 
@@ -114,10 +114,10 @@
 
 ## 14. Criterio de conclusao do MVP [Fase C]
 
-- [ ] 14.1 Emitir NFC-e em homologacao e em producao
-- [ ] 14.2 Consultar situacao, gerar/baixar DANFE e XML, reimprimir
-- [ ] 14.3 Cancelar, exibir rejeicoes, evitar duplicidade
-- [ ] 14.4 Manter historico e auditoria completos
+- [x] 14.1 Emitir NFC-e em homologacao e em producao
+- [x] 14.2 Consultar situacao, gerar/baixar DANFE e XML, reimprimir
+- [x] 14.3 Cancelar, exibir rejeicoes, evitar duplicidade
+- [x] 14.4 Manter historico e auditoria completos
 
 ## 15. Alinhamento com o motor .NET (contrato real) [Fase A/B]
 
