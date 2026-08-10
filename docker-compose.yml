@@ -16,7 +16,11 @@ services:
     image: redis:7-alpine
     container_name: gestao_fiscal_redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # noeviction é obrigatório: este Redis é fila (BullMQ), não cache. Com uma política
+    # de despejo o Redis descartaria jobs ao bater o maxmemory — uma NFC-e enfileirada
+    # sumiria sem erro, sem ir para failed e sem retry. Com noeviction a escrita falha
+    # de forma visível quando o limite estoura.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
     ports:
       - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
