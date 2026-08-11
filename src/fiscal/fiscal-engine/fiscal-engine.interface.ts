@@ -34,8 +34,11 @@ export interface IFiscalEngine {
 /** Ambiente de emissão. O motor também aceita `'1'`/`'2'`. */
 export type FiscalAmbiente = 'homologacao' | 'producao';
 
-/** Código do Regime Tributário do emitente. */
-export type FiscalCrt = '1' | '2' | '3';
+/**
+ * Código do Regime Tributário do emitente.
+ * 1 Simples · 2 Simples com excesso de sublimite · 3 Regime Normal · 4 MEI.
+ */
+export type FiscalCrt = '1' | '2' | '3' | '4';
 
 /**
  * Forma de pagamento — o motor resolve o `tPag` numérico internamente.

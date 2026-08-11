@@ -77,6 +77,37 @@ const venda = (overrides: Record<string, unknown> = {}): SaleForSnapshot =>
     ...overrides,
   }) as unknown as SaleForSnapshot;
 
+describe('buildFiscalSnapshot — emitente MEI', () => {
+  it('carimba CRT 4 no emitente', () => {
+    const snapshot = buildFiscalSnapshot(
+      empresa({ crt: TaxRegimeCode.SIMPLES_MEI }),
+      venda(),
+    );
+
+    expect(snapshot.emitente.crt).toBe('4');
+  });
+
+  it('aceita item com CSOSN, como os demais do Simples', () => {
+    const snapshot = buildFiscalSnapshot(
+      empresa({ crt: TaxRegimeCode.SIMPLES_MEI }),
+      venda(),
+    );
+
+    expect(snapshot.itens[0].csosn).toBe('102');
+  });
+
+  it('recusa item que só tem CST de ICMS', () => {
+    expect(() =>
+      buildFiscalSnapshot(
+        empresa({ crt: TaxRegimeCode.SIMPLES_MEI }),
+        venda({
+          items: [{ ...item(), product: produto({ csosn: null, cstIcms: '40' }) }],
+        }),
+      ),
+    ).toThrow(/CSOSN/);
+  });
+});
+
 describe('buildFiscalSnapshot — precedência da Inscrição Estadual', () => {
   // A IE do emitente é a do estabelecimento; a da empresa é só fallback. É essa
   // precedência que faz `stateRegistration` (que grava na matriz) ser a fonte

@@ -159,10 +159,16 @@ enum FiscalDocumentStatus {
   INUTILIZADO
 }
 
+/// Código de Regime Tributário (CRT) do emitente, conforme o leiaute da NF-e/NFC-e.
 enum TaxRegimeCode {
+  /// CRT 1
   SIMPLES_NACIONAL
+  /// CRT 2 — excesso de sublimite de receita bruta
   SIMPLES_EXCESSO
+  /// CRT 3
   REGIME_NORMAL
+  /// CRT 4 — Microempreendedor Individual. Tributa por CSOSN, como os demais do Simples.
+  SIMPLES_MEI
 }
 
 enum FiscalPaymentCode {

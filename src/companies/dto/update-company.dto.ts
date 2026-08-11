@@ -113,7 +113,7 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsEnum(TaxRegimeCode, {
     message:
-      'CRT inválido. Valores válidos: SIMPLES_NACIONAL, SIMPLES_EXCESSO, REGIME_NORMAL',
+      'CRT inválido. Valores válidos: SIMPLES_NACIONAL, SIMPLES_EXCESSO, REGIME_NORMAL, SIMPLES_MEI',
   })
   crt?: TaxRegimeCode;
 

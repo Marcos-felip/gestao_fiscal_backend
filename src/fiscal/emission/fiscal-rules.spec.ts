@@ -7,6 +7,10 @@ import {
   isInscricaoEstadualValida,
   isProductFiscalComplete,
   isUfValida,
+  listarPendenciasFiscais,
+  mapCrt,
+  situacaoTributaria,
+  usaCsosn,
 } from './fiscal-rules';
 
 const empresa = (overrides: Record<string, unknown> = {}) => ({
@@ -174,5 +178,56 @@ describe('isIdCscValido', () => {
     ['indefinido', undefined],
   ])('recusa ID %s', (_caso, id) => {
     expect(isIdCscValido(id)).toBe(false);
+  });
+});
+
+describe('mapCrt', () => {
+  it.each([
+    [TaxRegimeCode.SIMPLES_NACIONAL, '1'],
+    [TaxRegimeCode.SIMPLES_EXCESSO, '2'],
+    [TaxRegimeCode.REGIME_NORMAL, '3'],
+    [TaxRegimeCode.SIMPLES_MEI, '4'],
+  ])('mapeia %s para CRT %s', (regime, esperado) => {
+    expect(mapCrt(regime)).toBe(esperado);
+  });
+});
+
+describe('usaCsosn', () => {
+  // O MEI é Simples Nacional com enquadramento próprio: tributa por CSOSN.
+  // Só o Regime Normal usa CST de ICMS.
+  it.each(['1', '2', '4'] as const)('CRT %s usa CSOSN', (crt) => {
+    expect(usaCsosn(crt)).toBe(true);
+  });
+
+  it('CRT 3 usa CST de ICMS', () => {
+    expect(usaCsosn('3')).toBe(false);
+  });
+});
+
+describe('situacaoTributaria com CRT 4 (MEI)', () => {
+  it('aceita CSOSN do emitente MEI', () => {
+    expect(situacaoTributaria('4', '102', null)).toBe('102');
+  });
+
+  it('ignora CST de ICMS quando o emitente é MEI', () => {
+    expect(situacaoTributaria('4', null, '40')).toBeUndefined();
+  });
+});
+
+describe('isProductFiscalComplete com CRT 4 (MEI)', () => {
+  it('considera completo o produto com CSOSN suportado', () => {
+    expect(isProductFiscalComplete(produto(), TaxRegimeCode.SIMPLES_MEI)).toBe(
+      true,
+    );
+  });
+
+  it('cobra CSOSN, não CST, quando o emitente é MEI', () => {
+    const pendencias = listarPendenciasFiscais(
+      produto({ csosn: null, cstIcms: '40' }),
+      TaxRegimeCode.SIMPLES_MEI,
+    );
+
+    expect(pendencias).toHaveLength(1);
+    expect(pendencias[0]).toMatch(/CSOSN/);
   });
 });

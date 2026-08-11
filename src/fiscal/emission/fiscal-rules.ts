@@ -75,9 +75,14 @@ export function isCstIcmsSuportado(cst?: string | null): boolean {
   );
 }
 
-/** Emitente do Simples (CRT 1 e 2) usa CSOSN; o normal (CRT 3) usa CST. */
+/**
+ * Emitente do Simples usa CSOSN; só o Regime Normal (CRT 3) usa CST.
+ *
+ * Vale para CRT 1, 2 e 4 (MEI) — o MEI é Simples Nacional, apenas com
+ * enquadramento próprio.
+ */
 export function usaCsosn(crt: FiscalCrt): boolean {
-  return crt === '1' || crt === '2';
+  return crt !== '3';
 }
 
 /**
@@ -267,6 +272,8 @@ export function mapCrt(crt: TaxRegimeCode): FiscalCrt {
       return '2';
     case TaxRegimeCode.REGIME_NORMAL:
       return '3';
+    case TaxRegimeCode.SIMPLES_MEI:
+      return '4';
   }
 }
 

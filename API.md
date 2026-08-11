@@ -2599,7 +2599,7 @@ Vale em `PATCH /users/:id`, `DELETE /memberships/:id` e `PUT /memberships/:id/pr
 | `FiscalDocumentModel` | `NFE` (55), `NFCE` (65) — o MVP emite NFC-e |
 | `FiscalEnvironment` | `HOMOLOGACAO`, `PRODUCAO` |
 | `FiscalDocumentStatus` | `NAO_EMITIDO`, `PENDENTE`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `ERRO`, `CONTINGENCIA`, `CANCELAMENTO_PENDENTE`, `CANCELADO`, `INUTILIZADO` |
-| `TaxRegimeCode` (CRT) | `SIMPLES_NACIONAL` (1), `SIMPLES_EXCESSO` (2), `REGIME_NORMAL` (3) |
+| `TaxRegimeCode` (CRT) | `SIMPLES_NACIONAL` (1), `SIMPLES_EXCESSO` (2), `REGIME_NORMAL` (3), `SIMPLES_MEI` (4) |
 
 > `FinancialStatus.VENCIDO` existe no enum mas **nunca é gravado** — o vencimento é derivado na
 > leitura via `isOverdue`. Ver [Contas a receber](#contas-a-receber) e [Contas a pagar](#contas-a-pagar).
