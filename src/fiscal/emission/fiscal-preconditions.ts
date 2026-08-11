@@ -1,5 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { FiscalEnvironment } from '@prisma/client';
+import {
+  CSC_TAMANHO_MAXIMO,
+  CSC_TAMANHO_MINIMO,
+  isCscValido,
+  isIdCscValido,
+} from './fiscal-rules';
 
 /** Configuração fiscal do estabelecimento, na parte que a emissão exige. */
 export interface EmissionSettings {
@@ -13,6 +19,42 @@ export interface EmissionSettings {
 }
 
 /**
+ * Problemas com o par CSC/idCSC.
+ *
+ * Ausente e malformado são reportados separadamente de propósito: quem nunca
+ * configurou precisa de instrução, quem digitou errado precisa saber que o valor
+ * está lá e está errado. Antes desta separação, um CSC curto passava por aqui e
+ * só voltava da SEFAZ como rejeição 464, sem citar o CSC.
+ */
+function checkCsc(settings: EmissionSettings): string[] {
+  const problemas: string[] = [];
+  const csc = settings.codigoCsc?.trim();
+  const idCsc = settings.idCsc?.trim();
+
+  if (!csc || !idCsc) {
+    problemas.push('configure o CSC e o ID do CSC do estabelecimento');
+    return problemas;
+  }
+
+  if (!isCscValido(csc)) {
+    problemas.push(
+      `o código CSC do estabelecimento está fora do formato esperado ` +
+        `(${CSC_TAMANHO_MINIMO} a ${CSC_TAMANHO_MAXIMO} caracteres alfanuméricos) — ` +
+        `confira o valor no portal da SEFAZ da UF`,
+    );
+  }
+
+  if (!isIdCscValido(idCsc)) {
+    problemas.push(
+      'o ID do CSC do estabelecimento está fora do formato esperado ' +
+        '(numérico, até 6 dígitos)',
+    );
+  }
+
+  return problemas;
+}
+
+/**
  * Problemas de configuração que impedem a emissão.
  *
  * São conferidos antes de reservar numeração: nota que não vai sair não pode
@@ -21,9 +63,7 @@ export interface EmissionSettings {
 export function checkEmissionSettings(settings: EmissionSettings): string[] {
   const problemas: string[] = [];
 
-  if (!settings.codigoCsc?.trim() || !settings.idCsc?.trim()) {
-    problemas.push('configure o CSC e o ID do CSC do estabelecimento');
-  }
+  problemas.push(...checkCsc(settings));
 
   if (!settings.certificadoRef || !settings.certificadoSenhaRef) {
     problemas.push('envie o certificado digital A1 do estabelecimento');
@@ -65,6 +105,20 @@ export interface ProductionChecklistSettings extends EmissionSettings {
   serieNfce: number;
   proximoNumeroNfce: number;
   consultaPublicaValidadaEm?: Date | null;
+}
+
+/**
+ * Detalhe do item de CSC no checklist: separa "falta preencher" de "está
+ * preenchido e errado", sem nunca ecoar o valor — o CSC é segredo.
+ */
+function cscDetalhe(settings: EmissionSettings): string {
+  const problemas = checkCsc(settings);
+
+  if (problemas.length === 0) {
+    return 'o CSC de produção é diferente do de homologação e vem do portal da SEFAZ';
+  }
+
+  return problemas.join('; ');
 }
 
 /** Item do checklist de ativação da produção. */
@@ -110,9 +164,8 @@ export function buildProductionChecklist(
     },
     {
       item: 'CSC e ID do CSC de produção configurados',
-      ok: !!settings.codigoCsc?.trim() && !!settings.idCsc?.trim(),
-      detalhe:
-        'o CSC de produção é diferente do de homologação e vem do portal da SEFAZ',
+      ok: isCscValido(settings.codigoCsc) && isIdCscValido(settings.idCsc),
+      detalhe: cscDetalhe(settings),
       bloqueante: true,
     },
     {

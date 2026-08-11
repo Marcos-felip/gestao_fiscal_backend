@@ -207,6 +207,36 @@ ambiente são independentes — a numeração de teste nunca contamina a real. A
 - Em homologação a SEFAZ exige a razão social do destinatário substituída pelo texto legal
   — quem faz isso é o motor.
 
+### CSC — por que o formato é validado
+
+O CSC não assina a nota: ele entra no **hash do QR Code**. O motor monta os parâmetros
+`chave|versão|tpAmb|cIdToken`, concatena o CSC, aplica SHA-1 e publica o resultado no QR.
+A SEFAZ refaz a mesma conta com o CSC que tem cadastrado e compara.
+
+Consequência: **um CSC errado não falha em lugar nenhum do caminho.** Ele passa no cadastro,
+passa na pré-condição, monta um XML válido, é assinado, transmitido — e só volta como
+**rejeição 464, "QR-Code com hash inválido"**, com a numeração da nota já consumida. A
+mensagem da SEFAZ não menciona o CSC, o que faz o diagnóstico começar pelo lugar errado.
+
+Foi exatamente o que aconteceu em 10/08/2026: um CSC de 6 dígitos gravado no cadastro. A
+prova só fechou recalculando o SHA-1 de `chave|2|2|1` + o CSC do banco à mão e reproduzindo
+o hash rejeitado.
+
+Por isso o formato é conferido em três pontos, todos alimentados por `isCscValido` e
+`isIdCscValido` em `fiscal-rules.ts`:
+
+| Onde | O que faz |
+|---|---|
+| DTOs de `FiscalSettings` | recusa no cadastro, com `400` e mensagem em PT-BR |
+| `fiscal-preconditions.ts` | vira pendência de configuração, distinguindo ausente de malformado |
+| `emit-request.builder.ts` | bloqueia **antes** de o job consumir numeração |
+
+`codigoCsc`: 16 a 64 caracteres alfanuméricos. O mínimo é 16, e não 32, porque o tamanho
+varia por UF — MG emite 32 hexadecimais, outras 36. `idCsc`: 1 a 6 dígitos, que é o
+`cIdToken` preenchido com zeros à esquerda.
+
+O CSC é segredo: não vai para log, mensagem de erro nem auditoria.
+
 ### Ativação da produção
 
 Emitir em produção exige **liberação explícita**, para que nenhuma nota real saia por

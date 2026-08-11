@@ -7,6 +7,10 @@ import {
 import { FiscalSnapshot } from './fiscal-snapshot.builder';
 import {
   arredondar,
+  CSC_TAMANHO_MAXIMO,
+  CSC_TAMANHO_MINIMO,
+  isCscValido,
+  isIdCscValido,
   mapAmbiente,
   somar,
   TOLERANCIA_MONETARIA,
@@ -45,6 +49,24 @@ export function buildEmitirNfceRequest(
   if (!codigoCsc || !idCsc) {
     throw new BadRequestException(
       'Configure o CSC e o ID do CSC do estabelecimento para emitir NFC-e',
+    );
+  }
+
+  // CSC malformado não falha aqui nem na SEFAZ de forma legível: ele produz um
+  // QR Code com hash errado e volta como rejeição 464, já com a numeração
+  // consumida. Conferir o formato aqui é o que evita queimar o número.
+  if (!isCscValido(codigoCsc)) {
+    throw new BadRequestException(
+      `O código CSC do estabelecimento está fora do formato esperado ` +
+        `(${CSC_TAMANHO_MINIMO} a ${CSC_TAMANHO_MAXIMO} caracteres alfanuméricos). ` +
+        `Confira o valor no portal da SEFAZ da UF antes de emitir.`,
+    );
+  }
+
+  if (!isIdCscValido(idCsc)) {
+    throw new BadRequestException(
+      'O ID do CSC do estabelecimento está fora do formato esperado ' +
+        '(numérico, até 6 dígitos).',
     );
   }
 

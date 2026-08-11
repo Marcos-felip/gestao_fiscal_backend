@@ -120,7 +120,7 @@ describe('FiscalEmissionProcessor', () => {
     jest.clearAllMocks();
     mockPrisma.fiscalDocument.findFirst.mockResolvedValue(documento());
     mockPrisma.fiscalSettings.findFirst.mockResolvedValue({
-      codigoCsc: 'CSC123',
+      codigoCsc: 'A1B2C3D4E5F60718293A4B5C6D7E8F90',
       idCsc: '000001',
     });
     mockPrisma.$transaction.mockImplementation(

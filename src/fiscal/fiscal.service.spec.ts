@@ -34,7 +34,7 @@ const configuracao = (overrides: Record<string, unknown> = {}) => ({
   ambiente: FiscalEnvironment.HOMOLOGACAO,
   serieNfce: 1,
   proximoNumeroNfce: 1,
-  codigoCsc: 'CSC123',
+  codigoCsc: 'A1B2C3D4E5F60718293A4B5C6D7E8F90',
   idCsc: '000001',
   certificadoRef: 'enc(pfx)',
   certificadoSenhaRef: 'enc(senha)',
@@ -210,7 +210,7 @@ describe('FiscalService', () => {
       await service.updateSettings(
         'company-1',
         'estab-1',
-        { codigoCsc: 'NOVO-CSC', idCsc: '000002' },
+        { codigoCsc: '0F1E2D3C4B5A69788796A5B4C3D2E1F0', idCsc: '000002' },
         'user-1',
       );
 
@@ -222,7 +222,7 @@ describe('FiscalService', () => {
         valorAnterior: 'idCSC 000001',
         valorNovo: 'idCSC 000002',
       });
-      expect(JSON.stringify(chamada.data)).not.toContain('NOVO-CSC');
+      expect(JSON.stringify(chamada.data)).not.toContain('0F1E2D3C4B5A69788796A5B4C3D2E1F0');
     });
 
     it('não gera evento quando série e CSC não mudam', async () => {

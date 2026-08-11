@@ -9,8 +9,11 @@ import {
 const amanha = new Date(Date.now() + 86_400_000);
 const ontem = new Date(Date.now() - 86_400_000);
 
+/** CSC no formato que MG emite: 32 caracteres hexadecimais. Valor fictício. */
+const CSC_VALIDO = 'A1B2C3D4E5F60718293A4B5C6D7E8F90';
+
 const settings = (overrides: Record<string, unknown> = {}) => ({
-  codigoCsc: 'CSC123',
+  codigoCsc: CSC_VALIDO,
   idCsc: '000001',
   certificadoRef: 'enc(pfx)',
   certificadoSenhaRef: 'enc(senha)',
@@ -30,6 +33,27 @@ describe('checkEmissionSettings', () => {
     expect(checkEmissionSettings(settings({ idCsc: '  ' }))).toContain(
       'configure o CSC e o ID do CSC do estabelecimento',
     );
+  });
+
+  it('distingue CSC malformado de CSC ausente', () => {
+    const pendencias = checkEmissionSettings(settings({ codigoCsc: '123456' }));
+
+    expect(pendencias).toHaveLength(1);
+    expect(pendencias[0]).toMatch(/fora do formato esperado/);
+    expect(pendencias[0]).not.toMatch(/configure o CSC/);
+  });
+
+  it('aponta o ID do CSC malformado sem cobrar o código', () => {
+    const pendencias = checkEmissionSettings(settings({ idCsc: 'ABC' }));
+
+    expect(pendencias).toHaveLength(1);
+    expect(pendencias[0]).toMatch(/ID do CSC.*fora do formato/);
+  });
+
+  it('não repete o valor do CSC na mensagem', () => {
+    const pendencias = checkEmissionSettings(settings({ codigoCsc: '123456' }));
+
+    expect(pendencias.join(' ')).not.toContain('123456');
   });
 
   it('cobra o certificado quando não foi enviado', () => {

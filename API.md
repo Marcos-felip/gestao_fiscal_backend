@@ -1998,15 +1998,33 @@ em uso — as rotas sem `?ambiente=` operam nela.
   "establishmentId": "uuid (obrigatório)",
   "ambiente": "HOMOLOGACAO | PRODUCAO (default: HOMOLOGACAO)",
   "serieNfce": "number 1-999 (default: 1)",
-  "codigoCsc": "string (opcional)",
-  "idCsc": "string (opcional)"
+  "codigoCsc": "string 16-64 alfanuméricos (opcional)",
+  "idCsc": "string 1-6 dígitos (opcional)"
 }
 ```
 
 A primeira configuração do estabelecimento já nasce em uso; as seguintes entram em uso pela
 rota de ativação.
 
-**Erros:** `400` Já existe configuração desse ambiente · `404` Estabelecimento não encontrado
+##### Formato do CSC e do idCSC
+
+O par vem do portal da SEFAZ da UF, na área de credenciamento de NFC-e, e é **específico do
+ambiente**: o par de homologação não vale em produção.
+
+| Campo | Formato | Observação |
+|---|---|---|
+| `codigoCsc` | 16 a 64 caracteres alfanuméricos | O mínimo é 16, e não 32, porque o tamanho varia por UF — MG emite 32 hexadecimais, outras emitem 36. Travar em um tamanho recusaria o CSC legítimo das demais. |
+| `idCsc` | 1 a 6 dígitos | É o `cIdToken` do QR Code, que ocupa 6 posições com zeros à esquerda. |
+
+O CSC **nunca** é devolvido em log, mensagem de erro ou evento de auditoria.
+
+Um CSC fora do formato não falha de maneira legível mais adiante: ele produz um QR Code com
+hash inválido e volta da SEFAZ como **rejeição 464**, já com a numeração da nota consumida e
+com uma mensagem que não menciona o CSC. Por isso o formato é conferido no cadastro **e** como
+pré-condição de emissão.
+
+**Erros:** `400` Já existe configuração desse ambiente · `400` CSC ou idCSC fora do formato ·
+`404` Estabelecimento não encontrado
 
 ---
 
@@ -2036,8 +2054,13 @@ Devolve as configurações de homologação e de produção, com `ativo` marcand
 
 **Body:** `serieNfce`, `proximoNumeroNfce`, `codigoCsc`, `idCsc`, `ativo`
 
+`codigoCsc` e `idCsc` seguem o mesmo formato do POST (ver acima) e são recusados com `400`
+quando fora dele.
+
 Trocar `ambiente` por aqui é recusado com `400` — use a rota de ativação. Alterações de série
 e de CSC ficam registradas na auditoria.
+
+**Erros:** `400` CSC ou idCSC fora do formato · `400` Troca de ambiente
 
 ---
 

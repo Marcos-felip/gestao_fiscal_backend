@@ -2,6 +2,9 @@ import { FiscalEnvironment } from '@prisma/client';
 import { buildEmitirNfceRequest } from './emit-request.builder';
 import { FiscalSnapshot } from './fiscal-snapshot.builder';
 
+/** CSC no formato que MG emite: 32 caracteres hexadecimais. Valor fictício. */
+const CSC_VALIDO = 'A1B2C3D4E5F60718293A4B5C6D7E8F90';
+
 const snapshot = (overrides: Partial<FiscalSnapshot> = {}): FiscalSnapshot => ({
   versao: 1,
   venda: {
@@ -48,7 +51,7 @@ const contexto = {
   serie: 1,
   numero: 42,
   ambiente: FiscalEnvironment.HOMOLOGACAO,
-  codigoCsc: 'CSC123',
+  codigoCsc: CSC_VALIDO,
   idCsc: '000001',
 };
 
@@ -60,7 +63,7 @@ describe('buildEmitirNfceRequest', () => {
       serie: 1,
       numero: 42,
       ambiente: 'homologacao',
-      codigoCsc: 'CSC123',
+      codigoCsc: CSC_VALIDO,
       idCsc: '000001',
       valorTotal: 10,
     });
@@ -84,6 +87,38 @@ describe('buildEmitirNfceRequest', () => {
     expect(() =>
       buildEmitirNfceRequest(snapshot(), { ...contexto, idCsc: '  ' }),
     ).toThrow(/CSC/);
+  });
+
+  // O CSC de 6 dígitos é o caso real que gerou a rejeição 464 em 10/08/2026:
+  // passou por todas as validações, consumiu numeração e só falhou na SEFAZ.
+  it('recusa CSC curto antes de consumir numeração', () => {
+    expect(() =>
+      buildEmitirNfceRequest(snapshot(), { ...contexto, codigoCsc: '123456' }),
+    ).toThrow(/fora do formato esperado/);
+  });
+
+  it('recusa CSC com pontuação', () => {
+    expect(() =>
+      buildEmitirNfceRequest(snapshot(), {
+        ...contexto,
+        codigoCsc: 'ABCD-EFGH-IJKL-MNOP-QRST',
+      }),
+    ).toThrow(/fora do formato esperado/);
+  });
+
+  it('recusa ID do CSC não numérico ou longo demais', () => {
+    expect(() =>
+      buildEmitirNfceRequest(snapshot(), { ...contexto, idCsc: 'ABC' }),
+    ).toThrow(/ID do CSC/);
+    expect(() =>
+      buildEmitirNfceRequest(snapshot(), { ...contexto, idCsc: '1234567' }),
+    ).toThrow(/ID do CSC/);
+  });
+
+  it('aceita o CSC no tamanho que MG emite (32 hexadecimais)', () => {
+    const request = buildEmitirNfceRequest(snapshot(), contexto);
+
+    expect(request.codigoCsc).toBe(CSC_VALIDO);
   });
 
   it('recusa série e número fora da faixa aceita', () => {

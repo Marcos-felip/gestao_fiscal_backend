@@ -56,7 +56,7 @@ const emissionRequest = (): EmitirNfceRequest => ({
   valorTotal: 10,
   certificadoBase64: 'cert-base64',
   certificadoSenha: 'senha-do-certificado',
-  codigoCsc: 'CSC123',
+  codigoCsc: 'A1B2C3D4E5F60718293A4B5C6D7E8F90',
   idCsc: '000001',
   serie: 1,
   numero: 42,

@@ -2,6 +2,8 @@ import { TaxRegimeCode } from '@prisma/client';
 import {
   isCompanyFiscalComplete,
   isCpfCnpjValido,
+  isCscValido,
+  isIdCscValido,
   isInscricaoEstadualValida,
   isProductFiscalComplete,
   isUfValida,
@@ -125,5 +127,52 @@ describe('isInscricaoEstadualValida', () => {
     ['nula', null],
   ])('recusa IE %s', (_caso, ie) => {
     expect(isInscricaoEstadualValida(ie)).toBe(false);
+  });
+});
+
+describe('isCscValido', () => {
+  it('aceita o CSC de 32 hexadecimais que MG emite', () => {
+    expect(isCscValido('A1B2C3D4E5F60718293A4B5C6D7E8F90')).toBe(true);
+  });
+
+  it.each([
+    ['no mínimo de 16', '1234567890123456'],
+    ['no máximo de 64', 'a'.repeat(64)],
+    ['misturando letras e números', 'abcDEF1234567890xyz'],
+    ['com espaço em volta', '  1234567890123456  '],
+  ])('aceita CSC %s', (_caso, csc) => {
+    expect(isCscValido(csc)).toBe(true);
+  });
+
+  // O CSC de 6 dígitos é o caso real da rejeição 464 de 10/08/2026.
+  it.each([
+    ['de 6 dígitos', '123456'],
+    ['com 15 caracteres', '123456789012345'],
+    ['acima de 64', 'a'.repeat(65)],
+    ['com hífen', 'ABCD-EFGH-IJKL-MNOP-QRST'],
+    ['com espaço no meio', '12345678 90123456'],
+    ['vazio', ''],
+    ['só espaços', '   '],
+    ['nulo', null],
+    ['indefinido', undefined],
+  ])('recusa CSC %s', (_caso, csc) => {
+    expect(isCscValido(csc)).toBe(false);
+  });
+});
+
+describe('isIdCscValido', () => {
+  it.each(['1', '000001', '123456'])('aceita %s', (id) => {
+    expect(isIdCscValido(id)).toBe(true);
+  });
+
+  it.each([
+    ['com letras', 'ABC'],
+    ['com 7 dígitos', '1234567'],
+    ['com pontuação', '00-01'],
+    ['vazio', ''],
+    ['nulo', null],
+    ['indefinido', undefined],
+  ])('recusa ID %s', (_caso, id) => {
+    expect(isIdCscValido(id)).toBe(false);
   });
 });

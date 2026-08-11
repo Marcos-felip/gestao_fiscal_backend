@@ -138,6 +138,42 @@ export function normalizarGtin(barcode?: string | null): string | undefined {
   return [8, 12, 13, 14].includes(digitos.length) ? digitos : undefined;
 }
 
+/** Menor CSC aceito. Ver {@link isCscValido} para o porquê de 16. */
+export const CSC_TAMANHO_MINIMO = 16;
+
+/** Maior CSC aceito, com folga sobre os 36 caracteres das UFs mais longas. */
+export const CSC_TAMANHO_MAXIMO = 64;
+
+/**
+ * CSC do estabelecimento: 16 a 64 caracteres alfanuméricos.
+ *
+ * O mínimo é 16 e **não** 32 de propósito. Cada UF emite o CSC no seu próprio
+ * tamanho — MG usa 32 caracteres hexadecimais, outras usam 36 — e travar no
+ * tamanho de uma delas recusaria o CSC legítimo das demais. 16 já elimina toda a
+ * classe de erro "copiei o campo errado do portal", que é a que interessa: um CSC
+ * curto não falha no cadastro nem na emissão, só volta da SEFAZ como
+ * **rejeição 464 (QR-Code com hash inválido)**, depois de queimar o número da
+ * nota, e com uma mensagem que não menciona o CSC.
+ */
+export function isCscValido(csc?: string | null): boolean {
+  const valor = csc?.trim() ?? '';
+  return (
+    valor.length >= CSC_TAMANHO_MINIMO &&
+    valor.length <= CSC_TAMANHO_MAXIMO &&
+    /^[A-Za-z0-9]+$/.test(valor)
+  );
+}
+
+/**
+ * ID do CSC: 1 a 6 dígitos.
+ *
+ * É o `cIdToken` do QR Code, que ocupa 6 posições preenchidas com zeros à
+ * esquerda. Qualquer coisa fora disso não produz um QR Code válido.
+ */
+export function isIdCscValido(idCsc?: string | null): boolean {
+  return /^\d{1,6}$/.test(idCsc?.trim() ?? '');
+}
+
 /** Campos fiscais da empresa exigidos para emitir. */
 export interface CompanyFiscalFields {
   cnpj?: string | null;
