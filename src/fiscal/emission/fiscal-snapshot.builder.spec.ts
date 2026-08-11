@@ -77,6 +77,44 @@ const venda = (overrides: Record<string, unknown> = {}): SaleForSnapshot =>
     ...overrides,
   }) as unknown as SaleForSnapshot;
 
+describe('buildFiscalSnapshot — precedência da Inscrição Estadual', () => {
+  // A IE do emitente é a do estabelecimento; a da empresa é só fallback. É essa
+  // precedência que faz `stateRegistration` (que grava na matriz) ser a fonte
+  // da verdade no cadastro.
+  it('usa a IE do estabelecimento quando ela existe', () => {
+    const snapshot = buildFiscalSnapshot(
+      empresa({ inscricaoEstadual: '999999999' }),
+      venda(),
+    );
+
+    expect(snapshot.emitente.inscricaoEstadual).toBe('123456789');
+  });
+
+  it('cai na IE da empresa quando o estabelecimento não tem', () => {
+    const snapshot = buildFiscalSnapshot(
+      empresa({ inscricaoEstadual: '999999999' }),
+      venda({
+        establishment: {
+          id: 'estab-1',
+          name: 'Matriz',
+          cnpj: '11222333000181',
+          inscricaoEstadual: null,
+          street: 'Rua das Flores',
+          number: '100',
+          complement: null,
+          neighborhood: 'Centro',
+          city: 'São Paulo',
+          state: 'SP',
+          cep: '01001-000',
+          ibgeCode: '3550308',
+        },
+      }),
+    );
+
+    expect(snapshot.emitente.inscricaoEstadual).toBe('999999999');
+  });
+});
+
 describe('buildFiscalSnapshot', () => {
   it('monta emitente, itens e pagamentos no formato do motor', () => {
     const snapshot = buildFiscalSnapshot(empresa(), venda());

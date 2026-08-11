@@ -37,7 +37,12 @@ export class UpdateCompanyDto {
 
   @ApiPropertyOptional({
     example: '123456789012',
-    description: 'Inscrição Estadual (IE)',
+    description:
+      'Inscrição Estadual do estabelecimento MATRIZ. É esta que a NFC-e usa ' +
+      'como emitente — tem precedência sobre `inscricaoEstadual`, que fica ' +
+      'como fallback da empresa. Também é devolvida nas leituras da empresa. ' +
+      'Enviar valor diferente de `inscricaoEstadual` na mesma requisição é ' +
+      'recusado com 400.',
   })
   @IsOptional()
   @IsString()

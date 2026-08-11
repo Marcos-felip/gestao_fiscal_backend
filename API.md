@@ -377,7 +377,12 @@ O usuário precisa ser membro da empresa ativa, e não é possível editar quem 
 
 > **Permissão:** `company.read` · requer empresa ativa
 
-**Resposta 200:** dados da empresa
+**Resposta 200:** dados da empresa, com `establishments[]` e mais dois campos derivados:
+
+| Campo | Origem |
+|---|---|
+| `stateRegistration` | IE do estabelecimento MATRIZ — **é a IE do emitente da NFC-e**. `null` se a empresa ainda não tem matriz. Ver [As duas Inscrições Estaduais](#as-duas-inscrições-estaduais) |
+| `fiscalConfigComplete` | derivado dos dados fiscais da empresa |
 
 **Erros:** `404` Empresa não encontrada · `403` Acesso negado
 
@@ -414,6 +419,26 @@ e a política de fechamento de caixa.
 - `taxRegime`: enum válido (SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL, MEI)
 - `cashBlindClose`: liga o [fechamento às cegas](#fechamento-às-cegas) para toda a empresa
 
+##### As duas Inscrições Estaduais
+
+Existem dois campos de IE, e eles **não são a mesma coisa**:
+
+| Campo | Onde grava | Papel na emissão |
+|---|---|---|
+| `stateRegistration` | estabelecimento **MATRIZ** | **É a IE do emitente da NFC-e** |
+| `inscricaoEstadual` | própria empresa | Fallback, usado só se a matriz não tiver IE |
+
+A precedência é aplicada por `montarEmitente`:
+`establishment.inscricaoEstadual ?? company.inscricaoEstadual`. Por isso a **matriz é a fonte
+da verdade** — a IE é atribuída por estabelecimento, e uma filial em outra UF tem a sua.
+
+`stateRegistration` é **read-write**: o que o PATCH aceita, o GET e a própria resposta do PATCH
+devolvem, derivado da matriz. Empresa sem matriz devolve `null`, sem erro.
+
+Enviar `inscricaoEstadual` e `stateRegistration` **com valores diferentes na mesma requisição**
+é recusado com `400` — aceitar os dois faria a nota sair com uma IE e a tela mostrar outra, em
+silêncio.
+
 **Resposta 200:**
 ```json
 {
@@ -421,6 +446,7 @@ e a política de fechamento de caixa.
   "name": "string",
   "type": "string",
   "cnpj": "string",
+  "stateRegistration": "string | null — IE da matriz (derivado)",
   "taxRegime": "string",
   "phone": "string",
   "isOnboarded": "boolean",

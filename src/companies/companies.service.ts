@@ -118,7 +118,15 @@ export class CompaniesService {
       throw new NotFoundException('Empresa não encontrada');
     }
 
-    return company;
+    // A matriz já veio no include — derivar daqui não custa uma query a mais.
+    const matriz = company.establishments.find(
+      (estabelecimento) => estabelecimento.type === EstablishmentType.MATRIZ,
+    );
+
+    return {
+      ...company,
+      stateRegistration: matriz?.inscricaoEstadual ?? null,
+    };
   }
 
   async onboard(companyId: string, dto: OnboardingDto) {
@@ -183,6 +191,47 @@ export class CompaniesService {
     });
   }
 
+  /**
+   * IE da matriz. É a que a NFC-e usa como emitente — `montarEmitente` prefere
+   * a do estabelecimento e só cai na da empresa como último recurso.
+   */
+  private async findMatrizStateRegistration(
+    companyId: string,
+  ): Promise<string | null> {
+    const matriz = await this.prisma.establishment.findFirst({
+      where: {
+        companyId,
+        type: EstablishmentType.MATRIZ,
+        deletedAt: null,
+      },
+      select: { inscricaoEstadual: true },
+    });
+
+    return matriz?.inscricaoEstadual ?? null;
+  }
+
+  /**
+   * As duas IEs não podem chegar divergentes na mesma requisição.
+   *
+   * `inscricaoEstadual` grava na empresa e `stateRegistration` grava na matriz.
+   * Como a emissão prefere a da matriz, aceitar valores diferentes faria a nota
+   * sair com uma IE e a tela mostrar outra, em silêncio. Recusar é melhor que
+   * sincronizar sozinho: propagar escondido tira do usuário a informação de
+   * qual valor prevaleceu.
+   */
+  private assertInscricoesEstaduaisCoerentes(dto: UpdateCompanyDto): void {
+    const daEmpresa = dto.inscricaoEstadual?.trim();
+    const daMatriz = dto.stateRegistration?.trim();
+
+    if (!daEmpresa || !daMatriz || daEmpresa === daMatriz) return;
+
+    throw new BadRequestException(
+      'A Inscrição Estadual da empresa e a do estabelecimento matriz estão ' +
+        'divergentes. A IE usada na emissão é a da matriz — envie o mesmo ' +
+        'valor nos dois campos ou apenas um deles.',
+    );
+  }
+
   async update(companyId: string, dto: UpdateCompanyDto) {
     const company = await this.prisma.company.findFirst({
       where: { id: companyId, deletedAt: null },
@@ -191,6 +240,8 @@ export class CompaniesService {
     if (!company) {
       throw new NotFoundException('Empresa não encontrada');
     }
+
+    this.assertInscricoesEstaduaisCoerentes(dto);
 
     // Validações adicionais de negócio
     if (dto.cnpj !== undefined && dto.cnpj !== company.cnpj) {
@@ -329,7 +380,10 @@ export class CompaniesService {
         }
 
         return {
-          company: updatedCompany,
+          company: {
+            ...updatedCompany,
+            stateRegistration: establishment?.inscricaoEstadual ?? null,
+          },
           establishment,
         };
       });
@@ -360,14 +414,24 @@ export class CompaniesService {
           });
         }
 
-        return updatedCompany;
+        // Sem matriz a escrita não teve onde cair: devolver o valor enviado
+        // seria mentir sobre o que ficou gravado.
+        return {
+          ...updatedCompany,
+          stateRegistration: matriz ? (dto.stateRegistration ?? null) : null,
+        };
       });
     }
 
     // Atualizar apenas Company se nenhum establishment foi fornecido
-    return this.prisma.company.update({
+    const updatedCompany = await this.prisma.company.update({
       where: { id: companyId },
       data: updateData,
     });
+
+    return {
+      ...updatedCompany,
+      stateRegistration: await this.findMatrizStateRegistration(companyId),
+    };
   }
 }
