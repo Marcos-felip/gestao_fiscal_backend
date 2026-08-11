@@ -1,0 +1,58 @@
+## Why
+
+NF-e completa é requisito de lançamento. Hoje o modelo 55 existe no sistema
+apenas como valor de enum (`FiscalDocumentModel.NFE`) e filtro de listagem —
+nada emite.
+
+O que falta no backend não é "chamar outra rota do motor". A NF-e tem exigências
+que a NFC-e não tem, e várias delas atravessam módulos que já existem:
+
+- **Destinatário obrigatório e completo**, com endereço e indicador de IE. O
+  `Partner` tem endereço, mas **não tem `indIEDest`** — é o único campo de
+  cadastro que falta de fato.
+- **Numeração e série próprias.** `FiscalSettings` hoje só tem `serieNfce` e
+  `proximoNumeroNfce`.
+- **CFOP interestadual.** `isCfopValido` exige `5xxx` — regra correta para NFC-e,
+  bloqueante para NF-e.
+- **Transporte, volumes e cobrança**, que não existem em lugar nenhum.
+- **Finalidade da nota** (`finNFe`) e tipo de operação (`tpNF`).
+
+## What Changes
+
+- **`FiscalSettings` ganha série e numeração de NF-e**, independentes das de
+  NFC-e, com a mesma reserva atômica já usada hoje.
+- **`Partner` ganha `indIEDest`** (contribuinte, isento, não contribuinte).
+- **Emissão de NF-e** a partir de venda ou pedido, com destinatário obrigatório —
+  recusando quando o parceiro estiver incompleto, com mensagem que diga o que
+  falta.
+- **Snapshot da NF-e** com os grupos próprios: destinatário completo, transporte,
+  volumes, cobrança, natureza da operação, `tpNF` e `finNFe`.
+- **`isCfopValido` passa a depender do modelo**: `5xxx` para NFC-e; `5xxx` e
+  `6xxx` para NF-e, coerentes com as UFs de emitente e destinatário.
+- **Permissões** `fiscal.nfe.emit` e `fiscal.nfe.cancel`, separadas das de NFC-e —
+  quem opera caixa não necessariamente emite NF-e.
+- **DANFE do modelo 55** armazenado e servido como o da NFC-e.
+
+## Capabilities
+
+### New Capabilities
+- `nfe-emission`: emissão, consulta e cancelamento de NF-e modelo 55, com
+  destinatário completo, transporte, volumes e cobrança.
+
+### Modified Capabilities
+- `fiscal-configuration`: série e numeração passam a existir por modelo.
+- `fiscal-document`: o documento passa a suportar os grupos exclusivos do modelo 55.
+
+## Impact
+
+- **Migrations**: `serie_nfe` e `proximo_numero_nfe` em `fiscal_settings`;
+  `ind_ie_dest` em `partners`; permissões novas com os **três passos**.
+- `src/fiscal/emission/` — builder de snapshot da NF-e, separado do da NFC-e.
+- `src/fiscal/fiscal-engine/` — porta estendida com as operações do modelo 55.
+- `src/partners/` — campo novo e validação.
+- **Depende das etapas 1 e 2**: sem o quadro tributário e sem a resolução por
+  operação, NF-e interestadual não sai correta.
+- **Revisar antes de implementar.** Proposta escrita antes das etapas 1 e 2
+  existirem — ver o aviso no roteiro fiscal.
+- Changes irmãs no `fiscal_service` e no frontend.
+- Etapa **3** do [roteiro fiscal](../../../ROADMAP_FISCAL.md).
