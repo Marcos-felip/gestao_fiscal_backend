@@ -145,5 +145,14 @@ não envelhece; os detalhes sim.
   o contador com XML; quem escritura é ele.
 - **Sintegra** — confirmar necessidade antes de investir: a maioria dos estados
   dispensou para quem entrega EFD.
-- **NFS-e, CT-e, MDF-e, manifestação do destinatário, DF-e**.
+- **NFS-e** — **prevista para o futuro, não descartada** (confirmado em
+  12/08/2026). Fica fora deste roteiro, que é inteiro sobre mercadoria. Quando
+  entrar, é frente própria e provavelmente maior que qualquer etapa daqui: a
+  nota de serviço é **municipal**, cada prefeitura tem seu padrão, e o motor
+  atual não serve.
+
+  Isso importa para o plano comercial: **clínica não emite NF-e**, emite NFS-e; e
+  **oficina emite as duas** — a peça é mercadoria, a mão de obra é serviço.
+  Enquanto a NFS-e não existir, esses dois ramos não são atendidos por completo.
+- **CT-e, MDF-e, manifestação do destinatário, DF-e**.
 - **Certificado A3** — a arquitetura é cloud e stateless; A1 resolve.
