@@ -17,9 +17,9 @@
 ## 1b. Destinatário e escolha do modelo
 
 - [ ] 1b.1 `indIEDest` com os três valores: `1` contribuinte, `2` isento de IE, `9` não contribuinte
-- [ ] 1b.2 Validação do destinatário por indicador — empresa contribuinte exige IE; pessoa física não
-- [ ] 1b.3 **Definir o critério de escolha entre NFC-e e NF-e para pessoa física.** As duas atendem consumidor final em operação interna, e sem critério a decisão sobra para o operador em cada venda
-- [ ] 1b.4 Recusar NF-e sem destinatário identificado, com mensagem dizendo o que falta
+- [ ] 1b.2 Validação do destinatário por indicador — contribuinte exige IE; isento e não contribuinte, não. CNPJ é sempre obrigatório
+- [x] 1b.3 ~~Critério de escolha entre NFC-e e NF-e para pessoa física~~ — **resolvido pelo recorte:** PF emite NFC-e, PJ emite NF-e. Não há sobreposição a arbitrar
+- [ ] 1b.4 Recusar NF-e sem destinatário identificado ou com destinatário pessoa física, com mensagem dizendo o que falta
 
 ## 2. Migrations
 

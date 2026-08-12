@@ -9,16 +9,17 @@
 > `IRegraFiscal` — hoje respondida pelo cadastro do produto, que numa operação
 > que não varia é a resposta certa.
 >
-> **Destinatário: empresa e pessoa física** (definido em 12/08/2026). O
-> `indIEDest` precisa dos três valores — `1` contribuinte de ICMS, `2` isento de
-> IE, `9` não contribuinte — e a validação do destinatário muda conforme ele:
-> empresa contribuinte exige IE, pessoa física não tem.
+> **Destinatário: apenas pessoa jurídica** (definido em 12/08/2026). Pessoa
+> física continua sendo atendida pela NFC-e, que já existe e já funciona.
 >
-> Consequência que precisa de decisão de produto: **para pessoa física, NFC-e e
-> NF-e se sobrepõem.** As duas atendem consumidor final em operação interna. O
-> sistema precisa de um critério para saber qual emitir — se é escolha do
-> operador, se depende do valor, ou se depende de a venda ter entrega. Está como
-> tarefa na seção 1.
+> Isso elimina a sobreposição entre os dois modelos: **PF → NFC-e, PJ → NF-e**,
+> sem critério a inventar e sem escolha para o operador tomar no caixa.
+>
+> **Cuidado com um atalho errado:** PJ não implica contribuinte de ICMS. Empresa
+> prestadora de serviço é pessoa jurídica e **não** é contribuinte. O
+> `indIEDest` continua precisando dos três valores — `1` contribuinte, `2`
+> isento de IE, `9` não contribuinte. O que o recorte garante é que o
+> destinatário sempre tem **CNPJ**, nunca CPF.
 
 ## Why
 
