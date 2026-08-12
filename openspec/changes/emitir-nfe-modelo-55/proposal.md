@@ -1,3 +1,18 @@
+> **Recorte definido em 12/08/2026: NF-e apenas dentro do estado.**
+>
+> Sem venda interestadual, a change encolhe: **não** entram CFOP 6xxx, DIFAL,
+> partilha nem ST interestadual. Fica NF-e modelo 55 em operação interna, para
+> destinatário identificado.
+>
+> Isso também **remove a dependência da etapa 2**, que foi adiada. O quadro
+> tributário já vem pronto da etapa 1, resolvido pela porta
+> `IRegraFiscal` — hoje respondida pelo cadastro do produto, que numa operação
+> que não varia é a resposta certa.
+>
+> **Pergunta aberta:** a NF-e vai ser emitida só para empresa (contribuinte) ou
+> também para pessoa física? Muda o `indIEDest` e pouco mais, mas precisa estar
+> escrito antes de implementar.
+
 ## Why
 
 NF-e completa é requisito de lançamento. Hoje o modelo 55 existe no sistema
@@ -12,8 +27,8 @@ que a NFC-e não tem, e várias delas atravessam módulos que já existem:
   cadastro que falta de fato.
 - **Numeração e série próprias.** `FiscalSettings` hoje só tem `serieNfce` e
   `proximoNumeroNfce`.
-- **CFOP interestadual.** `isCfopValido` exige `5xxx` — regra correta para NFC-e,
-  bloqueante para NF-e.
+- ~~**CFOP interestadual.**~~ Fora do recorte: operação interna usa `5xxx`, e
+  `isCfopValido` já aceita. **Nada a fazer aqui.**
 - **Transporte, volumes e cobrança**, que não existem em lugar nenhum.
 - **Finalidade da nota** (`finNFe`) e tipo de operação (`tpNF`).
 
@@ -27,8 +42,8 @@ que a NFC-e não tem, e várias delas atravessam módulos que já existem:
   falta.
 - **Snapshot da NF-e** com os grupos próprios: destinatário completo, transporte,
   volumes, cobrança, natureza da operação, `tpNF` e `finNFe`.
-- **`isCfopValido` passa a depender do modelo**: `5xxx` para NFC-e; `5xxx` e
-  `6xxx` para NF-e, coerentes com as UFs de emitente e destinatário.
+- ~~**`isCfopValido` passa a depender do modelo**~~ — fora do recorte interno.
+  Volta quando houver venda interestadual.
 - **Permissões** `fiscal.nfe.emit` e `fiscal.nfe.cancel`, separadas das de NFC-e —
   quem opera caixa não necessariamente emite NF-e.
 - **DANFE do modelo 55** armazenado e servido como o da NFC-e.
@@ -50,8 +65,8 @@ que a NFC-e não tem, e várias delas atravessam módulos que já existem:
 - `src/fiscal/emission/` — builder de snapshot da NF-e, separado do da NFC-e.
 - `src/fiscal/fiscal-engine/` — porta estendida com as operações do modelo 55.
 - `src/partners/` — campo novo e validação.
-- **Depende das etapas 1 e 2**: sem o quadro tributário e sem a resolução por
-  operação, NF-e interestadual não sai correta.
+- **Depende da etapa 1**, que está concluída. **Não depende mais da etapa 2**: o
+  argumento era NF-e interestadual, que saiu do recorte.
 - **Revisar antes de implementar.** Proposta escrita antes das etapas 1 e 2
   existirem — ver o aviso no roteiro fiscal.
 - Changes irmãs no `fiscal_service` e no frontend.

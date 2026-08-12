@@ -1,3 +1,10 @@
+> **Recorte: NF-e apenas dentro do estado** (12/08/2026). Ver o cabeçalho do
+> `proposal.md`. Toda tarefa sobre CFOP 6xxx, DIFAL, partilha ou ST
+> interestadual está **fora** — e a dependência da etapa 2 caiu junto.
+>
+> Antes de começar: rodar `openspec-update-change` para podar as tarefas que o
+> recorte tirou. Esta change foi escrita antes das etapas 1 e 2 existirem.
+
 > **Reveja esta proposta antes de começar.** Escrita antes das etapas 1 e 2
 > existirem. Rode `openspec-update-change` primeiro.
 

@@ -1,3 +1,19 @@
+> ⏸ **ADIADA em 12/08/2026.** O escopo virou **NFC-e e NF-e dentro do estado**.
+> Sem venda interestadual, a operação praticamente não varia — o mesmo produto tem
+> a mesma resposta no balcão e na venda para outra empresa da mesma UF. Quando a
+> operação não varia, o cadastro do produto é o lugar certo da resposta.
+>
+> **O que já foi entregue e fica:** a porta `IRegraFiscal`, a
+> `CadastroDoProdutoRule`, `montarItens` perguntando à porta e a regra aplicada
+> gravada no snapshot. É a costura, e ela vale em qualquer cenário.
+>
+> **O que fica em espera:** modelo de regras, resolvedor, CRUD e conjunto base
+> (seções 3, 4 e 6). As decisões da seção 0 param junto: sem interestadual não há
+> DIFAL a confirmar nem matriz multi-UF a orçar.
+>
+> **O que reabre:** venda para fora do estado, a devolução da etapa 5, ou produto
+> cuja resposta dependa do comprador dentro da mesma UF. Ver `ROADMAP_FISCAL.md`.
+
 ## 0. Decisões que precedem o código
 
 > Nenhuma tarefa da seção 2 em diante deve começar antes destas. As duas mudam o

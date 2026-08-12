@@ -26,15 +26,18 @@ da etapa 1.
 
 ## As etapas
 
-| # | Etapa | Repos | Destrava |
+| # | Etapa | Repos | Estado |
 |---|---|---|---|
-| 0 | Exportar XMLs em lote por período | backend, frontend | o fechamento do contador |
-| 1 | Contrato tributário do item | motor, backend, frontend | 2, 3, 5 — e o SPED do contador |
-| 2 | Regra fiscal por operação | backend, frontend | 3, 5 |
-| 3 | NF-e modelo 55: emissão | motor, backend, frontend | 4, 5 |
-| 4 | Eventos: CC-e e inutilização | motor, backend, frontend | — |
-| 5 | Devolução de mercadoria | backend, frontend | — |
+| 0 | Exportar XMLs em lote por período | backend, frontend | ✅ concluída |
+| 1 | Contrato tributário do item | motor, backend, frontend | ✅ concluída |
+| 2 | Regra fiscal por operação | backend, frontend | ⏸ **adiada** — ver abaixo |
+| 3 | NF-e modelo 55: emissão **interna** | motor, backend, frontend | **próxima** |
+| 4 | Eventos: CC-e e inutilização | motor, backend, frontend | depois da 3 |
+| 5 | Devolução de mercadoria | backend, frontend | depois da 3 |
 | 6 | IBS e CBS | motor, backend | 2027 |
+
+> **Escopo definido em 12/08/2026: NFC-e e NF-e, ambas dentro do estado.**
+> Sem venda interestadual, e sem NFS-e por enquanto. É o que reordena o roteiro.
 
 ### Nomes das changes
 
@@ -69,10 +72,12 @@ verdade:
   tributada e suspensão. Venda com ICMS destacado não passa.
 - **Interestadual não chega ao motor.** `isCfopValido` exige CFOP `5xxx`.
 
-**2 antes de 3** porque NF-e interestadual precisa resolver CFOP 6xxx, DIFAL e ST
-por operação. A resposta fiscal não é um campo do produto: é função de NCM/CEST +
-regime do emitente + UF de origem + UF de destino + tipo de operação + se o
-destinatário é contribuinte.
+**2 saiu da frente da 3** quando o escopo virou operação interna. O argumento
+original era que NF-e interestadual precisa resolver CFOP 6xxx, DIFAL e ST por
+operação — e isso continua verdade, para quem vende para fora. Dentro de um
+estado só, a operação praticamente não varia: o mesmo produto tem a mesma
+resposta no balcão e na venda para outra empresa da mesma UF. Ver "Etapa 2
+adiada", abaixo.
 
 **4 e 5 depois de 3** porque os dois operam sobre NF-e emitida.
 
@@ -80,46 +85,51 @@ destinatário é contribuinte.
 2026.7.16 já traz os grupos da reforma, então o trabalho é de adapter e contrato,
 não de troca de biblioteca.
 
-## Decisões que bloqueiam a etapa 2
+## Etapa 2 adiada — e por quê
 
-**Regra fiscal: construir ou assinar.**
+**A regra fiscal por operação existe para responder o que muda quando a operação
+muda.** Dentro de um estado só, quase nada muda:
 
-Manter a matriz tributária (quais NCM têm ST em cada UF, MVA, pauta, alíquota
-interna, reduções de base) é manutenção perpétua — os estados publicam decreto o
-tempo todo. Existem serviços que vendem essa regra por assinatura.
+| Operação | CFOP | Situação |
+|---|---|---|
+| Balcão, consumidor final | 5405 | CSOSN 500 |
+| Venda para empresa da mesma UF | 5405 | CSOSN 500 |
 
-A porta (`IRegraFiscal`, no padrão do `IFiscalEngine`) é o desenho certo nos dois
-caminhos. O que mudou foi a recomendação de o que colocar atrás dela.
+Mesmo produto, mesma resposta. E quando a operação não varia, **o cadastro do
+produto é o lugar certo da resposta** — que é exatamente o que a
+`CadastroDoProdutoRule` já faz, desde a costura entregue na etapa 2.
 
-> **Recomendação revisada em 12/08/2026: assinar.**
->
-> A recomendação anterior era construir simples, apoiada na premissa de que o
-> primeiro cliente vendia só NFC-e interna a consumidor final — "a matriz dele
-> cabe em meia dúzia de regras". **Essa premissa caiu**: o usuário confirmou que
-> vai vender para fora do estado.
->
-> Isso traz ST interestadual (protocolo e MVA ajustada por combinação
-> origem-destino-produto), DIFAL com alíquota interna e FCP de cada UF de
-> destino, e pauta fiscal que varia por estado. Não é tabela que se escreve uma
-> vez; é manutenção mensal permanente, e errar produz nota autorizada com imposto
-> errado.
->
-> Pedir orçamento é a **primeira tarefa** da etapa 2. Se o custo inviabilizar, o
-> caminho é matriz própria restrita às UFs onde há venda real — decisão
-> consciente, não descoberta no meio.
+O que falta para a emissão sair correta hoje **não é código**: é o CSOSN certo em
+cada produto. Cerveja e refrigerante em 500 (ST em MG), alimento preparado no que
+o contador determinar. Trabalho de cadastro, uma vez, com quem sabe.
 
-**Quem cadastra as regras não é o lojista.** O dono da lanchonete não sabe o que é
-MVA. O modelo é conjunto base por UF e ramo, ajustado no onboarding por quem
-conhece a matéria, com o cliente final nunca vendo a tela. A etapa 2 foi revisada
-para refletir isso.
+### O que foi feito da etapa 2, e fica
 
-**Pergunta aberta para o contador, que muda o escopo pela metade:** emitente do
-Simples Nacional recolhe DIFAL em venda a consumidor final não contribuinte de
-outra UF? Há entendimento consolidado de que não (ADI 5464, STF). Se confirmado,
-toda a partilha sai do escopo das etapas 2 e 3.
+- `IRegraFiscal` — a porta, com contexto e quadro resolvido
+- `CadastroDoProdutoRule` — responde com o cadastro do produto
+- `montarItens` pergunta à porta em vez de ler o produto direto
+- `regraAplicada` gravado no snapshot, por item
 
-O contrato do item da etapa 1 é **idêntico** em todos esses caminhos. Só muda
-quem preenche o quadro tributário.
+Isso não é trabalho perdido: é a costura que permite plugar uma matriz sem tocar
+na emissão, e ela vale em qualquer cenário futuro.
+
+### O que fica em espera
+
+Modelo de regras, resolvedor por especificidade, CRUD e conjunto base por UF e
+ramo. São as seções 3, 4 e 6 da change.
+
+### O que reabre a etapa 2
+
+Qualquer uma destas:
+
+1. **Venda para fora do estado** — volta CFOP 6xxx, DIFAL, ST interestadual, e
+   com eles a decisão de assinar ou construir a matriz.
+2. **Devolução** (etapa 5) — CFOP 1202 espelhando a nota original é a primeira
+   operação que realmente varia dentro do mesmo estado.
+3. **Produto cuja resposta dependa do comprador** dentro da mesma UF.
+
+Enquanto nenhuma acontecer, a etapa 2 completa é custo sem uso.
+
 
 ## Aviso sobre a validade destas changes
 
