@@ -1,5 +1,8 @@
-## ADDED Requirements
+# fiscal-taxation Specification
 
+## Purpose
+TBD - created by archiving change contrato-tributario-do-item. Update Purpose after archive.
+## Requirements
 ### Requirement: Quadro tributário por item do documento fiscal
 O snapshot do documento fiscal SHALL registrar, por item, a situação tributária,
 a base de cálculo, a alíquota e os valores de ICMS, IPI, PIS e COFINS, e SHALL
@@ -50,25 +53,3 @@ emissão com mensagem em português quando faltar.
 - **WHEN** o quadro tributário está incompleto
 - **THEN** o usuário recebe erro de configuração em português, e não uma rejeição da SEFAZ depois de a nota ter consumido número
 
-## MODIFIED Requirements
-
-### Requirement: Dados fiscais dos produtos
-O sistema SHALL manter os dados fiscais de cada produto (NCM, CEST, origem, CFOP,
-CSOSN/CST, situação tributária de PIS e COFINS, alíquotas, unidade comercial,
-GTIN) e SHALL expor um indicador `fiscalComplete`. A emissão SHALL ser bloqueada
-quando algum item da venda estiver fiscalmente incompleto.
-
-A situação tributária de PIS e de COFINS SHALL fazer parte da checagem de
-completude — sem elas o item não tem como compor o quadro tributário.
-
-#### Scenario: Produto sem NCM
-- **WHEN** uma venda contém um item cujo produto está sem NCM
-- **THEN** a emissão é recusada por item fiscalmente incompleto
-
-#### Scenario: Produto sem situação tributária de PIS ou COFINS
-- **WHEN** um produto não tem CST de PIS ou de COFINS cadastrado
-- **THEN** o produto é marcado como fiscalmente incompleto e aparece no relatório de pendências, com texto indicando o que preencher
-
-#### Scenario: Produtos existentes continuam emitindo
-- **WHEN** a mudança é aplicada sobre uma base com produtos sem CST de PIS e COFINS
-- **THEN** esses produtos recebem valores que reproduzem o comportamento anterior, e nenhuma emissão em curso é interrompida
