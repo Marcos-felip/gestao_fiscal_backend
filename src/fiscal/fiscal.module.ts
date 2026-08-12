@@ -11,7 +11,7 @@ import { FiscalCertificateService } from './certificates/fiscal-certificate.serv
 import { QueueModule } from '../queue/queue.module';
 import { StorageModule } from '../storage/storage.module';
 import { REGRA_FISCAL } from './rules/fiscal-rules.port';
-import { ProductFallbackRule } from './rules/product-fallback-rule.service';
+import { CadastroDoProdutoRule } from './rules/cadastro-do-produto-rule.service';
 
 @Module({
   imports: [QueueModule, StorageModule, EventEmitterModule],
@@ -26,8 +26,8 @@ import { ProductFallbackRule } from './rules/product-fallback-rule.service';
     OnSaleConfirmedListener,
     // Regra fiscal por operação — etapa 2. A implementação de hoje responde com
     // o cadastro do produto; trocar de matriz é trocar esta linha.
-    ProductFallbackRule,
-    { provide: REGRA_FISCAL, useExisting: ProductFallbackRule },
+    CadastroDoProdutoRule,
+    { provide: REGRA_FISCAL, useExisting: CadastroDoProdutoRule },
   ],
   exports: [FiscalService, DfeNetFiscalEngine, FiscalCertificateService],
 })

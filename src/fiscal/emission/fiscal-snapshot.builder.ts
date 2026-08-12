@@ -37,7 +37,7 @@ import {
   IRegraFiscal,
   QuadroResolvido,
 } from '../rules/fiscal-rules.port';
-import { ProductFallbackRule } from '../rules/product-fallback-rule.service';
+import { CadastroDoProdutoRule } from '../rules/cadastro-do-produto-rule.service';
 
 /**
  * Retrato imutável da venda no formato que o motor fiscal consome.
@@ -150,7 +150,7 @@ export async function buildFiscalSnapshot(
   sale: SaleForSnapshot,
   // O padrão responde com o cadastro do produto — o comportamento anterior à
   // etapa 2. Quem tiver uma implementação de regra fiscal a injeta aqui.
-  regraFiscal: IRegraFiscal = new ProductFallbackRule(),
+  regraFiscal: IRegraFiscal = new CadastroDoProdutoRule(),
 ): Promise<FiscalSnapshot> {
   const problemas: string[] = [];
 
