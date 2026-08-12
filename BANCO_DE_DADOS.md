@@ -336,6 +336,26 @@
 | `created_at` | TIMESTAMP | ✅ | |
 | `deleted_at` | TIMESTAMP | ❌ | Soft delete |
 
+> ⚠️ **Limitação conhecida: o estoque é por empresa, não por estabelecimento.**
+>
+> Não existe `establishment_id` aqui, nem em `products.current_stock`. Uma empresa
+> com matriz e filial tem **um saldo só**, somando as duas — vender na filial
+> baixa do mesmo número que a matriz enxerga.
+>
+> Hoje isso não incomoda porque as empresas em uso têm um estabelecimento só.
+> **Passa a incomodar na NF-e (etapa 3 do roteiro fiscal):** a nota é emitida por
+> estabelecimento, com CNPJ e endereço próprios, e declarar saída de mercadoria
+> de um local cujo estoque não é rastreado separadamente é incoerência que
+> aparece na primeira conferência.
+>
+> Consertar tem três partes, e nenhuma é pequena: coluna e índice novos,
+> `current_stock` deixando de ser campo do produto para virar saldo por
+> estabelecimento, e migration rateando o saldo atual — que não tem como ser
+> feita corretamente sem alguém dizer onde a mercadoria está.
+>
+> Registrado em 12/08/2026. Ver a tarefa correspondente na change
+> `emitir-nfe-modelo-55`.
+
 ### `purchases` e `purchase_items` — Compras
 
 Estrutura com `purchase_number` (numeracao sequencial por empresa) e `supplier_id` (fornecedor, opcional).

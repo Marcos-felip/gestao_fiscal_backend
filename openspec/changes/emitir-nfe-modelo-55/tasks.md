@@ -18,6 +18,20 @@
 - [x] 1b.3 ~~Critério de escolha entre NFC-e e NF-e para pessoa física~~ — **resolvido pelo recorte:** PF emite NFC-e, PJ emite NF-e. Não há sobreposição a arbitrar
 - [ ] 1b.4 Recusar NF-e sem destinatário identificado ou com destinatário pessoa física, com mensagem dizendo o que falta
 
+## 1c. Estoque por estabelecimento
+
+> **Limitação anterior a esta change, que ela expõe.** `stock_movements` não tem
+> `establishment_id` e `products.current_stock` é um saldo só por empresa. A NF-e
+> é emitida por estabelecimento, com CNPJ e endereço próprios — declarar saída de
+> um local cujo estoque não é rastreado separadamente é incoerência que aparece na
+> primeira conferência. Detalhes em `BANCO_DE_DADOS.md`.
+
+- [ ] 1c.1 Decidir se a NF-e da etapa 3 sai com estoque por empresa (aceitando a limitação) ou se o estoque por estabelecimento vem antes
+- [ ] 1c.2 `establishment_id` em `stock_movements`, com índice
+- [ ] 1c.3 `current_stock` deixa de ser campo do produto e vira saldo por estabelecimento
+- [ ] 1c.4 Migration rateando o saldo atual — **exige alguém dizer onde a mercadoria está**; não há como inferir
+- [ ] 1c.5 Baixa de venda e entrada de compra passam a carimbar o estabelecimento
+
 ## 2. Migrations
 
 - [ ] 2.1 `serie_nfe` e `proximo_numero_nfe` em `fiscal_settings`
