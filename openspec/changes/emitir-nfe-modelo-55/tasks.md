@@ -14,6 +14,13 @@
 - [ ] 1.2 Change irmã do `fiscal_service` no ar, com `POST /api/nfe/emit` publicado
 - [ ] 1.3 Revisar esta proposta contra o que as etapas anteriores produziram
 
+## 1b. Destinatário e escolha do modelo
+
+- [ ] 1b.1 `indIEDest` com os três valores: `1` contribuinte, `2` isento de IE, `9` não contribuinte
+- [ ] 1b.2 Validação do destinatário por indicador — empresa contribuinte exige IE; pessoa física não
+- [ ] 1b.3 **Definir o critério de escolha entre NFC-e e NF-e para pessoa física.** As duas atendem consumidor final em operação interna, e sem critério a decisão sobra para o operador em cada venda
+- [ ] 1b.4 Recusar NF-e sem destinatário identificado, com mensagem dizendo o que falta
+
 ## 2. Migrations
 
 - [ ] 2.1 `serie_nfe` e `proximo_numero_nfe` em `fiscal_settings`

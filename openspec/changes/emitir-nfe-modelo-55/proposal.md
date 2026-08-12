@@ -9,9 +9,16 @@
 > `IRegraFiscal` — hoje respondida pelo cadastro do produto, que numa operação
 > que não varia é a resposta certa.
 >
-> **Pergunta aberta:** a NF-e vai ser emitida só para empresa (contribuinte) ou
-> também para pessoa física? Muda o `indIEDest` e pouco mais, mas precisa estar
-> escrito antes de implementar.
+> **Destinatário: empresa e pessoa física** (definido em 12/08/2026). O
+> `indIEDest` precisa dos três valores — `1` contribuinte de ICMS, `2` isento de
+> IE, `9` não contribuinte — e a validação do destinatário muda conforme ele:
+> empresa contribuinte exige IE, pessoa física não tem.
+>
+> Consequência que precisa de decisão de produto: **para pessoa física, NFC-e e
+> NF-e se sobrepõem.** As duas atendem consumidor final em operação interna. O
+> sistema precisa de um critério para saber qual emitir — se é escolha do
+> operador, se depende do valor, ou se depende de a venda ter entrega. Está como
+> tarefa na seção 1.
 
 ## Why
 
