@@ -27,12 +27,17 @@ import {
   mapCrt,
   mapFormaPagamento,
   normalizarGtin,
-  situacaoTributaria,
   somar,
   TOLERANCIA_MONETARIA,
   usaCsosn,
   validarQuadroTributario,
 } from './fiscal-rules';
+import {
+  ContextoFiscal,
+  IRegraFiscal,
+  QuadroResolvido,
+} from '../rules/fiscal-rules.port';
+import { ProductFallbackRule } from '../rules/product-fallback-rule.service';
 
 /**
  * Retrato imutável da venda no formato que o motor fiscal consome.
@@ -100,6 +105,14 @@ export interface FiscalSnapshot {
    */
   totais?: FiscalTotais;
   /**
+   * Qual regra determinou o quadro tributário de cada item, por `numeroItem`.
+   *
+   * Fica fora de `itens` porque `NfceItem` é o contrato do motor e ele não tem
+   * esse campo. Quando uma nota sair com imposto errado, a primeira pergunta vai
+   * ser "por que saiu assim" — e isto é a resposta.
+   */
+  regrasAplicadas?: Record<number, string>;
+  /**
    * Valor recebido e troco do pagamento em dinheiro.
    *
    * Fica no snapshot só para auditoria e reimpressão: o contrato do motor não
@@ -132,19 +145,19 @@ export type CompanyForSnapshot = Prisma.CompanyGetPayload<null>;
  * Falha com todos os problemas de uma vez (400) em vez de queimar um número
  * de nota para descobrir a rejeição depois.
  */
-export function buildFiscalSnapshot(
+export async function buildFiscalSnapshot(
   company: CompanyForSnapshot,
   sale: SaleForSnapshot,
-): FiscalSnapshot {
+  // O padrão responde com o cadastro do produto — o comportamento anterior à
+  // etapa 2. Quem tiver uma implementação de regra fiscal a injeta aqui.
+  regraFiscal: IRegraFiscal = new ProductFallbackRule(),
+): Promise<FiscalSnapshot> {
   const problemas: string[] = [];
 
   const crt = resolverCrt(company, problemas);
   const emitente = montarEmitente(company, sale, crt, problemas);
-  const { itens, valorTotal, subtotal, desconto } = montarItens(
-    sale,
-    crt,
-    problemas,
-  );
+  const { itens, valorTotal, subtotal, desconto, regrasAplicadas } =
+    await montarItens(sale, company, crt, regraFiscal, problemas);
   const pagamentos = montarPagamentos(sale, valorTotal, problemas);
 
   if (problemas.length > 0) {
@@ -169,6 +182,7 @@ export function buildFiscalSnapshot(
     pagamentos,
     valorTotal,
     totais: montarTotais(itens, valorTotal),
+    regrasAplicadas,
     recebimento: montarRecebimento(sale),
   };
 }
@@ -305,19 +319,28 @@ function montarDestinatario(
 // Itens e rateio do desconto
 // ──────────────────────────────────────────────
 
-function montarItens(
+async function montarItens(
   sale: SaleForSnapshot,
+  company: CompanyForSnapshot,
   crt: ReturnType<typeof mapCrt>,
+  regraFiscal: IRegraFiscal,
   problemas: string[],
-): {
+): Promise<{
   itens: NfceItem[];
   valorTotal: number;
   subtotal: number;
   desconto: number;
-} {
+  regrasAplicadas: Record<number, string>;
+}> {
   if (sale.items.length === 0) {
     problemas.push('a venda não tem itens');
-    return { itens: [], valorTotal: 0, subtotal: 0, desconto: 0 };
+    return {
+      itens: [],
+      valorTotal: 0,
+      subtotal: 0,
+      desconto: 0,
+      regrasAplicadas: {},
+    };
   }
 
   const totaisBrutos = sale.items.map((item) => arredondar(Number(item.total)));
@@ -327,7 +350,12 @@ function montarItens(
 
   const totaisLiquidos = ratear(totaisBrutos, subtotal, total);
 
-  const itens = sale.items.map((item, indice) => {
+  const regrasAplicadas: Record<number, string> = {};
+  const itens: NfceItem[] = [];
+
+  // Sequencial, não `Promise.all`: os problemas são acumulados numa lista só e
+  // a ordem das mensagens é a ordem dos itens da venda.
+  for (const [indice, item] of sale.items.entries()) {
     const produto = item.product;
     const quantidade = Number(item.quantity);
     const posicao = indice + 1;
@@ -342,11 +370,6 @@ function montarItens(
         `item ${posicao} (${produto.name}): CEST deve ter 7 dígitos`,
       );
     }
-    if (!isCfopValido(produto.cfop)) {
-      problemas.push(
-        `item ${posicao} (${produto.name}): CFOP deve ter 4 dígitos e começar com 5`,
-      );
-    }
     if (!isOrigemValida(produto.origin)) {
       problemas.push(
         `item ${posicao} (${produto.name}): informe a origem da mercadoria (0 a 8)`,
@@ -358,12 +381,26 @@ function montarItens(
       );
     }
 
-    const situacao = situacaoTributaria(crt, produto.csosn, produto.cstIcms);
+    // A resposta fiscal vem da porta, não do cadastro: é ela que sabe o que
+    // vale para esta operação. Sem regra cadastrada, ela devolve o cadastro do
+    // produto — e o resultado é idêntico ao de antes da etapa 2.
+    const quadro = await regraFiscal.resolver(
+      montarContextoFiscal(produto, company, sale, crt),
+    );
+    regrasAplicadas[posicao] = quadro.regraAplicada;
+
+    const situacao = quadro.situacaoIcms;
     if (!situacao) {
       problemas.push(
         usaCsosn(crt)
           ? `item ${posicao} (${produto.name}): CSOSN não suportado — use 102, 103, 300, 400 ou 500`
           : `item ${posicao} (${produto.name}): CST de ICMS não suportado — use 40, 41 ou 50`,
+      );
+    }
+
+    if (!isCfopValido(quadro.cfop)) {
+      problemas.push(
+        `item ${posicao} (${produto.name}): CFOP deve ter 4 dígitos e começar com 5`,
       );
     }
 
@@ -380,7 +417,7 @@ function montarItens(
     const problemasAntes = problemas.length;
     const imposto = montarImposto(
       produto,
-      situacao,
+      quadro,
       totaisLiquidos[indice],
       quantidade,
       rotulo,
@@ -394,20 +431,20 @@ function montarItens(
       problemas.push(...validarQuadroTributario(imposto, rotulo));
     }
 
-    return {
+    itens.push({
       numeroItem: posicao,
       codigoProduto: limitar(produto.sku ?? produto.id, 60),
       descricao: limitar(produto.name, 120),
       ncm: apenasDigitos(produto.ncm),
       cest: produto.cest ? apenasDigitos(produto.cest) : undefined,
-      cfop: apenasDigitos(produto.cfop),
+      cfop: apenasDigitos(quadro.cfop),
       unidadeComercial: limitar(produto.unit, 6),
       quantidade,
       valorUnitario,
       gtin: normalizarGtin(produto.barcode),
       imposto,
-    } satisfies NfceItem;
-  });
+    } satisfies NfceItem);
+  }
 
   // O motor recalcula o valor do item como quantidade × valor unitário:
   // o total enviado precisa fechar pela mesma conta.
@@ -421,7 +458,7 @@ function montarItens(
     );
   }
 
-  return { itens, valorTotal, subtotal, desconto };
+  return { itens, valorTotal, subtotal, desconto, regrasAplicadas };
 }
 
 // ──────────────────────────────────────────────
@@ -430,6 +467,55 @@ function montarItens(
 
 /** Modalidade da base de cálculo: 3 = valor da operação. */
 const MOD_BC_VALOR_DA_OPERACAO = 3;
+
+/**
+ * Monta o contexto que a regra fiscal recebe.
+ *
+ * Hoje a NFC-e é sempre operação interna a consumidor final: sem cliente na
+ * venda, o destinatário é a própria UF do emitente e não é contribuinte. Quando
+ * a etapa 3 trouxer NF-e interestadual, é aqui que a UF de destino real passa a
+ * entrar — e a porta já a espera.
+ */
+function montarContextoFiscal(
+  produto: SaleForSnapshot['items'][number]['product'],
+  company: CompanyForSnapshot,
+  sale: SaleForSnapshot,
+  crt: ReturnType<typeof mapCrt>,
+): ContextoFiscal {
+  const ufEmitente = (sale.establishment.state ?? '').trim().toUpperCase();
+
+  return {
+    produto: {
+      ncm: produto.ncm,
+      cest: produto.cest,
+      origem: produto.origin,
+      cfopPadrao: produto.cfop,
+      csosnPadrao: produto.csosn,
+      cstIcmsPadrao: produto.cstIcms,
+      cstPis: produto.cstPis,
+      cstCofins: produto.cstCofins,
+      aliquotaIcms: numeroOuNulo(produto.aliquotaIcms),
+      aliquotaPis: numeroOuNulo(produto.aliquotaPis),
+      aliquotaCofins: numeroOuNulo(produto.aliquotaCofins),
+    },
+    emitente: {
+      crt,
+      uf: ufEmitente,
+      contribuinteIcms: company.contribuinteIcms,
+    },
+    destinatario: {
+      uf: ufEmitente,
+      contribuinte: false,
+      consumidorFinal: true,
+    },
+    operacao: { tipo: 'VENDA' },
+  };
+}
+
+/** `Decimal` do Prisma para número, preservando a ausência. */
+function numeroOuNulo(valor: Prisma.Decimal | null): number | null {
+  return valor === null ? null : Number(valor);
+}
 
 /**
  * Compõe o quadro tributário do item a partir do cadastro do produto.
@@ -446,32 +532,32 @@ const MOD_BC_VALOR_DA_OPERACAO = 3;
  */
 function montarImposto(
   produto: SaleForSnapshot['items'][number]['product'],
-  situacao: string | undefined,
+  quadro: QuadroResolvido,
   valorLiquido: number,
   quantidade: number,
   rotulo: string,
   problemas: string[],
 ): NfceItemImposto {
   return {
-    icms: montarIcms(produto, situacao, valorLiquido, rotulo, problemas),
-    pis: montarPis(produto, valorLiquido, quantidade, rotulo, problemas),
-    cofins: montarCofins(produto, valorLiquido, quantidade, rotulo, problemas),
+    icms: montarIcms(produto, quadro, valorLiquido, rotulo, problemas),
+    pis: montarPis(quadro, valorLiquido, quantidade, rotulo, problemas),
+    cofins: montarCofins(quadro, valorLiquido, quantidade, rotulo, problemas),
   };
 }
 
 function montarIcms(
   produto: SaleForSnapshot['items'][number]['product'],
-  situacao: string | undefined,
+  quadro: QuadroResolvido,
   valorLiquido: number,
   rotulo: string,
   problemas: string[],
 ): NfceIcms {
   const icms: NfceIcms = {
-    situacao: situacao ?? '',
+    situacao: quadro.situacaoIcms ?? '',
     origem: produto.origin ?? 0,
   };
 
-  const exigidos = camposExigidosIcms(situacao);
+  const exigidos = camposExigidosIcms(quadro.situacaoIcms);
   if (!exigidos) return icms;
 
   // Campos que dependem de matriz tributária, não do cadastro do produto.
@@ -500,7 +586,7 @@ function montarIcms(
   }
 
   if (exigidos.includes('vBC')) {
-    const aliquota = produto.aliquotaIcms;
+    const aliquota = quadro.aliquotaIcms;
 
     if (aliquota === null) {
       problemas.push(
@@ -509,7 +595,7 @@ function montarIcms(
       return icms;
     }
 
-    const percentual = Number(aliquota);
+    const percentual = aliquota;
     icms.modBC = MOD_BC_VALOR_DA_OPERACAO;
     icms.vBC = arredondar(valorLiquido);
     icms.pICMS = percentual;
@@ -520,7 +606,7 @@ function montarIcms(
 }
 
 function montarPis(
-  produto: SaleForSnapshot['items'][number]['product'],
+  quadro: QuadroResolvido,
   valorLiquido: number,
   quantidade: number,
   rotulo: string,
@@ -528,8 +614,8 @@ function montarPis(
 ): NfcePis {
   const apurada = apurarContribuicao(
     'PIS',
-    produto.cstPis,
-    produto.aliquotaPis,
+    quadro.cstPis,
+    quadro.aliquotaPis,
     valorLiquido,
     quantidade,
     rotulo,
@@ -547,7 +633,7 @@ function montarPis(
 }
 
 function montarCofins(
-  produto: SaleForSnapshot['items'][number]['product'],
+  quadro: QuadroResolvido,
   valorLiquido: number,
   quantidade: number,
   rotulo: string,
@@ -555,8 +641,8 @@ function montarCofins(
 ): NfceCofins {
   const apurada = apurarContribuicao(
     'COFINS',
-    produto.cstCofins,
-    produto.aliquotaCofins,
+    quadro.cstCofins,
+    quadro.aliquotaCofins,
     valorLiquido,
     quantidade,
     rotulo,
@@ -586,7 +672,7 @@ interface ContribuicaoApurada {
 function apurarContribuicao(
   nome: string,
   cst: string | null,
-  aliquotaCadastrada: Prisma.Decimal | null,
+  aliquotaCadastrada: number | null,
   valorLiquido: number,
   quantidade: number,
   rotulo: string,
@@ -614,7 +700,7 @@ function apurarContribuicao(
     return { situacao };
   }
 
-  const aliquota = Number(aliquotaCadastrada);
+  const aliquota = aliquotaCadastrada;
 
   // Apuração por quantidade: a alíquota cadastrada é valor por unidade.
   if (forma === 'quantidade') {

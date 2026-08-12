@@ -15,10 +15,19 @@
 
 ## 2. Porta e contexto
 
-- [ ] 2.1 `src/fiscal/rules/fiscal-rules.port.ts` — interface `IRegraFiscal`, no padrão do `IFiscalEngine`
-- [ ] 2.2 Tipo do contexto: produto (NCM, CEST, origem, CFOP e situação padrão), emitente (CRT, UF, contribuinte), destinatário (UF, contribuinte, consumidor final), operação (tipo, finalidade, presença)
-- [ ] 2.3 Tipo do quadro devolvido, incluindo `regraAplicada`
-- [ ] 2.4 Registrar a porta no módulo fiscal por token de injeção, para permitir troca de implementação
+- [x] 2.1 `src/fiscal/rules/fiscal-rules.port.ts` — interface `IRegraFiscal`, no padrão do `IFiscalEngine`
+- [x] 2.2 Tipo do contexto: produto (NCM, CEST, origem, CFOP e situação padrão), emitente (CRT, UF, contribuinte), destinatário (UF, contribuinte, consumidor final), operação (tipo, finalidade, presença)
+- [x] 2.3 Tipo do quadro devolvido, incluindo `regraAplicada`
+- [x] 2.4 Registrar a porta no módulo fiscal por token de injeção, para permitir troca de implementação
+  - Token `REGRA_FISCAL` no `FiscalModule`, apontando para `ProductFallbackRule`. Trocar de matriz é trocar essa linha.
+
+> ⏸ **Seções 3, 4 e 6 em espera.** Dependem das decisões da seção 0: se a matriz
+> for assinada, o que entra atrás da porta é um adaptador HTTP — sem tabela de
+> regras, sem resolvedor próprio, sem CRUD. Implementar agora tem chance real de
+> ser retrabalho.
+>
+> O que já está feito é a costura, que é idêntica nos dois caminhos: a porta
+> existe, a emissão pergunta a ela, e o comportamento não mudou.
 
 ## 3. Modelo e migration
 
@@ -36,9 +45,12 @@
 
 ## 5. Integração com a emissão
 
-- [ ] 5.1 `montarItens` passa a consultar a porta em vez de ler CFOP e situação direto do produto
-- [ ] 5.2 `regraAplicada` gravado no snapshot, junto do quadro
-- [ ] 5.3 **Garantir não-regressão:** base sem regra cadastrada produz payload idêntico ao de antes
+- [x] 5.1 `montarItens` passa a consultar a porta em vez de ler CFOP e situação direto do produto
+  - `buildFiscalSnapshot` virou **assíncrono**. De propósito agora: um fornecedor de matriz responde por HTTP, e nascer síncrono obrigaria a reescrever tudo acima da porta no dia da troca.
+- [x] 5.2 `regraAplicada` gravado no snapshot, junto do quadro
+  - Em `snapshot.regrasAplicadas`, por `numeroItem` — fora de `itens`, porque `NfceItem` é o contrato do motor e não tem esse campo.
+- [x] 5.3 **Garantir não-regressão:** base sem regra cadastrada produz payload idêntico ao de antes
+  - 654 testes verdes. Sem regra cadastrada o quadro vem do cadastro do produto, como antes.
 
 ## 6. Configuração e simulação
 
@@ -57,8 +69,8 @@
 - [ ] 7.1 Resolução de venda interna e interestadual
 - [ ] 7.2 Regra específica vence a genérica
 - [ ] 7.3 Empate bloqueia a emissão nomeando as regras
-- [ ] 7.4 Sem regra cadastrada, o resultado vem do produto
-- [ ] 7.5 **Regressão:** empresa sem regras emite igual a antes
+- [x] 7.4 Sem regra cadastrada, o resultado vem do produto
+- [x] 7.5 **Regressão:** empresa sem regras emite igual a antes
 - [ ] 7.6 Isolamento por empresa na listagem e na resolução
 - [ ] 7.7 Simulação não cria documento nem consome numeração
 - [ ] 7.8 `npm test` verde
