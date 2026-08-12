@@ -229,6 +229,40 @@ describe('FiscalEmissionProcessor', () => {
   });
 
   describe('rejeição da SEFAZ', () => {
+    it('guarda o detalhe campo a campo junto da mensagem genérica', async () => {
+      // O motor devolve "Payload invalido" e a lista real em `retornoTecnico`.
+      // Gravar só a primeira deixava a rejeição impossível de diagnosticar.
+      mockEngine.emitir.mockResolvedValue({
+        sucesso: false,
+        rejeicao: {
+          codigo: 'VALIDACAO',
+          mensagem: 'Payload invalido',
+          retornoTecnico: 'Itens[0].Imposto: Quadro tributario e obrigatorio',
+        },
+      });
+
+      await processor.process(job());
+
+      expect(dadosDoUpdate(1).rejeicaoMensagem).toBe(
+        'Payload invalido — Itens[0].Imposto: Quadro tributario e obrigatorio',
+      );
+    });
+
+    it('não repete a mensagem quando o detalhe é igual a ela', async () => {
+      mockEngine.emitir.mockResolvedValue({
+        sucesso: false,
+        rejeicao: {
+          codigo: '539',
+          mensagem: 'Duplicidade de NF-e',
+          retornoTecnico: 'Duplicidade de NF-e',
+        },
+      });
+
+      await processor.process(job());
+
+      expect(dadosDoUpdate(1).rejeicaoMensagem).toBe('Duplicidade de NF-e');
+    });
+
     it('marca REJEITADO com código e mensagem, sem subir arquivos', async () => {
       mockEngine.emitir.mockResolvedValue({
         sucesso: false,

@@ -7,6 +7,7 @@ import {
   EmitirNfceRequest,
   EmitirNfceResult,
   FiscalCertificateCredentials,
+  FiscalRejeicao,
 } from '../fiscal-engine/fiscal-engine.interface';
 import { FiscalCertificateService } from '../certificates/fiscal-certificate.service';
 import { buildEmitirNfceRequest } from '../emission/emit-request.builder';
@@ -177,7 +178,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
             protocolo: result.protocolo,
             chaveAcesso: result.chaveAcesso,
             rejeicaoCodigo: result.rejeicao?.codigo,
-            rejeicaoMensagem: result.rejeicao?.mensagem,
+            rejeicaoMensagem: descreverRejeicao(result.rejeicao),
             dataAutorizacao,
             qrCode: result.qrCode,
             ...arquivos,
@@ -202,7 +203,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
             statusTo: newStatus,
             motivo: result.sucesso
               ? `Documento autorizado: protocolo ${result.protocolo}`
-              : `Rejeição: ${result.rejeicao?.codigo} - ${result.rejeicao?.mensagem}`,
+              : `Rejeição: ${result.rejeicao?.codigo} - ${descreverRejeicao(result.rejeicao)}`,
             usuarioId,
           },
         });
@@ -217,6 +218,8 @@ export class FiscalEmissionProcessor extends WorkerHost {
               status: newStatus,
               protocolo: result.protocolo,
               rejeicaoCodigo: result.rejeicao?.codigo,
+              rejeicaoMensagem: result.rejeicao?.mensagem,
+              rejeicaoDetalhe: result.rejeicao?.retornoTecnico,
               tentativa: document.attempts + 1,
             },
           },
@@ -348,4 +351,21 @@ export class FiscalEmissionProcessor extends WorkerHost {
       }
     });
   }
+}
+
+/**
+ * Mensagem da rejeição com o detalhe campo a campo, quando houver.
+ *
+ * O motor devolve `mensagem` genérica ("Payload invalido") e a lista real em
+ * `retornoTecnico` — gravar só a primeira deixava a rejeição impossível de
+ * diagnosticar: o usuário via "Payload invalido" e não tinha como saber qual
+ * campo estava errado sem chamar o motor por fora.
+ */
+function descreverRejeicao(rejeicao?: FiscalRejeicao): string | undefined {
+  if (!rejeicao) return undefined;
+
+  const detalhe = rejeicao.retornoTecnico?.trim();
+  if (!detalhe || detalhe === rejeicao.mensagem) return rejeicao.mensagem;
+
+  return `${rejeicao.mensagem} — ${detalhe}`;
 }
