@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { FiscalDocumentStatus, FiscalEnvironment } from '@prisma/client';
@@ -59,6 +60,7 @@ const mockPrisma = {
     count: jest.fn(),
   },
   fiscalSettingsEvent: { create: jest.fn(), findMany: jest.fn() },
+  company: { findFirst: jest.fn() },
   $transaction: jest.fn(),
 };
 
@@ -101,6 +103,11 @@ describe('FiscalService', () => {
     mockPrisma.$transaction.mockImplementation(
       (operacoes: Promise<unknown>[]) => Promise.all(operacoes),
     );
+    mockPrisma.company.findFirst.mockResolvedValue({
+      name: 'Empresa Teste',
+      nomeFantasia: null,
+      razaoSocial: null,
+    });
   });
 
   describe('findRejections', () => {
@@ -222,7 +229,9 @@ describe('FiscalService', () => {
         valorAnterior: 'idCSC 000001',
         valorNovo: 'idCSC 000002',
       });
-      expect(JSON.stringify(chamada.data)).not.toContain('0F1E2D3C4B5A69788796A5B4C3D2E1F0');
+      expect(JSON.stringify(chamada.data)).not.toContain(
+        '0F1E2D3C4B5A69788796A5B4C3D2E1F0',
+      );
     });
 
     it('não gera evento quando série e CSC não mudam', async () => {
@@ -509,6 +518,144 @@ describe('FiscalService', () => {
       await expect(
         service.validarConsultaPublica('company-1', 'estab-1'),
       ).rejects.toThrow(/Serviço indisponível/);
+    });
+  });
+
+  describe('exportarXmls', () => {
+    /** Filtro `where` com que a exportação contou os documentos. */
+    const whereDaExportacao = (): Record<string, unknown> => {
+      const [argumento] = mockPrisma.fiscalDocument.count.mock.calls[0] as [
+        { where: Record<string, unknown> },
+      ];
+      return argumento.where;
+    };
+
+    /** Consome o ZIP inteiro para conferir que o stream fecha de verdade. */
+    const lerZip = async (arquivo: Readable): Promise<Buffer> => {
+      const partes: Buffer[] = [];
+      for await (const parte of arquivo) {
+        partes.push(Buffer.from(parte as Buffer));
+      }
+      return Buffer.concat(partes);
+    };
+
+    const periodo = { dataInicio: '2026-08-01', dataFim: '2026-08-31' };
+
+    beforeEach(() => {
+      mockPrisma.fiscalDocument.count.mockResolvedValue(0);
+      mockPrisma.fiscalDocument.findMany.mockResolvedValue([]);
+    });
+
+    it('exporta apenas AUTORIZADO e CANCELADO, da empresa ativa', async () => {
+      await service.exportarXmls('company-1', periodo);
+
+      expect(whereDaExportacao()).toMatchObject({
+        companyId: 'company-1',
+        deletedAt: null,
+        ambiente: FiscalEnvironment.PRODUCAO,
+        status: {
+          in: [FiscalDocumentStatus.AUTORIZADO, FiscalDocumentStatus.CANCELADO],
+        },
+      });
+    });
+
+    it('recorta o período pela data de emissão, com o dia final inteiro', async () => {
+      await service.exportarXmls('company-1', periodo);
+
+      expect(whereDaExportacao().dataEmissao).toEqual({
+        gte: new Date('2026-08-01T00:00:00.000Z'),
+        lte: new Date('2026-08-31T23:59:59.999Z'),
+      });
+    });
+
+    it('assume produção quando o ambiente não é informado', async () => {
+      const { nomeArquivo } = await service.exportarXmls('company-1', periodo);
+
+      expect(whereDaExportacao().ambiente).toBe(FiscalEnvironment.PRODUCAO);
+      expect(nomeArquivo).not.toContain('HOMOLOGACAO');
+    });
+
+    it('exporta homologação só quando pedida explicitamente', async () => {
+      const { nomeArquivo } = await service.exportarXmls('company-1', {
+        ...periodo,
+        ambiente: FiscalEnvironment.HOMOLOGACAO,
+      });
+
+      expect(whereDaExportacao().ambiente).toBe(FiscalEnvironment.HOMOLOGACAO);
+      expect(nomeArquivo).toContain('HOMOLOGACAO-SEM-VALOR-FISCAL');
+    });
+
+    it('mantém o companyId mesmo com estabelecimento de outra empresa', async () => {
+      await service.exportarXmls('company-1', {
+        ...periodo,
+        establishmentId: 'estab-de-outra-empresa',
+      });
+
+      // O filtro do tenant não é substituível por parâmetro de query.
+      expect(whereDaExportacao()).toMatchObject({
+        companyId: 'company-1',
+        establishmentId: 'estab-de-outra-empresa',
+      });
+    });
+
+    it('recusa período acima de 92 dias antes de consultar o banco', async () => {
+      await expect(
+        service.exportarXmls('company-1', {
+          dataInicio: '2026-01-01',
+          dataFim: '2026-12-31',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPrisma.fiscalDocument.count).not.toHaveBeenCalled();
+    });
+
+    it('recusa lote acima de 5.000 documentos antes de montar o ZIP', async () => {
+      mockPrisma.fiscalDocument.count.mockResolvedValue(5001);
+
+      await expect(service.exportarXmls('company-1', periodo)).rejects.toThrow(
+        /5000/,
+      );
+
+      expect(mockPrisma.fiscalDocument.findMany).not.toHaveBeenCalled();
+    });
+
+    it('devolve um ZIP válido quando o período não tem documentos', async () => {
+      const { arquivo } = await service.exportarXmls('company-1', periodo);
+      const zip = await lerZip(arquivo);
+
+      // Assinatura de arquivo ZIP: o período vazio devolve o manifesto, não erro.
+      expect(zip.subarray(0, 2).toString()).toBe('PK');
+      expect(zip.includes('_relacao.csv')).toBe(true);
+    });
+
+    it('monta o ZIP com o XML autorizado e o do cancelamento', async () => {
+      mockPrisma.fiscalDocument.count.mockResolvedValue(2);
+      mockPrisma.fiscalDocument.findMany.mockResolvedValue([
+        {
+          chaveAcesso: '31260851720322000146650010000000071009048390',
+          numero: 7,
+          serie: 1,
+          modelo: 'NFCE',
+          status: FiscalDocumentStatus.CANCELADO,
+          dataAutorizacao: new Date('2026-08-10T14:32:05Z'),
+          valorTotal: null,
+          xmlAutorizado: '<nfeProc>autorizado</nfeProc>',
+          xmlCancelamento: '<procEventoNFe>cancelado</procEventoNFe>',
+        },
+      ]);
+
+      const { arquivo } = await service.exportarXmls('company-1', periodo);
+      const zip = await lerZip(arquivo);
+
+      // Os nomes ficam legíveis no ZIP mesmo com o conteúdo comprimido.
+      expect(
+        zip.includes('31260851720322000146650010000000071009048390-nfe.xml'),
+      ).toBe(true);
+      expect(
+        zip.includes(
+          '31260851720322000146650010000000071009048390-cancelamento.xml',
+        ),
+      ).toBe(true);
     });
   });
 });
