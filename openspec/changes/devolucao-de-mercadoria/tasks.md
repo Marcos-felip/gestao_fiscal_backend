@@ -1,3 +1,10 @@
+> ⏸ **ADIADA em 12/08/2026.** Devolução saiu do escopo atual. O roteiro passou a
+> ser 0, 1, 3, 4 — NFC-e e NF-e dentro do estado, mais os eventos.
+>
+> Quando voltar, note que ela é o **primeiro caso de operação variável** do
+> escopo interno: CFOP 1202 espelhando os impostos da nota original. É ela que
+> justifica a porta `IRegraFiscal` ter uma segunda implementação.
+
 > **Reveja esta proposta antes de começar.** É a escrita mais longe do código
 > real — depende das etapas 1, 2 e 3, nenhuma delas existente quando foi
 > redigida. Rode `openspec-update-change` antes de qualquer implementação.

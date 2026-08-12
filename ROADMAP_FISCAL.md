@@ -33,7 +33,7 @@ da etapa 1.
 | 2 | Regra fiscal por operação | backend, frontend | ⏸ **adiada** — ver abaixo |
 | 3 | NF-e modelo 55: emissão **interna** | motor, backend, frontend | **próxima** |
 | 4 | Eventos: CC-e e inutilização | motor, backend, frontend | depois da 3 |
-| 5 | Devolução de mercadoria | backend, frontend | depois da 3 |
+| 5 | Devolução de mercadoria | backend, frontend | ⏸ **adiada** |
 | 6 | IBS e CBS | motor, backend | 2027 |
 
 > **Escopo definido em 12/08/2026: NFC-e e NF-e, ambas dentro do estado.**
@@ -79,7 +79,8 @@ estado só, a operação praticamente não varia: o mesmo produto tem a mesma
 resposta no balcão e na venda para outra empresa da mesma UF. Ver "Etapa 2
 adiada", abaixo.
 
-**4 e 5 depois de 3** porque os dois operam sobre NF-e emitida.
+**4 depois de 3** porque opera sobre NF-e emitida. **5 foi adiada** em
+12/08/2026, junto com a 2 — devolução não entra no escopo atual.
 
 **6 tem prazo externo.** A CBS entra valendo em 2027. A `Zeus.Net.NFe.NFCe`
 2026.7.16 já traz os grupos da reforma, então o trabalho é de adapter e contrato,
@@ -125,7 +126,9 @@ Qualquer uma destas:
 1. **Venda para fora do estado** — volta CFOP 6xxx, DIFAL, ST interestadual, e
    com eles a decisão de assinar ou construir a matriz.
 2. **Devolução** (etapa 5) — CFOP 1202 espelhando a nota original é a primeira
-   operação que realmente varia dentro do mesmo estado.
+   operação que realmente varia dentro do mesmo estado. **Também adiada em
+   12/08/2026**, o que remove o último caso conhecido de operação variável no
+   escopo atual.
 3. **Produto cuja resposta dependa do comprador** dentro da mesma UF.
 
 Enquanto nenhuma acontecer, a etapa 2 completa é custo sem uso.
