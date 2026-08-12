@@ -145,6 +145,8 @@ describe('ProductsService', () => {
         cfop: '5102',
         origin: 0,
         csosn: '102',
+        cstPis: '07',
+        cstCofins: '07',
       });
 
       expect(mockPrismaService.product.create).toHaveBeenCalledWith(
@@ -203,6 +205,8 @@ describe('ProductsService', () => {
         cfop: '5102',
         origin: 0,
         csosn: null,
+        cstPis: '07',
+        cstCofins: '07',
       });
       mockPrismaService.product.update.mockResolvedValue({});
 
@@ -268,6 +272,8 @@ describe('ProductsService', () => {
           origin: 0,
           csosn: '102',
           cstIcms: null,
+          cstPis: '07',
+          cstCofins: '07',
         },
       ]);
       mockPrismaService.product.count.mockResolvedValue(1);

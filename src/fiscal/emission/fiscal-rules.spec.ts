@@ -1,5 +1,8 @@
 import { TaxRegimeCode } from '@prisma/client';
+import { NfceItemImposto } from '../fiscal-engine/fiscal-engine.interface';
 import {
+  camposExigidosIcms,
+  formaDaContribuicao,
   isCompanyFiscalComplete,
   isCpfCnpjValido,
   isCscValido,
@@ -11,6 +14,7 @@ import {
   mapCrt,
   situacaoTributaria,
   usaCsosn,
+  validarQuadroTributario,
 } from './fiscal-rules';
 
 const empresa = (overrides: Record<string, unknown> = {}) => ({
@@ -28,6 +32,11 @@ const produto = (overrides: Record<string, unknown> = {}) => ({
   origin: 0,
   csosn: '102',
   cstIcms: null,
+  // 07 é o que o backfill gravou: situação não tributada, sem alíquota.
+  cstPis: '07',
+  cstCofins: '07',
+  aliquotaPis: null,
+  aliquotaCofins: null,
   ...overrides,
 });
 
@@ -80,10 +89,42 @@ describe('isProductFiscalComplete', () => {
     ['NCM com menos de 8 dígitos', { ncm: '2202' }],
     ['CFOP que não começa com 5', { cfop: '6102' }],
     ['origem fora da faixa', { origin: 9 }],
-    ['CSOSN não suportado pelo motor', { csosn: '101' }],
+    ['CSOSN inexistente', { csosn: '199' }],
     ['sem situação tributária', { csosn: null }],
+    ['sem CST de PIS', { cstPis: null }],
+    ['sem CST de COFINS', { cstCofins: null }],
+    ['CST de PIS inexistente', { cstPis: '77' }],
   ])('recusa produto com %s', (_campo, override) => {
     expect(isProductFiscalComplete(produto(override))).toBe(false);
+  });
+
+  it('aceita CSOSN que o motor passou a suportar', () => {
+    // 101 era recusado quando a lista era "os que se resolvem sem valores".
+    expect(
+      isProductFiscalComplete(
+        produto({ csosn: '101' }),
+        TaxRegimeCode.SIMPLES_NACIONAL,
+      ),
+    ).toBe(true);
+  });
+
+  it('exige alíquota quando o CST de PIS é tributado por percentual', () => {
+    expect(
+      isProductFiscalComplete(produto({ cstPis: '01', aliquotaPis: null })),
+    ).toBe(false);
+    expect(
+      isProductFiscalComplete(produto({ cstPis: '01', aliquotaPis: 1.65 })),
+    ).toBe(true);
+  });
+
+  it('nomeia o que falta de PIS e COFINS', () => {
+    expect(produto({ cstPis: null, cstCofins: null })).toBeDefined();
+    expect(
+      listarPendenciasFiscais(produto({ cstPis: null, cstCofins: null })),
+    ).toEqual([
+      'CST de PIS ausente ou não reconhecido',
+      'CST de COFINS ausente ou não reconhecido',
+    ]);
   });
 });
 
@@ -229,5 +270,179 @@ describe('isProductFiscalComplete com CRT 4 (MEI)', () => {
 
     expect(pendencias).toHaveLength(1);
     expect(pendencias[0]).toMatch(/CSOSN/);
+  });
+});
+
+describe('camposExigidosIcms', () => {
+  it.each([
+    ['102', []],
+    ['103', []],
+    ['300', []],
+    ['400', []],
+    ['40', []],
+    ['41', []],
+    ['50', []],
+  ])('a situação %s não exige campo nenhum', (situacao, esperado) => {
+    expect(camposExigidosIcms(situacao)).toEqual(esperado);
+  });
+
+  it.each([
+    ['00', ['modBC', 'vBC', 'pICMS', 'vICMS']],
+    ['20', ['modBC', 'pRedBC', 'vBC', 'pICMS', 'vICMS']],
+    ['60', ['vBCSTRet', 'vICMSSTRet']],
+    ['101', ['pCredSN', 'vCredICMSSN']],
+    ['500', ['vBCSTRet', 'vICMSSTRet']],
+    ['900', ['modBC', 'vBC', 'pICMS', 'vICMS']],
+  ])('a situação %s exige os campos do grupo', (situacao, esperado) => {
+    expect(camposExigidosIcms(situacao)).toEqual(esperado);
+  });
+
+  it('devolve undefined para situação que não existe', () => {
+    expect(camposExigidosIcms('199')).toBeUndefined();
+    expect(camposExigidosIcms(null)).toBeUndefined();
+  });
+});
+
+describe('formaDaContribuicao', () => {
+  it.each([
+    ['01', 'percentual'],
+    ['02', 'percentual'],
+    ['03', 'quantidade'],
+    ['07', 'nenhuma'],
+    ['49', 'qualquer'],
+    ['99', 'qualquer'],
+  ])('resolve a forma de apuração do CST %s', (cst, esperado) => {
+    expect(formaDaContribuicao(cst)).toBe(esperado);
+  });
+
+  it('devolve undefined para CST que não existe', () => {
+    expect(formaDaContribuicao('77')).toBeUndefined();
+    expect(formaDaContribuicao(null)).toBeUndefined();
+  });
+});
+
+describe('validarQuadroTributario', () => {
+  const quadro = (overrides: Partial<NfceItemImposto> = {}): NfceItemImposto =>
+    ({
+      icms: { situacao: '102', origem: 0 },
+      pis: { situacao: '07' },
+      cofins: { situacao: '07' },
+      ...overrides,
+    }) as NfceItemImposto;
+
+  it('aceita o quadro do Simples com CSOSN 102 e contribuições não tributadas', () => {
+    expect(validarQuadroTributario(quadro(), 'item 1')).toEqual([]);
+  });
+
+  it('recusa situação de ICMS que não existe, nomeando o código', () => {
+    const problemas = validarQuadroTributario(
+      quadro({ icms: { situacao: '199', origem: 0 } }),
+      'item 1',
+    );
+
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toContain('199');
+  });
+
+  it('nomeia os campos que a situação exige e não vieram', () => {
+    const problemas = validarQuadroTributario(
+      quadro({ icms: { situacao: '00', origem: 0 } }),
+      'item 1 (Refrigerante)',
+    );
+
+    expect(problemas[0]).toBe(
+      'item 1 (Refrigerante): a situação de ICMS 00 exige modBC, vBC, pICMS, vICMS',
+    );
+  });
+
+  it('recusa base de ICMS sem alíquota', () => {
+    const problemas = validarQuadroTributario(
+      quadro({ icms: { situacao: '102', origem: 0, vBC: 10 } }),
+      'item 1',
+    );
+
+    expect(problemas).toContain(
+      'item 1: informe base de cálculo e alíquota de ICMS juntas',
+    );
+  });
+
+  it('recusa origem fora da faixa', () => {
+    const problemas = validarQuadroTributario(
+      quadro({ icms: { situacao: '102', origem: 9 } }),
+      'item 1',
+    );
+
+    expect(problemas).toContain(
+      'item 1: origem da mercadoria ausente ou fora de 0 a 8',
+    );
+  });
+
+  it('recusa contribuição não tributada que trouxe valores', () => {
+    const problemas = validarQuadroTributario(
+      quadro({ pis: { situacao: '07', vBC: 10, pPIS: 1.65, vPIS: 0.17 } }),
+      'item 1',
+    );
+
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatch(/não é tributado/);
+  });
+
+  it('exige base, alíquota e valor no CST tributado por percentual', () => {
+    const problemas = validarQuadroTributario(
+      quadro({ pis: { situacao: '01' } }),
+      'item 1',
+    );
+
+    expect(problemas).toEqual([
+      'item 1: o CST de PIS 01 exige base de cálculo e alíquota',
+      'item 1: informe o valor de PIS',
+    ]);
+  });
+
+  it('aceita a apuração por quantidade', () => {
+    const problemas = validarQuadroTributario(
+      quadro({
+        pis: { situacao: '03', qBCProd: 2, vAliqProd: 0.05, vPIS: 0.1 },
+        cofins: {
+          situacao: '03',
+          qBCProd: 2,
+          vAliqProd: 0.23,
+          vCOFINS: 0.46,
+        },
+      }),
+      'item 1',
+    );
+
+    expect(problemas).toEqual([]);
+  });
+
+  it('recusa as duas formas de apuração ao mesmo tempo', () => {
+    const problemas = validarQuadroTributario(
+      quadro({
+        pis: {
+          situacao: '99',
+          vBC: 10,
+          pPIS: 1.65,
+          qBCProd: 2,
+          vAliqProd: 0.05,
+          vPIS: 0.17,
+        },
+      }),
+      'item 1',
+    );
+
+    expect(problemas).toContain(
+      'item 1: o CST de PIS 99 não aceita as duas formas de apuração ao mesmo tempo',
+    );
+  });
+
+  it('recusa CST de COFINS que não existe', () => {
+    const problemas = validarQuadroTributario(
+      quadro({ cofins: { situacao: '77' } }),
+      'item 1',
+    );
+
+    expect(problemas[0]).toContain('COFINS');
+    expect(problemas[0]).toContain('77');
   });
 });

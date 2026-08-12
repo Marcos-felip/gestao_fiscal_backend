@@ -20,7 +20,7 @@ import {
 const CHAVE = '3'.repeat(44);
 
 const snapshot: FiscalSnapshot = {
-  versao: 1,
+  versao: 2,
   venda: {
     id: 'sale-1',
     numero: 1001,
@@ -52,8 +52,11 @@ const snapshot: FiscalSnapshot = {
       unidadeComercial: 'UN',
       quantidade: 2,
       valorUnitario: 5,
-      origem: 0,
-      csosn: '102',
+      imposto: {
+        icms: { situacao: '102', origem: 0 },
+        pis: { situacao: '07' },
+        cofins: { situacao: '07' },
+      },
     },
   ],
   pagamentos: [{ tipo: 'dinheiro', valor: 10 }],

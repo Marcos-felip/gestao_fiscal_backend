@@ -35,6 +35,11 @@ const produto = (overrides: Record<string, unknown> = {}) => ({
   origin: 0,
   csosn: '102',
   cstIcms: null,
+  cstPis: '07',
+  cstCofins: '07',
+  aliquotaIcms: null,
+  aliquotaPis: null,
+  aliquotaCofins: null,
   ...overrides,
 });
 
@@ -93,7 +98,7 @@ describe('buildFiscalSnapshot — emitente MEI', () => {
       venda(),
     );
 
-    expect(snapshot.itens[0].csosn).toBe('102');
+    expect(snapshot.itens[0].imposto.icms.situacao).toBe('102');
   });
 
   it('recusa item que só tem CST de ICMS', () => {
@@ -101,7 +106,9 @@ describe('buildFiscalSnapshot — emitente MEI', () => {
       buildFiscalSnapshot(
         empresa({ crt: TaxRegimeCode.SIMPLES_MEI }),
         venda({
-          items: [{ ...item(), product: produto({ csosn: null, cstIcms: '40' }) }],
+          items: [
+            { ...item(), product: produto({ csosn: null, cstIcms: '40' }) },
+          ],
         }),
       ),
     ).toThrow(/CSOSN/);
@@ -150,7 +157,7 @@ describe('buildFiscalSnapshot', () => {
   it('monta emitente, itens e pagamentos no formato do motor', () => {
     const snapshot = buildFiscalSnapshot(empresa(), venda());
 
-    expect(snapshot.versao).toBe(1);
+    expect(snapshot.versao).toBe(2);
     expect(snapshot.emitente).toMatchObject({
       cnpj: '11222333000181',
       crt: '1',
@@ -172,12 +179,128 @@ describe('buildFiscalSnapshot', () => {
         quantidade: 2,
         valorUnitario: 5,
         gtin: '7891000100103',
-        origem: 0,
-        csosn: '102',
+        imposto: {
+          // CSOSN 102 não comporta valores, e o CST 07 de PIS/COFINS é situação
+          // não tributada: o quadro correto deste item é só a classificação.
+          icms: { situacao: '102', origem: 0 },
+          pis: {
+            situacao: '07',
+            vBC: undefined,
+            pPIS: undefined,
+            qBCProd: undefined,
+            vAliqProd: undefined,
+            vPIS: undefined,
+          },
+          cofins: {
+            situacao: '07',
+            vBC: undefined,
+            pCOFINS: undefined,
+            qBCProd: undefined,
+            vAliqProd: undefined,
+            vCOFINS: undefined,
+          },
+        },
       },
     ]);
     expect(snapshot.pagamentos).toEqual([{ tipo: 'dinheiro', valor: 10 }]);
     expect(snapshot.valorTotal).toBe(10);
+    expect(snapshot.totais).toEqual({
+      vProd: 10,
+      vBC: 0,
+      vICMS: 0,
+      vST: 0,
+      vPIS: 0,
+      vCOFINS: 0,
+      vNF: 10,
+    });
+  });
+
+  it('compõe base, alíquota e valor quando a situação exige', () => {
+    const snapshot = buildFiscalSnapshot(
+      empresa({ crt: TaxRegimeCode.REGIME_NORMAL }),
+      venda({
+        items: [
+          item({
+            product: produto({
+              csosn: null,
+              cstIcms: '00',
+              aliquotaIcms: 18,
+              cstPis: '01',
+              aliquotaPis: 1.65,
+              cstCofins: '01',
+              aliquotaCofins: 7.6,
+            }),
+          }),
+        ],
+      }),
+    );
+
+    const { icms, pis, cofins } = snapshot.itens[0].imposto;
+
+    expect(icms).toMatchObject({
+      situacao: '00',
+      modBC: 3,
+      vBC: 10,
+      pICMS: 18,
+      vICMS: 1.8,
+    });
+    expect(pis).toMatchObject({
+      situacao: '01',
+      vBC: 10,
+      pPIS: 1.65,
+      vPIS: 0.17,
+    });
+    expect(cofins).toMatchObject({
+      situacao: '01',
+      vBC: 10,
+      pCOFINS: 7.6,
+      vCOFINS: 0.76,
+    });
+    expect(snapshot.totais).toMatchObject({
+      vBC: 10,
+      vICMS: 1.8,
+      vPIS: 0.17,
+      vCOFINS: 0.76,
+    });
+  });
+
+  it('recusa situação tributada sem a alíquota cadastrada', () => {
+    expect(() =>
+      buildFiscalSnapshot(
+        empresa({ crt: TaxRegimeCode.REGIME_NORMAL }),
+        venda({
+          items: [
+            item({
+              product: produto({
+                csosn: null,
+                cstIcms: '00',
+                aliquotaIcms: null,
+              }),
+            }),
+          ],
+        }),
+      ),
+    ).toThrow(/informe a alíquota de ICMS/);
+  });
+
+  it('apura PIS por quantidade quando o CST é 03', () => {
+    const snapshot = buildFiscalSnapshot(
+      empresa(),
+      venda({
+        items: [
+          item({
+            product: produto({ cstPis: '03', aliquotaPis: 0.05 }),
+          }),
+        ],
+      }),
+    );
+
+    expect(snapshot.itens[0].imposto.pis).toMatchObject({
+      situacao: '03',
+      qBCProd: 2,
+      vAliqProd: 0.05,
+      vPIS: 0.1,
+    });
   });
 
   it('omite o destinatário sem cliente e preenche quando há', () => {
@@ -211,7 +334,7 @@ describe('buildFiscalSnapshot', () => {
     );
 
     expect(snapshot.emitente.crt).toBe('3');
-    expect(snapshot.itens[0].csosn).toBe('40');
+    expect(snapshot.itens[0].imposto.icms.situacao).toBe('40');
   });
 
   describe('rateio do desconto', () => {
@@ -413,13 +536,25 @@ describe('buildFiscalSnapshot', () => {
       expect(mensagem).toContain('origem da mercadoria');
     });
 
-    it('recusa CSOSN fora do conjunto suportado pelo motor', () => {
+    it('recusa CSOSN que não existe', () => {
+      expect(() =>
+        buildFiscalSnapshot(
+          empresa(),
+          venda({ items: [item({ product: produto({ csosn: '199' }) })] }),
+        ),
+      ).toThrow(/CSOSN não suportado/);
+    });
+
+    it('recusa situação que depende da regra fiscal por operação', () => {
+      // O motor aceita CSOSN 101, mas ele exige crédito do Simples — que sai da
+      // matriz tributária da etapa 2, não do cadastro do produto. Recusar aqui
+      // é melhor que gravar um valor inventado num snapshot congelado.
       expect(() =>
         buildFiscalSnapshot(
           empresa(),
           venda({ items: [item({ product: produto({ csosn: '101' }) })] }),
         ),
-      ).toThrow(/CSOSN não suportado/);
+      ).toThrow(/pCredSN, vCredICMSSN/);
     });
 
     it('recusa endereço incompleto do emitente', () => {
