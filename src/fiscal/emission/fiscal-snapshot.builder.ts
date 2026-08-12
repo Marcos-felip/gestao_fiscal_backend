@@ -1,14 +1,20 @@
 import { BadRequestException } from '@nestjs/common';
 import { PaymentMethod, Prisma, TaxRegimeCode } from '@prisma/client';
 import {
+  NfceCofins,
   NfceDestinatario,
   NfceEmitente,
+  NfceIcms,
   NfceItem,
+  NfceItemImposto,
   NfcePagamento,
+  NfcePis,
 } from '../fiscal-engine/fiscal-engine.interface';
 import {
   apenasDigitos,
   arredondar,
+  camposExigidosIcms,
+  formaDaContribuicao,
   isCepValido,
   isCestValido,
   isCfopValido,
@@ -25,6 +31,7 @@ import {
   somar,
   TOLERANCIA_MONETARIA,
   usaCsosn,
+  validarQuadroTributario,
 } from './fiscal-rules';
 
 /**
@@ -34,8 +41,45 @@ import {
  * que vale dali em diante: alterar cadastro de produto, empresa ou cliente
  * depois não muda nota já emitida.
  */
+/**
+ * Versões do snapshot.
+ *
+ * - **1** — item sem quadro tributário. Formato da Fase A; ainda é **lido**
+ *   para consulta e exibição de documento antigo, mas **não emite**: o motor
+ *   passou a exigir o bloco `imposto` e não tem mais o caminho antigo.
+ * - **2** — item com quadro tributário e totais fiscais. Todo documento novo
+ *   nasce aqui.
+ */
+export type FiscalSnapshotVersao = 1 | 2;
+
+/** Versão gravada em todo documento criado a partir desta change. */
+export const VERSAO_SNAPSHOT_ATUAL = 2 satisfies FiscalSnapshotVersao;
+
+/**
+ * Totais fiscais da nota, somados dos itens.
+ *
+ * Não vão no payload do motor: o contrato de `POST /api/nfce/emit` só tem
+ * `valorTotal`, e o próprio motor compõe o grupo `<total>` do XML a partir dos
+ * itens. Ficam no snapshot para auditoria e para a conferência local — e
+ * porque a NF-e da etapa 3 vai precisar deles.
+ */
+export interface FiscalTotais {
+  /** Σ do valor dos produtos */
+  vProd: number;
+  /** Σ da base de cálculo do ICMS */
+  vBC: number;
+  /** Σ do ICMS próprio */
+  vICMS: number;
+  /** Σ do ICMS por substituição tributária */
+  vST: number;
+  vPIS: number;
+  vCOFINS: number;
+  /** Valor total da nota */
+  vNF: number;
+}
+
 export interface FiscalSnapshot {
-  versao: 1;
+  versao: FiscalSnapshotVersao;
   venda: {
     id: string;
     numero: number;
@@ -50,6 +94,11 @@ export interface FiscalSnapshot {
   pagamentos: NfcePagamento[];
   /** Σ dos itens já com o desconto rateado */
   valorTotal: number;
+  /**
+   * Totais fiscais somados dos itens. Ausente nos snapshots versão 1, que
+   * nasceram antes de o item carregar imposto.
+   */
+  totais?: FiscalTotais;
   /**
    * Valor recebido e troco do pagamento em dinheiro.
    *
@@ -105,7 +154,7 @@ export function buildFiscalSnapshot(
   }
 
   return {
-    versao: 1,
+    versao: VERSAO_SNAPSHOT_ATUAL,
     venda: {
       id: sale.id,
       numero: sale.saleNumber,
@@ -119,7 +168,31 @@ export function buildFiscalSnapshot(
     itens,
     pagamentos,
     valorTotal,
+    totais: montarTotais(itens, valorTotal),
     recebimento: montarRecebimento(sale),
+  };
+}
+
+/**
+ * Totais fiscais como soma dos itens — nunca número solto.
+ *
+ * Somar aqui é o que permite `conferirSomatorios` recusar a emissão quando o
+ * total e os itens divergem, em vez de a SEFAZ recusar depois.
+ */
+function montarTotais(itens: NfceItem[], valorTotal: number): FiscalTotais {
+  const somarPorItem = (extrair: (item: NfceItem) => number | undefined) =>
+    somar(itens.map((item) => extrair(item) ?? 0));
+
+  return {
+    vProd: somar(
+      itens.map((item) => arredondar(item.quantidade * item.valorUnitario)),
+    ),
+    vBC: somarPorItem((item) => item.imposto.icms.vBC),
+    vICMS: somarPorItem((item) => item.imposto.icms.vICMS),
+    vST: somarPorItem((item) => item.imposto.icms.vICMSST),
+    vPIS: somarPorItem((item) => item.imposto.pis.vPIS),
+    vCOFINS: somarPorItem((item) => item.imposto.cofins.vCOFINS),
+    vNF: valorTotal,
   };
 }
 
@@ -303,6 +376,24 @@ function montarItens(
       );
     }
 
+    const rotulo = `item ${posicao} (${produto.name})`;
+    const problemasAntes = problemas.length;
+    const imposto = montarImposto(
+      produto,
+      situacao,
+      totaisLiquidos[indice],
+      quantidade,
+      rotulo,
+      problemas,
+    );
+
+    // A conferência final só roda quando a montagem não achou nada: se ela já
+    // explicou por que o quadro está incompleto, revalidar só repetiria a
+    // mesma queixa com outras palavras.
+    if (problemas.length === problemasAntes) {
+      problemas.push(...validarQuadroTributario(imposto, rotulo));
+    }
+
     return {
       numeroItem: posicao,
       codigoProduto: limitar(produto.sku ?? produto.id, 60),
@@ -314,8 +405,7 @@ function montarItens(
       quantidade,
       valorUnitario,
       gtin: normalizarGtin(produto.barcode),
-      origem: produto.origin ?? 0,
-      csosn: situacao ?? '',
+      imposto,
     } satisfies NfceItem;
   });
 
@@ -332,6 +422,220 @@ function montarItens(
   }
 
   return { itens, valorTotal, subtotal, desconto };
+}
+
+// ──────────────────────────────────────────────
+// Quadro tributário do item
+// ──────────────────────────────────────────────
+
+/** Modalidade da base de cálculo: 3 = valor da operação. */
+const MOD_BC_VALOR_DA_OPERACAO = 3;
+
+/**
+ * Compõe o quadro tributário do item a partir do cadastro do produto.
+ *
+ * **Esta etapa não calcula imposto — ela captura o dado.** O que sai daqui é
+ * aritmética sobre o que o cadastro já sabe: base é o valor do item, alíquota é
+ * a cadastrada, valor é o produto dos dois.
+ *
+ * O que exige regra fiscal de verdade — substituição tributária, MVA, redução
+ * de base, crédito do Simples — **não** é adivinhado: o item é recusado
+ * nomeando o campo que falta. Quem resolve isso é a etapa 2 do roteiro fiscal
+ * (`regra-fiscal-por-operacao`), e inventar aqui um valor plausível seria
+ * gravá-lo num snapshot congelado que ninguém mais revisa.
+ */
+function montarImposto(
+  produto: SaleForSnapshot['items'][number]['product'],
+  situacao: string | undefined,
+  valorLiquido: number,
+  quantidade: number,
+  rotulo: string,
+  problemas: string[],
+): NfceItemImposto {
+  return {
+    icms: montarIcms(produto, situacao, valorLiquido, rotulo, problemas),
+    pis: montarPis(produto, valorLiquido, quantidade, rotulo, problemas),
+    cofins: montarCofins(produto, valorLiquido, quantidade, rotulo, problemas),
+  };
+}
+
+function montarIcms(
+  produto: SaleForSnapshot['items'][number]['product'],
+  situacao: string | undefined,
+  valorLiquido: number,
+  rotulo: string,
+  problemas: string[],
+): NfceIcms {
+  const icms: NfceIcms = {
+    situacao: situacao ?? '',
+    origem: produto.origin ?? 0,
+  };
+
+  const exigidos = camposExigidosIcms(situacao);
+  if (!exigidos) return icms;
+
+  // Campos que dependem de matriz tributária, não do cadastro do produto.
+  const foraDoAlcance = exigidos.filter((campo) =>
+    (
+      [
+        'modBCST',
+        'vBCST',
+        'pICMSST',
+        'vICMSST',
+        'vBCSTRet',
+        'vICMSSTRet',
+        'pCredSN',
+        'vCredICMSSN',
+        'pRedBC',
+      ] as readonly string[]
+    ).includes(campo),
+  );
+
+  if (foraDoAlcance.length > 0) {
+    problemas.push(
+      `${rotulo}: a situação de ICMS ${icms.situacao} exige ${foraDoAlcance.join(', ')}, ` +
+        'que dependem da regra fiscal por operação e ainda não são calculados',
+    );
+    return icms;
+  }
+
+  if (exigidos.includes('vBC')) {
+    const aliquota = produto.aliquotaIcms;
+
+    if (aliquota === null) {
+      problemas.push(
+        `${rotulo}: informe a alíquota de ICMS — a situação ${icms.situacao} exige base e valor`,
+      );
+      return icms;
+    }
+
+    const percentual = Number(aliquota);
+    icms.modBC = MOD_BC_VALOR_DA_OPERACAO;
+    icms.vBC = arredondar(valorLiquido);
+    icms.pICMS = percentual;
+    icms.vICMS = arredondar((icms.vBC * percentual) / 100);
+  }
+
+  return icms;
+}
+
+function montarPis(
+  produto: SaleForSnapshot['items'][number]['product'],
+  valorLiquido: number,
+  quantidade: number,
+  rotulo: string,
+  problemas: string[],
+): NfcePis {
+  const apurada = apurarContribuicao(
+    'PIS',
+    produto.cstPis,
+    produto.aliquotaPis,
+    valorLiquido,
+    quantidade,
+    rotulo,
+    problemas,
+  );
+
+  return {
+    situacao: apurada.situacao,
+    vBC: apurada.vBC,
+    pPIS: apurada.aliquota,
+    qBCProd: apurada.qBCProd,
+    vAliqProd: apurada.vAliqProd,
+    vPIS: apurada.valor,
+  };
+}
+
+function montarCofins(
+  produto: SaleForSnapshot['items'][number]['product'],
+  valorLiquido: number,
+  quantidade: number,
+  rotulo: string,
+  problemas: string[],
+): NfceCofins {
+  const apurada = apurarContribuicao(
+    'COFINS',
+    produto.cstCofins,
+    produto.aliquotaCofins,
+    valorLiquido,
+    quantidade,
+    rotulo,
+    problemas,
+  );
+
+  return {
+    situacao: apurada.situacao,
+    vBC: apurada.vBC,
+    pCOFINS: apurada.aliquota,
+    qBCProd: apurada.qBCProd,
+    vAliqProd: apurada.vAliqProd,
+    vCOFINS: apurada.valor,
+  };
+}
+
+/** Resultado comum de PIS e COFINS — os dois apuram igual, só mudam os nomes. */
+interface ContribuicaoApurada {
+  situacao: string;
+  vBC?: number;
+  aliquota?: number;
+  qBCProd?: number;
+  vAliqProd?: number;
+  valor?: number;
+}
+
+function apurarContribuicao(
+  nome: string,
+  cst: string | null,
+  aliquotaCadastrada: Prisma.Decimal | null,
+  valorLiquido: number,
+  quantidade: number,
+  rotulo: string,
+  problemas: string[],
+): ContribuicaoApurada {
+  const situacao = cst?.trim() ?? '';
+  const forma = formaDaContribuicao(situacao);
+
+  if (!forma) {
+    problemas.push(
+      `${rotulo}: informe o CST de ${nome} no cadastro do produto`,
+    );
+    return { situacao };
+  }
+
+  // Situação não tributada não comporta base, alíquota nem valor.
+  if (forma === 'nenhuma') {
+    return { situacao };
+  }
+
+  if (aliquotaCadastrada === null) {
+    problemas.push(
+      `${rotulo}: informe a alíquota de ${nome} — o CST ${situacao} é tributado`,
+    );
+    return { situacao };
+  }
+
+  const aliquota = Number(aliquotaCadastrada);
+
+  // Apuração por quantidade: a alíquota cadastrada é valor por unidade.
+  if (forma === 'quantidade') {
+    return {
+      situacao,
+      qBCProd: quantidade,
+      vAliqProd: aliquota,
+      valor: arredondar(quantidade * aliquota),
+    };
+  }
+
+  // `percentual` e `qualquer` apuram igual; "outras operações" aceitaria a
+  // forma por quantidade também, mas o cadastro só descreve uma alíquota.
+  const vBC = arredondar(valorLiquido);
+
+  return {
+    situacao,
+    vBC,
+    aliquota,
+    valor: arredondar((vBC * aliquota) / 100),
+  };
 }
 
 /**

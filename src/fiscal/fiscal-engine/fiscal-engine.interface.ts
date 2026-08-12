@@ -59,11 +59,41 @@ export type FiscalPaymentType =
   | 'sem_pagamento'
   | 'outro';
 
-/** CSOSN aceitos para emitente do Simples Nacional (CRT 1 e 2). */
-export const CSOSN_SUPORTADOS = ['102', '103', '300', '400', '500'] as const;
+/**
+ * CSOSN aceitos para emitente do Simples Nacional (CRT 1, 2 e 4).
+ *
+ * A lista deixou de ser "os que se resolvem sem valores": o motor passou a
+ * receber o quadro tributário pronto, então aceita toda situação para a qual
+ * exista grupo no XML. Quais campos cada uma exige está em
+ * {@link CAMPOS_POR_CSOSN}, em `fiscal-rules.ts`.
+ */
+export const CSOSN_SUPORTADOS = [
+  '101',
+  '102',
+  '103',
+  '201',
+  '202',
+  '203',
+  '300',
+  '400',
+  '500',
+  '900',
+] as const;
 
 /** CST de ICMS aceitos para emitente do Regime Normal (CRT 3). */
-export const CST_ICMS_SUPORTADOS = ['40', '41', '50'] as const;
+export const CST_ICMS_SUPORTADOS = [
+  '00',
+  '10',
+  '20',
+  '30',
+  '40',
+  '41',
+  '50',
+  '51',
+  '60',
+  '70',
+  '90',
+] as const;
 
 // ──────────────────────────────────────────────
 // Credenciais do certificado (sempre no corpo)
@@ -120,6 +150,102 @@ export interface NfceDestinatario {
   cep?: string;
 }
 
+/**
+ * Quadro de ICMS do item.
+ *
+ * Os nomes são os das tags do layout da NF-e (`vBC`, `pICMS`, …) e viajam
+ * assim no JSON — o motor os desserializa por nome exato.
+ *
+ * Quase tudo é opcional porque o subconjunto exigido depende da situação
+ * tributária. A tabela está em `fiscal-rules.ts`, não aqui.
+ */
+export interface NfceIcms {
+  /** CSOSN (3 dígitos, Simples) ou CST (2 dígitos, Regime Normal) */
+  situacao: string;
+  /** Origem da mercadoria, 0 a 8 */
+  origem: number;
+
+  // ICMS próprio
+  modBC?: number;
+  /** Base de cálculo, **já reduzida** quando há `pRedBC` */
+  vBC?: number;
+  pRedBC?: number;
+  pICMS?: number;
+  vICMS?: number;
+
+  // Substituição tributária
+  modBCST?: number;
+  pMVAST?: number;
+  pRedBCST?: number;
+  vBCST?: number;
+  pICMSST?: number;
+  vICMSST?: number;
+
+  // ST retida anteriormente (CST 60 / CSOSN 500)
+  vBCSTRet?: number;
+  vICMSSTRet?: number;
+
+  // Fundo de combate à pobreza
+  pFCP?: number;
+  vFCP?: number;
+  vBCFCPST?: number;
+  pFCPST?: number;
+  vFCPST?: number;
+
+  // Crédito do Simples Nacional
+  pCredSN?: number;
+  vCredICMSSN?: number;
+}
+
+/**
+ * Base comum de PIS e COFINS.
+ *
+ * Duas formas de apuração, e o payload escolhe pelos campos que preenche:
+ * **percentual** (`vBC` + alíquota) ou **quantidade** (`qBCProd` +
+ * `vAliqProd`). Nunca as duas juntas.
+ */
+interface NfceContribuicaoBase {
+  /** CST de 2 dígitos */
+  situacao: string;
+  vBC?: number;
+  qBCProd?: number;
+  vAliqProd?: number;
+}
+
+export interface NfcePis extends NfceContribuicaoBase {
+  pPIS?: number;
+  vPIS?: number;
+}
+
+export interface NfceCofins extends NfceContribuicaoBase {
+  pCOFINS?: number;
+  vCOFINS?: number;
+}
+
+/** Quadro de IPI. Opcional: a maioria das NFC-e não destaca IPI. */
+export interface NfceIpi {
+  /** CST de 2 dígitos */
+  situacao: string;
+  vBC?: number;
+  pIPI?: number;
+  vIPI?: number;
+  /** Código de enquadramento legal. Ausente = `999` */
+  cEnq?: string;
+}
+
+/**
+ * Quadro tributário do item, decidido e calculado aqui.
+ *
+ * O motor apenas traduz para os grupos de imposto do XML — ele não escolhe
+ * situação tributária nem completa valor que não veio.
+ */
+export interface NfceItemImposto {
+  icms: NfceIcms;
+  pis: NfcePis;
+  cofins: NfceCofins;
+  ipi?: NfceIpi;
+}
+
 export interface NfceItem {
   numeroItem: number;
   /** Máx. 60 caracteres */
@@ -138,13 +264,14 @@ export interface NfceItem {
   valorUnitario: number;
   /** Vazio = "SEM GTIN"; senão 8/12/13/14 dígitos com DV válido */
   gtin?: string;
-  /** Origem da mercadoria, 0 a 8 */
-  origem: number;
   /**
-   * CSOSN (CRT 1/2) ou CST de ICMS (CRT 3), restrito ao conjunto suportado.
-   * O motor deriva o ICMS de origem + csosn; PIS/COFINS ficam com CST 07.
+   * Quadro tributário completo do item. **Obrigatório.**
+   *
+   * A origem da mercadoria e a situação tributária moram dentro de
+   * `imposto.icms` — os campos `origem` e `csosn` que existiam aqui saíram do
+   * contrato do motor.
    */
-  csosn: string;
+  imposto: NfceItemImposto;
 }
 
 export interface NfcePagamento {

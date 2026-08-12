@@ -11,6 +11,8 @@ import {
   FiscalAmbiente,
   FiscalCrt,
   FiscalPaymentType,
+  NfceIcms,
+  NfceItemImposto,
 } from '../fiscal-engine/fiscal-engine.interface';
 
 /**
@@ -98,6 +100,328 @@ export function situacaoTributaria(
     return isCsosnSuportado(csosn) ? csosn!.trim() : undefined;
   }
   return isCstIcmsSuportado(cstIcms) ? cstIcms!.trim() : undefined;
+}
+
+// ──────────────────────────────────────────────
+// Quadro tributário do item
+// ──────────────────────────────────────────────
+
+/**
+ * Campos do grupo de ICMS que uma situação tributária pode exigir.
+ *
+ * A tabela abaixo é espelho da que vive em
+ * `FiscalService.Domain.Tributacao.SituacaoIcms`, no motor. Duplicar é
+ * deliberado: lá porque ele monta o XML, aqui porque é onde o erro ainda pode
+ * ser explicado ao usuário antes de queimar um número de nota.
+ */
+export type CampoIcms =
+  | 'modBC'
+  | 'vBC'
+  | 'pRedBC'
+  | 'pICMS'
+  | 'vICMS'
+  | 'modBCST'
+  | 'vBCST'
+  | 'pICMSST'
+  | 'vICMSST'
+  | 'vBCSTRet'
+  | 'vICMSSTRet'
+  | 'pCredSN'
+  | 'vCredICMSSN';
+
+/** Campos exigidos por CSOSN (Simples Nacional). */
+export const CAMPOS_POR_CSOSN: Readonly<Record<string, readonly CampoIcms[]>> =
+  {
+    // Tributada com permissão de crédito.
+    '101': ['pCredSN', 'vCredICMSSN'],
+    // Sem crédito / isenção / imune / não tributada: só origem e CSOSN.
+    '102': [],
+    '103': [],
+    '300': [],
+    '400': [],
+    // Com crédito e com cobrança do ICMS por substituição tributária.
+    '201': ['modBCST', 'vBCST', 'pICMSST', 'vICMSST', 'pCredSN', 'vCredICMSSN'],
+    '202': ['modBCST', 'vBCST', 'pICMSST', 'vICMSST'],
+    '203': ['modBCST', 'vBCST', 'pICMSST', 'vICMSST'],
+    // ICMS cobrado anteriormente por substituição tributária.
+    '500': ['vBCSTRet', 'vICMSSTRet'],
+    // Outras.
+    '900': ['modBC', 'vBC', 'pICMS', 'vICMS'],
+  };
+
+/** Campos exigidos por CST de ICMS (Regime Normal). */
+export const CAMPOS_POR_CST_ICMS: Readonly<
+  Record<string, readonly CampoIcms[]>
+> = {
+  '00': ['modBC', 'vBC', 'pICMS', 'vICMS'],
+  '10': [
+    'modBC',
+    'vBC',
+    'pICMS',
+    'vICMS',
+    'modBCST',
+    'vBCST',
+    'pICMSST',
+    'vICMSST',
+  ],
+  '20': ['modBC', 'pRedBC', 'vBC', 'pICMS', 'vICMS'],
+  '30': ['modBCST', 'vBCST', 'pICMSST', 'vICMSST'],
+  // Isenta / não tributada / suspensão: o grupo comporta só origem e CST.
+  '40': [],
+  '41': [],
+  '50': [],
+  '51': ['modBC', 'vBC', 'pICMS', 'vICMS'],
+  '60': ['vBCSTRet', 'vICMSSTRet'],
+  '70': [
+    'modBC',
+    'pRedBC',
+    'vBC',
+    'pICMS',
+    'vICMS',
+    'modBCST',
+    'vBCST',
+    'pICMSST',
+    'vICMSST',
+  ],
+  '90': ['modBC', 'vBC', 'pICMS', 'vICMS'],
+};
+
+/** Campos que a situação de ICMS exige, ou `undefined` se ela não existe. */
+export function camposExigidosIcms(
+  situacao?: string | null,
+): readonly CampoIcms[] | undefined {
+  const codigo = situacao?.trim() ?? '';
+  return CAMPOS_POR_CSOSN[codigo] ?? CAMPOS_POR_CST_ICMS[codigo];
+}
+
+/**
+ * Forma de apuração de PIS/COFINS conforme o CST.
+ *
+ * - `percentual`: base × alíquota (`vBC` + `pPIS`/`pCOFINS`)
+ * - `quantidade`: quantidade × alíquota por unidade (`qBCProd` + `vAliqProd`)
+ * - `nenhuma`: situação não tributada — não leva base, alíquota nem valor
+ * - `qualquer`: "outras operações" — uma das duas formas, nunca as duas
+ */
+export type FormaContribuicao =
+  | 'percentual'
+  | 'quantidade'
+  | 'nenhuma'
+  | 'qualquer';
+
+/** CST de PIS/COFINS tributado por alíquota percentual. */
+const CST_CONTRIBUICAO_PERCENTUAL = ['01', '02'];
+
+/** CST de PIS/COFINS tributado por alíquota em valor, sobre a quantidade. */
+const CST_CONTRIBUICAO_QUANTIDADE = ['03'];
+
+/** CST de PIS/COFINS sem tributação: isenta, alíquota zero, suspensão etc. */
+const CST_CONTRIBUICAO_SEM_TRIBUTACAO = ['04', '05', '06', '07', '08', '09'];
+
+/** CST de "outras operações": aceita qualquer uma das duas formas. */
+const CST_CONTRIBUICAO_OUTRAS = [
+  '49',
+  '50',
+  '51',
+  '52',
+  '53',
+  '54',
+  '55',
+  '56',
+  '60',
+  '61',
+  '62',
+  '63',
+  '64',
+  '65',
+  '66',
+  '67',
+  '70',
+  '71',
+  '72',
+  '73',
+  '74',
+  '75',
+  '98',
+  '99',
+];
+
+/** Todos os CST de PIS/COFINS que o motor sabe traduzir. */
+export const CST_CONTRIBUICAO_SUPORTADOS = [
+  ...CST_CONTRIBUICAO_PERCENTUAL,
+  ...CST_CONTRIBUICAO_QUANTIDADE,
+  ...CST_CONTRIBUICAO_SEM_TRIBUTACAO,
+  ...CST_CONTRIBUICAO_OUTRAS,
+];
+
+/** Forma de apuração do CST informado, ou `undefined` se ele não existe. */
+export function formaDaContribuicao(
+  cst?: string | null,
+): FormaContribuicao | undefined {
+  const codigo = cst?.trim() ?? '';
+
+  if (CST_CONTRIBUICAO_PERCENTUAL.includes(codigo)) return 'percentual';
+  if (CST_CONTRIBUICAO_QUANTIDADE.includes(codigo)) return 'quantidade';
+  if (CST_CONTRIBUICAO_SEM_TRIBUTACAO.includes(codigo)) return 'nenhuma';
+  if (CST_CONTRIBUICAO_OUTRAS.includes(codigo)) return 'qualquer';
+
+  return undefined;
+}
+
+/** `true` quando o campo veio preenchido com um número utilizável. */
+function informado(valor?: number | null): boolean {
+  return valor !== null && valor !== undefined && Number.isFinite(valor);
+}
+
+/**
+ * Confere se o quadro tributário do item tem o que a situação declarada exige.
+ *
+ * Devolve a lista de problemas em português, vazia quando está tudo certo. É a
+ * mesma checagem que o motor faz — repetida aqui para o erro chegar ao usuário
+ * como configuração pendente, e não como rejeição da SEFAZ com o número da nota
+ * já consumido.
+ */
+export function validarQuadroTributario(
+  imposto: NfceItemImposto,
+  rotulo: string,
+): string[] {
+  return [
+    ...validarIcms(imposto.icms, rotulo),
+    ...validarContribuicao(
+      'PIS',
+      imposto.pis.situacao,
+      {
+        vBC: imposto.pis.vBC,
+        aliquota: imposto.pis.pPIS,
+        qBCProd: imposto.pis.qBCProd,
+        vAliqProd: imposto.pis.vAliqProd,
+        valor: imposto.pis.vPIS,
+      },
+      rotulo,
+    ),
+    ...validarContribuicao(
+      'COFINS',
+      imposto.cofins.situacao,
+      {
+        vBC: imposto.cofins.vBC,
+        aliquota: imposto.cofins.pCOFINS,
+        qBCProd: imposto.cofins.qBCProd,
+        vAliqProd: imposto.cofins.vAliqProd,
+        valor: imposto.cofins.vCOFINS,
+      },
+      rotulo,
+    ),
+  ];
+}
+
+function validarIcms(icms: NfceIcms, rotulo: string): string[] {
+  const problemas: string[] = [];
+  const situacao = icms.situacao?.trim() ?? '';
+  const exigidos = camposExigidosIcms(situacao);
+
+  if (!exigidos) {
+    problemas.push(
+      `${rotulo}: situação tributária de ICMS "${situacao || '(vazia)'}" não é reconhecida`,
+    );
+    return problemas;
+  }
+
+  if (!isOrigemValida(icms.origem)) {
+    problemas.push(`${rotulo}: origem da mercadoria ausente ou fora de 0 a 8`);
+  }
+
+  const faltando = exigidos.filter((campo) => !informado(icms[campo]));
+
+  if (faltando.length > 0) {
+    problemas.push(
+      `${rotulo}: a situação de ICMS ${situacao} exige ${faltando.join(', ')}`,
+    );
+  }
+
+  // Base sem alíquota — e o inverso — não monta grupo válido nem quando o par
+  // é opcional para a situação.
+  if (informado(icms.vBC) !== informado(icms.pICMS)) {
+    problemas.push(
+      `${rotulo}: informe base de cálculo e alíquota de ICMS juntas`,
+    );
+  }
+  if (informado(icms.vBCST) !== informado(icms.pICMSST)) {
+    problemas.push(
+      `${rotulo}: informe base de cálculo e alíquota da ST juntas`,
+    );
+  }
+
+  return problemas;
+}
+
+/** Campos de uma contribuição, já normalizados para a checagem comum. */
+interface ContribuicaoNormalizada {
+  vBC?: number;
+  aliquota?: number;
+  qBCProd?: number;
+  vAliqProd?: number;
+  valor?: number;
+}
+
+function validarContribuicao(
+  nome: string,
+  situacao: string,
+  campos: ContribuicaoNormalizada,
+  rotulo: string,
+): string[] {
+  const problemas: string[] = [];
+  const codigo = situacao?.trim() ?? '';
+  const forma = formaDaContribuicao(codigo);
+
+  if (!forma) {
+    problemas.push(
+      `${rotulo}: CST de ${nome} "${codigo || '(vazio)'}" não é reconhecido`,
+    );
+    return problemas;
+  }
+
+  const temPercentual = informado(campos.vBC) && informado(campos.aliquota);
+  const temQuantidade =
+    informado(campos.qBCProd) && informado(campos.vAliqProd);
+
+  if (forma === 'nenhuma') {
+    if (temPercentual || temQuantidade || informado(campos.valor)) {
+      problemas.push(
+        `${rotulo}: o CST de ${nome} ${codigo} não é tributado e não comporta base, alíquota ou valor`,
+      );
+    }
+    return problemas;
+  }
+
+  if (forma === 'percentual' && !temPercentual) {
+    problemas.push(
+      `${rotulo}: o CST de ${nome} ${codigo} exige base de cálculo e alíquota`,
+    );
+  }
+
+  if (forma === 'quantidade' && !temQuantidade) {
+    problemas.push(
+      `${rotulo}: o CST de ${nome} ${codigo} exige quantidade e alíquota por unidade`,
+    );
+  }
+
+  if (forma === 'qualquer') {
+    if (!temPercentual && !temQuantidade) {
+      problemas.push(
+        `${rotulo}: o CST de ${nome} ${codigo} exige base e alíquota, ou quantidade e alíquota por unidade`,
+      );
+    }
+    if (temPercentual && temQuantidade) {
+      problemas.push(
+        `${rotulo}: o CST de ${nome} ${codigo} não aceita as duas formas de apuração ao mesmo tempo`,
+      );
+    }
+  }
+
+  if (!informado(campos.valor)) {
+    problemas.push(`${rotulo}: informe o valor de ${nome}`);
+  }
+
+  return problemas;
 }
 
 /** Só dígitos — o motor recusa CEP/IBGE/CNPJ com máscara. */
@@ -209,6 +533,11 @@ export interface ProductFiscalFields {
   origin?: number | null;
   csosn?: string | null;
   cstIcms?: string | null;
+  cstPis?: string | null;
+  cstCofins?: string | null;
+  aliquotaIcms?: number | null;
+  aliquotaPis?: number | null;
+  aliquotaCofins?: number | null;
 }
 
 /**
@@ -258,6 +587,31 @@ export function listarPendenciasFiscais(
         ? `CST de ICMS ausente ou não suportado (aceitos: ${CST_ICMS_SUPORTADOS.join(', ')})`
         : `CSOSN ausente ou não suportado (aceitos: ${CSOSN_SUPORTADOS.join(', ')})`,
     );
+  }
+
+  // Sem CST de PIS e COFINS o item não tem como compor o quadro tributário: o
+  // motor deixou de completar com CST 07 fixo, então o código precisa vir do
+  // cadastro.
+  if (!formaDaContribuicao(produto.cstPis)) {
+    pendencias.push('CST de PIS ausente ou não reconhecido');
+  }
+  if (!formaDaContribuicao(produto.cstCofins)) {
+    pendencias.push('CST de COFINS ausente ou não reconhecido');
+  }
+
+  // A alíquota só é exigida quando o CST tributa por percentual — situação não
+  // tributada (04 a 09) não comporta alíquota nenhuma.
+  if (
+    formaDaContribuicao(produto.cstPis) === 'percentual' &&
+    !informado(produto.aliquotaPis)
+  ) {
+    pendencias.push('alíquota de PIS ausente para o CST informado');
+  }
+  if (
+    formaDaContribuicao(produto.cstCofins) === 'percentual' &&
+    !informado(produto.aliquotaCofins)
+  ) {
+    pendencias.push('alíquota de COFINS ausente para o CST informado');
   }
 
   return pendencias;

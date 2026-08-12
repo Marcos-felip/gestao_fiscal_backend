@@ -4,7 +4,10 @@ import {
   EmitirNfceRequest,
   FiscalCertificateCredentials,
 } from '../fiscal-engine/fiscal-engine.interface';
-import { FiscalSnapshot } from './fiscal-snapshot.builder';
+import {
+  FiscalSnapshot,
+  VERSAO_SNAPSHOT_ATUAL,
+} from './fiscal-snapshot.builder';
 import {
   arredondar,
   CSC_TAMANHO_MAXIMO,
@@ -106,7 +109,25 @@ function lerSnapshot(snapshot: Prisma.JsonValue | null): FiscalSnapshot {
 
   const dados = snapshot as unknown as FiscalSnapshot;
 
-  if (dados.versao !== 1 || !dados.emitente || !Array.isArray(dados.itens)) {
+  if (!dados.emitente || !Array.isArray(dados.itens)) {
+    throw new BadRequestException(
+      'Snapshot do documento fiscal em formato não suportado — refaça a emissão',
+    );
+  }
+
+  // Versão 1 continua sendo lida para consulta e exibição de documento antigo,
+  // mas não emite: os itens não têm quadro tributário, e o motor deixou de
+  // aceitar item sem ele. Recompor o quadro agora, a partir do cadastro de
+  // hoje, faria o snapshot deixar de retratar a venda — é justamente o que ele
+  // existe para impedir.
+  if (dados.versao === 1) {
+    throw new BadRequestException(
+      'Este documento foi criado antes do quadro tributário por item e não pode ' +
+        'ser reemitido. Emita um documento novo para esta venda.',
+    );
+  }
+
+  if (dados.versao !== VERSAO_SNAPSHOT_ATUAL) {
     throw new BadRequestException(
       'Snapshot do documento fiscal em formato não suportado — refaça a emissão',
     );
@@ -139,4 +160,55 @@ function conferirSomatorios(dados: FiscalSnapshot): void {
       `Total dos pagamentos (${totalPagamentos.toFixed(2)}) diverge do valor total do documento (${dados.valorTotal.toFixed(2)})`,
     );
   }
+
+  conferirTotaisFiscais(dados);
+}
+
+/**
+ * Os totais fiscais são soma dos itens — se divergirem, algo reescreveu o
+ * snapshot depois de gravado. Recusar aqui é a última chance antes de a nota
+ * consumir numeração com o grupo `<total>` errado.
+ */
+function conferirTotaisFiscais(dados: FiscalSnapshot): void {
+  const totais = dados.totais;
+  if (!totais) return;
+
+  const conferencias: [string, number, number][] = [
+    [
+      'base de cálculo do ICMS',
+      totais.vBC,
+      somarDosItens(dados, (item) => item.imposto.icms.vBC),
+    ],
+    [
+      'ICMS',
+      totais.vICMS,
+      somarDosItens(dados, (item) => item.imposto.icms.vICMS),
+    ],
+    [
+      'ICMS ST',
+      totais.vST,
+      somarDosItens(dados, (item) => item.imposto.icms.vICMSST),
+    ],
+    ['PIS', totais.vPIS, somarDosItens(dados, (item) => item.imposto.pis.vPIS)],
+    [
+      'COFINS',
+      totais.vCOFINS,
+      somarDosItens(dados, (item) => item.imposto.cofins.vCOFINS),
+    ],
+  ];
+
+  for (const [nome, informado, calculado] of conferencias) {
+    if (Math.abs(informado - calculado) > TOLERANCIA_MONETARIA) {
+      throw new BadRequestException(
+        `Total de ${nome} (${informado.toFixed(2)}) diverge da soma dos itens (${calculado.toFixed(2)})`,
+      );
+    }
+  }
+}
+
+function somarDosItens(
+  dados: FiscalSnapshot,
+  extrair: (item: FiscalSnapshot['itens'][number]) => number | undefined,
+): number {
+  return somar(dados.itens.map((item) => extrair(item) ?? 0));
 }
