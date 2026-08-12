@@ -83,8 +83,8 @@ const venda = (overrides: Record<string, unknown> = {}): SaleForSnapshot =>
   }) as unknown as SaleForSnapshot;
 
 describe('buildFiscalSnapshot — emitente MEI', () => {
-  it('carimba CRT 4 no emitente', async () => {
-    const snapshot = await buildFiscalSnapshot(
+  it('carimba CRT 4 no emitente', () => {
+    const snapshot = buildFiscalSnapshot(
       empresa({ crt: TaxRegimeCode.SIMPLES_MEI }),
       venda(),
     );
@@ -92,8 +92,8 @@ describe('buildFiscalSnapshot — emitente MEI', () => {
     expect(snapshot.emitente.crt).toBe('4');
   });
 
-  it('aceita item com CSOSN, como os demais do Simples', async () => {
-    const snapshot = await buildFiscalSnapshot(
+  it('aceita item com CSOSN, como os demais do Simples', () => {
+    const snapshot = buildFiscalSnapshot(
       empresa({ crt: TaxRegimeCode.SIMPLES_MEI }),
       venda(),
     );
@@ -101,8 +101,8 @@ describe('buildFiscalSnapshot — emitente MEI', () => {
     expect(snapshot.itens[0].imposto.icms.situacao).toBe('102');
   });
 
-  it('recusa item que só tem CST de ICMS', async () => {
-    await expect(
+  it('recusa item que só tem CST de ICMS', () => {
+    expect(() =>
       buildFiscalSnapshot(
         empresa({ crt: TaxRegimeCode.SIMPLES_MEI }),
         venda({
@@ -111,56 +111,7 @@ describe('buildFiscalSnapshot — emitente MEI', () => {
           ],
         }),
       ),
-    ).rejects.toThrow(/CSOSN/);
-  });
-});
-
-describe('buildFiscalSnapshot — porta da regra fiscal', () => {
-  it('sem regra cadastrada, o quadro vem do cadastro do produto', async () => {
-    const snapshot = await buildFiscalSnapshot(empresa(), venda());
-
-    expect(snapshot.itens[0].cfop).toBe('5102');
-    expect(snapshot.itens[0].imposto.icms.situacao).toBe('102');
-    expect(snapshot.regrasAplicadas).toEqual({ 1: 'cadastro-do-produto' });
-  });
-
-  it('registra a regra aplicada de cada item', async () => {
-    const snapshot = await buildFiscalSnapshot(
-      empresa(),
-      venda({
-        items: [item(), { ...item(), id: 'item-2' }],
-        subtotal: 20,
-        totalAmount: 20,
-        payments: [{ method: PaymentMethod.DINHEIRO, amount: 20 }],
-      }),
-    );
-
-    expect(snapshot.regrasAplicadas).toEqual({
-      1: 'cadastro-do-produto',
-      2: 'cadastro-do-produto',
-    });
-  });
-
-  it('usa a resposta da regra, e não o cadastro, quando ela responde', async () => {
-    // A porta é o que permite trocar a implementação sem tocar na emissão: aqui
-    // uma regra devolve CFOP e situação diferentes dos gravados no produto.
-    const regra = {
-      resolver: () =>
-        Promise.resolve({
-          cfop: '5405',
-          situacaoIcms: '500',
-          cstPis: '04',
-          cstCofins: '04',
-          aliquotaIcms: null,
-          aliquotaPis: null,
-          aliquotaCofins: null,
-          regraAplicada: 'bebida-st-mg',
-        }),
-    }
-
-    await expect(
-      buildFiscalSnapshot(empresa(), venda(), regra),
-    ).rejects.toThrow(/vBCSTRet, vICMSSTRet/);
+    ).toThrow(/CSOSN/);
   });
 });
 
@@ -168,8 +119,8 @@ describe('buildFiscalSnapshot — precedência da Inscrição Estadual', () => {
   // A IE do emitente é a do estabelecimento; a da empresa é só fallback. É essa
   // precedência que faz `stateRegistration` (que grava na matriz) ser a fonte
   // da verdade no cadastro.
-  it('usa a IE do estabelecimento quando ela existe', async () => {
-    const snapshot = await buildFiscalSnapshot(
+  it('usa a IE do estabelecimento quando ela existe', () => {
+    const snapshot = buildFiscalSnapshot(
       empresa({ inscricaoEstadual: '999999999' }),
       venda(),
     );
@@ -177,8 +128,8 @@ describe('buildFiscalSnapshot — precedência da Inscrição Estadual', () => {
     expect(snapshot.emitente.inscricaoEstadual).toBe('123456789');
   });
 
-  it('cai na IE da empresa quando o estabelecimento não tem', async () => {
-    const snapshot = await buildFiscalSnapshot(
+  it('cai na IE da empresa quando o estabelecimento não tem', () => {
+    const snapshot = buildFiscalSnapshot(
       empresa({ inscricaoEstadual: '999999999' }),
       venda({
         establishment: {
@@ -203,8 +154,8 @@ describe('buildFiscalSnapshot — precedência da Inscrição Estadual', () => {
 });
 
 describe('buildFiscalSnapshot', () => {
-  it('monta emitente, itens e pagamentos no formato do motor', async () => {
-    const snapshot = await buildFiscalSnapshot(empresa(), venda());
+  it('monta emitente, itens e pagamentos no formato do motor', () => {
+    const snapshot = buildFiscalSnapshot(empresa(), venda());
 
     expect(snapshot.versao).toBe(2);
     expect(snapshot.emitente).toMatchObject({
@@ -264,8 +215,8 @@ describe('buildFiscalSnapshot', () => {
     });
   });
 
-  it('compõe base, alíquota e valor quando a situação exige', async () => {
-    const snapshot = await buildFiscalSnapshot(
+  it('compõe base, alíquota e valor quando a situação exige', () => {
+    const snapshot = buildFiscalSnapshot(
       empresa({ crt: TaxRegimeCode.REGIME_NORMAL }),
       venda({
         items: [
@@ -313,8 +264,8 @@ describe('buildFiscalSnapshot', () => {
     });
   });
 
-  it('recusa situação tributada sem a alíquota cadastrada', async () => {
-    await expect(
+  it('recusa situação tributada sem a alíquota cadastrada', () => {
+    expect(() =>
       buildFiscalSnapshot(
         empresa({ crt: TaxRegimeCode.REGIME_NORMAL }),
         venda({
@@ -329,11 +280,11 @@ describe('buildFiscalSnapshot', () => {
           ],
         }),
       ),
-    ).rejects.toThrow(/informe a alíquota de ICMS/);
+    ).toThrow(/informe a alíquota de ICMS/);
   });
 
-  it('apura PIS por quantidade quando o CST é 03', async () => {
-    const snapshot = await buildFiscalSnapshot(
+  it('apura PIS por quantidade quando o CST é 03', () => {
+    const snapshot = buildFiscalSnapshot(
       empresa(),
       venda({
         items: [
@@ -352,12 +303,12 @@ describe('buildFiscalSnapshot', () => {
     });
   });
 
-  it('omite o destinatário sem cliente e preenche quando há', async () => {
+  it('omite o destinatário sem cliente e preenche quando há', () => {
     expect(
-      (await buildFiscalSnapshot(empresa(), venda())).destinatario,
+      buildFiscalSnapshot(empresa(), venda()).destinatario,
     ).toBeUndefined();
 
-    const comCliente = await buildFiscalSnapshot(
+    const comCliente = buildFiscalSnapshot(
       empresa(),
       venda({
         customer: {
@@ -374,8 +325,8 @@ describe('buildFiscalSnapshot', () => {
     });
   });
 
-  it('usa CST de ICMS quando o emitente é do regime normal', async () => {
-    const snapshot = await buildFiscalSnapshot(
+  it('usa CST de ICMS quando o emitente é do regime normal', () => {
+    const snapshot = buildFiscalSnapshot(
       empresa({ crt: TaxRegimeCode.REGIME_NORMAL }),
       venda({
         items: [item({ product: produto({ csosn: null, cstIcms: '40' }) })],
@@ -387,8 +338,8 @@ describe('buildFiscalSnapshot', () => {
   });
 
   describe('rateio do desconto', () => {
-    it('distribui o desconto no valor unitário mantendo o total da venda', async () => {
-      const snapshot = await buildFiscalSnapshot(
+    it('distribui o desconto no valor unitário mantendo o total da venda', () => {
+      const snapshot = buildFiscalSnapshot(
         empresa(),
         venda({
           subtotal: 30,
@@ -406,8 +357,8 @@ describe('buildFiscalSnapshot', () => {
       ).toBe(25);
     });
 
-    it('fecha o centavo residual entre vários itens', async () => {
-      const snapshot = await buildFiscalSnapshot(
+    it('fecha o centavo residual entre vários itens', () => {
+      const snapshot = buildFiscalSnapshot(
         empresa(),
         venda({
           subtotal: 30,
@@ -431,8 +382,8 @@ describe('buildFiscalSnapshot', () => {
       expect(snapshot.valorTotal).toBeCloseTo(20, 2);
     });
 
-    it('não altera os valores quando não há desconto', async () => {
-      const snapshot = await buildFiscalSnapshot(empresa(), venda());
+    it('não altera os valores quando não há desconto', () => {
+      const snapshot = buildFiscalSnapshot(empresa(), venda());
 
       expect(snapshot.itens[0].valorUnitario).toBe(5);
       expect(snapshot.venda.desconto).toBe(0);
@@ -440,8 +391,8 @@ describe('buildFiscalSnapshot', () => {
   });
 
   describe('pagamentos', () => {
-    it('traduz cada forma de pagamento para o tipo textual do motor', async () => {
-      const snapshot = await buildFiscalSnapshot(
+    it('traduz cada forma de pagamento para o tipo textual do motor', () => {
+      const snapshot = buildFiscalSnapshot(
         empresa(),
         venda({
           payments: [
@@ -461,8 +412,8 @@ describe('buildFiscalSnapshot', () => {
       ]);
     });
 
-    it('usa a forma de pagamento da venda quando não há baixas registradas', async () => {
-      const snapshot = await buildFiscalSnapshot(
+    it('usa a forma de pagamento da venda quando não há baixas registradas', () => {
+      const snapshot = buildFiscalSnapshot(
         empresa(),
         venda({ payments: [], paymentMethod: PaymentMethod.BOLETO }),
       );
@@ -470,25 +421,25 @@ describe('buildFiscalSnapshot', () => {
       expect(snapshot.pagamentos).toEqual([{ tipo: 'boleto', valor: 10 }]);
     });
 
-    it('recusa quando a soma dos pagamentos diverge do total', async () => {
-      await expect(
+    it('recusa quando a soma dos pagamentos diverge do total', () => {
+      expect(() =>
         buildFiscalSnapshot(
           empresa(),
           venda({ payments: [{ method: PaymentMethod.PIX, amount: 7 }] }),
         ),
-      ).rejects.toThrow(/soma dos pagamentos diverge/);
+      ).toThrow(/soma dos pagamentos diverge/);
     });
   });
 
   describe('recebimento e troco', () => {
-    it('não registra recebimento quando a venda não informa valor recebido', async () => {
+    it('não registra recebimento quando a venda não informa valor recebido', () => {
       expect(
-        await buildFiscalSnapshot(empresa(), venda()).recebimento,
+        buildFiscalSnapshot(empresa(), venda()).recebimento,
       ).toBeUndefined();
     });
 
-    it('usa o troco registrado pelo caixa', async () => {
-      const snapshot = await buildFiscalSnapshot(
+    it('usa o troco registrado pelo caixa', () => {
+      const snapshot = buildFiscalSnapshot(
         empresa(),
         venda({
           payments: [
@@ -505,8 +456,8 @@ describe('buildFiscalSnapshot', () => {
       expect(snapshot.recebimento).toEqual({ valorRecebido: 20, troco: 10 });
     });
 
-    it('deriva o troco do valor recebido quando o caixa não registrou', async () => {
-      const snapshot = await buildFiscalSnapshot(
+    it('deriva o troco do valor recebido quando o caixa não registrou', () => {
+      const snapshot = buildFiscalSnapshot(
         empresa(),
         venda({
           payments: [
@@ -518,8 +469,8 @@ describe('buildFiscalSnapshot', () => {
       expect(snapshot.recebimento).toEqual({ valorRecebido: 15, troco: 5 });
     });
 
-    it('ignora as formas sem recebimento no pagamento dividido', async () => {
-      const snapshot = await buildFiscalSnapshot(
+    it('ignora as formas sem recebimento no pagamento dividido', () => {
+      const snapshot = buildFiscalSnapshot(
         empresa(),
         venda({
           payments: [
@@ -537,8 +488,8 @@ describe('buildFiscalSnapshot', () => {
       expect(snapshot.recebimento).toEqual({ valorRecebido: 10, troco: 6 });
     });
 
-    it('não envia o troco ao motor — os pagamentos seguem só com tipo e valor', async () => {
-      const snapshot = await buildFiscalSnapshot(
+    it('não envia o troco ao motor — os pagamentos seguem só com tipo e valor', () => {
+      const snapshot = buildFiscalSnapshot(
         empresa(),
         venda({
           payments: [
@@ -557,16 +508,16 @@ describe('buildFiscalSnapshot', () => {
   });
 
   describe('pré-condições', () => {
-    it('exige o CRT da empresa', async () => {
-      await expect(
+    it('exige o CRT da empresa', () => {
+      expect(() =>
         buildFiscalSnapshot(empresa({ crt: null }), venda()),
-      ).rejects.toThrow(/CRT/);
+      ).toThrow(/CRT/);
     });
 
-    it('recusa NCM, CFOP e origem inválidos de uma vez só', async () => {
+    it('recusa NCM, CFOP e origem inválidos de uma vez só', () => {
       let mensagem = '';
       try {
-        await buildFiscalSnapshot(
+        buildFiscalSnapshot(
           empresa(),
           venda({
             items: [
@@ -585,29 +536,29 @@ describe('buildFiscalSnapshot', () => {
       expect(mensagem).toContain('origem da mercadoria');
     });
 
-    it('recusa CSOSN que não existe', async () => {
-      await expect(
+    it('recusa CSOSN que não existe', () => {
+      expect(() =>
         buildFiscalSnapshot(
           empresa(),
           venda({ items: [item({ product: produto({ csosn: '199' }) })] }),
         ),
-      ).rejects.toThrow(/CSOSN não suportado/);
+      ).toThrow(/CSOSN não suportado/);
     });
 
-    it('recusa situação que depende da regra fiscal por operação', async () => {
+    it('recusa situação que depende da regra fiscal por operação', () => {
       // O motor aceita CSOSN 101, mas ele exige crédito do Simples — que sai da
       // matriz tributária da etapa 2, não do cadastro do produto. Recusar aqui
       // é melhor que gravar um valor inventado num snapshot congelado.
-      await expect(
+      expect(() =>
         buildFiscalSnapshot(
           empresa(),
           venda({ items: [item({ product: produto({ csosn: '101' }) })] }),
         ),
-      ).rejects.toThrow(/pCredSN, vCredICMSSN/);
+      ).toThrow(/pCredSN, vCredICMSSN/);
     });
 
-    it('recusa endereço incompleto do emitente', async () => {
-      await expect(
+    it('recusa endereço incompleto do emitente', () => {
+      expect(() =>
         buildFiscalSnapshot(
           empresa(),
           venda({
@@ -626,13 +577,13 @@ describe('buildFiscalSnapshot', () => {
             },
           }),
         ),
-      ).rejects.toThrow(BadRequestException);
+      ).toThrow(BadRequestException);
     });
 
-    it('recusa venda sem itens', async () => {
-      await expect(
+    it('recusa venda sem itens', () => {
+      expect(() =>
         buildFiscalSnapshot(empresa(), venda({ items: [] })),
-      ).rejects.toThrow(/não tem itens/);
+      ).toThrow(/não tem itens/);
     });
   });
 });

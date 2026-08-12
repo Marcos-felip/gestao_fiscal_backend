@@ -866,7 +866,7 @@ export class FiscalService {
 
     // Pré-condições e snapshot antes de reservar numeração
     assertEmissionSettings(fiscalSettings);
-    const snapshot = await buildFiscalSnapshot(company, sale);
+    const snapshot = buildFiscalSnapshot(company, sale);
 
     // Reserva o próximo número atomicamente
     await this.prisma.fiscalSettings.update({

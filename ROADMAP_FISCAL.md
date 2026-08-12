@@ -104,15 +104,17 @@ O que falta para a emissão sair correta hoje **não é código**: é o CSOSN ce
 cada produto. Cerveja e refrigerante em 500 (ST em MG), alimento preparado no que
 o contador determinar. Trabalho de cadastro, uma vez, com quem sabe.
 
-### O que foi feito da etapa 2, e fica
+### O que foi feito da etapa 2 — e revertido
 
-- `IRegraFiscal` — a porta, com contexto e quadro resolvido
-- `CadastroDoProdutoRule` — responde com o cadastro do produto
-- `montarItens` pergunta à porta em vez de ler o produto direto
-- `regraAplicada` gravado no snapshot, por item
+A porta `IRegraFiscal` e a `CadastroDoProdutoRule` chegaram a ser implementadas
+e foram **revertidas** no mesmo dia, quando a devolução saiu do escopo.
 
-Isso não é trabalho perdido: é a costura que permite plugar uma matriz sem tocar
-na emissão, e ela vale em qualquer cenário futuro.
+A costura só se paga quando existe uma segunda implementação. A única prevista
+era a devolução; sem ela, restava indireção pura — e `regraAplicada` gravando o
+mesmo valor em todo documento, para sempre, num snapshot que é congelado.
+
+O desenho está preservado no `design.md` da change. Refazer é meio dia; refazer
+com o segundo caso em mãos é melhor do que ter adivinhado a forma antes dele.
 
 ### O que fica em espera
 

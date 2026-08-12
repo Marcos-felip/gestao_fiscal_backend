@@ -10,8 +10,6 @@ import { CertificateCryptoService } from './certificates/certificate-crypto.serv
 import { FiscalCertificateService } from './certificates/fiscal-certificate.service';
 import { QueueModule } from '../queue/queue.module';
 import { StorageModule } from '../storage/storage.module';
-import { REGRA_FISCAL } from './rules/fiscal-rules.port';
-import { CadastroDoProdutoRule } from './rules/cadastro-do-produto-rule.service';
 
 @Module({
   imports: [QueueModule, StorageModule, EventEmitterModule],
@@ -24,10 +22,6 @@ import { CadastroDoProdutoRule } from './rules/cadastro-do-produto-rule.service'
     FiscalCertificateService,
     FiscalEmissionProcessor,
     OnSaleConfirmedListener,
-    // Regra fiscal por operação — etapa 2. A implementação de hoje responde com
-    // o cadastro do produto; trocar de matriz é trocar esta linha.
-    CadastroDoProdutoRule,
-    { provide: REGRA_FISCAL, useExisting: CadastroDoProdutoRule },
   ],
   exports: [FiscalService, DfeNetFiscalEngine, FiscalCertificateService],
 })

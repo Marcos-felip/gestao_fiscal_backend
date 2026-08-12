@@ -97,7 +97,7 @@ export class OnSaleConfirmedListener {
     // emissão automática aqui, antes de reservar numeração.
     let snapshot: FiscalSnapshot;
     try {
-      snapshot = await buildFiscalSnapshot(company, sale);
+      snapshot = buildFiscalSnapshot(company, sale);
     } catch (error) {
       this.logger.warn(
         `Emissão automática cancelada para a venda ${event.saleId}: ${error instanceof Error ? error.message : String(error)}`,
