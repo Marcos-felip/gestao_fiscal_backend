@@ -118,6 +118,11 @@ export class ProductsService {
       origin: dto.origin ?? atual.origin,
       csosn: dto.csosn ?? atual.csosn,
       cstIcms: dto.cstIcms ?? atual.cstIcms,
+      cstPis: dto.cstPis ?? atual.cstPis,
+      cstCofins: dto.cstCofins ?? atual.cstCofins,
+      aliquotaIcms: numeroOuNulo(dto.aliquotaIcms ?? atual.aliquotaIcms),
+      aliquotaPis: numeroOuNulo(dto.aliquotaPis ?? atual.aliquotaPis),
+      aliquotaCofins: numeroOuNulo(dto.aliquotaCofins ?? atual.aliquotaCofins),
     };
 
     return this.prisma.product.update({
@@ -240,4 +245,14 @@ export class ProductsService {
       data: { deletedAt: new Date() },
     });
   }
+}
+
+/**
+ * As alíquotas vêm como `Decimal` do banco e como `number` do DTO; a checagem
+ * de completude só precisa saber se há valor.
+ */
+function numeroOuNulo(valor: unknown): number | null {
+  if (valor === null || valor === undefined) return null;
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero : null;
 }
