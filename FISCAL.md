@@ -280,6 +280,30 @@ pela API, com permissão verificada. Documentos antigos (ou emitidos com o stora
 configurado) guardam o XML direto na coluna; o código distingue os dois casos pelo prefixo
 `fiscal/`.
 
+A resolução dos dois formatos está num lugar só (`lerXmlArmazenado`, em `fiscal.service.ts`),
+usada tanto pelo download individual quanto pela exportação em lote. Ela devolve `null`
+quando o arquivo não é recuperável, e quem chama decide o que isso significa: `404` no
+download de um documento, linha marcada como ausente no manifesto da exportação.
+
+### O XML é o entregável — a plataforma não gera SPED
+
+A escrituração é do contador. A plataforma **não** gera EFD ICMS/IPI, EFD Contribuições nem
+Sintegra: ela entrega os XMLs, e o software do contador monta a obrigação a partir dos
+grupos `<ICMS>`, `<IPI>`, `<PIS>` e `<COFINS>` de cada item.
+
+Isso tem duas consequências que valem para todo o módulo fiscal:
+
+1. **O que estiver errado no XML vira escrituração errada.** O contador não vê o banco de
+   dados, vê o arquivo — e não tem como perceber que um CST saiu incoerente com a natureza
+   do produto. A SEFAZ também não pega: ela valida estrutura, não coerência.
+2. **O que não entrou no snapshot na emissão não entra nunca mais.**
+   `FiscalDocument.snapshot` é gravado na criação e nunca reconstruído. Nota emitida sem
+   base de cálculo e alíquota não vira escrituração correta depois — não é bug com conserto,
+   é dado que não foi capturado.
+
+A entrega desse pacote é o `GET /fiscal/documents/xml/export` (ver [API.md](./API.md)). O
+plano das etapas seguintes está no [ROADMAP_FISCAL.md](./ROADMAP_FISCAL.md).
+
 ---
 
 ## 7. Endpoints do NestJS
@@ -312,6 +336,7 @@ adicional. O contrato HTTP para o frontend não muda quando o motor muda.
 | GET | `/documents/:id/events` | `fiscal.read` |
 | GET | `/documents/:id/danfe` | `fiscal.read` |
 | GET | `/documents/:id/xml/:tipo` | `fiscal.read` |
+| GET | `/documents/xml/export` | `fiscal.read` |
 | POST | `/documents/nfce` | `fiscal.emit` |
 | POST | `/documents/:id/retry` | `fiscal.emit` |
 | POST | `/documents/:id/consulta` | `fiscal.read` |

@@ -2273,6 +2273,59 @@ de uma vez
 
 ---
 
+#### GET /fiscal/documents/xml/export — Exportar os XMLs de um período
+
+> **Permissão:** `fiscal.read` · responde `application/zip` em stream
+
+Entrega o pacote que o contador usa para escriturar o período. É o mesmo XML do download
+individual, em lote e com uma relação para conferência.
+
+**Query**
+
+| Campo | Obrigatório | Observação |
+|---|---|---|
+| `dataInicio` | ✅ | ISO 8601 (`2026-08-01`) |
+| `dataFim` | ✅ | ISO 8601. **Sem hora, vale o dia inteiro** — `2026-08-31` inclui as notas do dia 31 |
+| `establishmentId` | | UUID |
+| `modelo` | | `NFE` ou `NFCE` |
+| `ambiente` | | `PRODUCAO` (padrão) ou `HOMOLOGACAO` |
+
+**O que entra no ZIP**
+
+Somente documentos `AUTORIZADO` e `CANCELADO` — são os que existem para o fisco.
+`REJEITADO`, `ERRO` e `PENDENTE` ficam de fora e não aparecem nem no manifesto.
+
+```
+xmls-<empresa>-2026-08-01-a-2026-08-31.zip
+├── _relacao.csv
+├── <chave>-nfe.xml
+├── <chave>-cancelamento.xml     ← só para documentos CANCELADO
+└── …
+```
+
+Documento cancelado leva **os dois** arquivos: sem o XML do evento, o contador escritura a
+nota como se ela ainda valesse.
+
+**Manifesto `_relacao.csv`** — CSV separado por `;`, com BOM e vírgula decimal (abre direto
+no Excel em português). Colunas: chave de acesso, número, série, modelo, data de
+autorização, status, valor total e **arquivos ausentes**. É por ele que se confere se veio
+tudo.
+
+XML que não volta do storage **não derruba a exportação**: o documento entra no manifesto
+com a coluna de ausentes preenchida (`nfe`, `cancelamento`) e o restante do lote segue
+normalmente, com `200`.
+
+**Ambiente** — sem `ambiente`, exporta produção. Homologação exige pedido explícito e o
+nome do arquivo sai marcado com `HOMOLOGACAO-SEM-VALOR-FISCAL`: o ZIP circula por e-mail
+longe desta tela, e XML de teste escriturado como real é problema fiscal.
+
+**Limites** — `400` acima de **92 dias** de período ou **5.000 documentos** por exportação,
+com mensagem em PT-BR orientando a fatiar por estabelecimento ou por intervalo menor.
+
+**Período vazio** devolve `200` com um ZIP contendo só o manifesto — não é erro.
+
+---
+
 ### Consulta, cancelamento e rejeições
 
 #### POST /fiscal/documents/:id/consulta — Consultar a situação na SEFAZ
