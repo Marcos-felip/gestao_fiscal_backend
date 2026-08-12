@@ -80,7 +80,7 @@ destinatário é contribuinte.
 2026.7.16 já traz os grupos da reforma, então o trabalho é de adapter e contrato,
 não de troca de biblioteca.
 
-## Decisão pendente que não bloqueia a etapa 1
+## Decisões que bloqueiam a etapa 2
 
 **Regra fiscal: construir ou assinar.**
 
@@ -88,14 +88,38 @@ Manter a matriz tributária (quais NCM têm ST em cada UF, MVA, pauta, alíquota
 interna, reduções de base) é manutenção perpétua — os estados publicam decreto o
 tempo todo. Existem serviços que vendem essa regra por assinatura.
 
-Recomendação registrada: **construir simples agora, atrás de uma porta**
-(`IRegraFiscal`), no mesmo padrão do `IFiscalEngine`. O primeiro cliente é uma
-churrascaria vendendo NFC-e interna a consumidor final — a matriz dele cabe em
-meia dúzia de regras. No dia em que entrar cliente interestadual com ST, troca-se
-a implementação por um adaptador do fornecedor sem tocar em domínio.
+A porta (`IRegraFiscal`, no padrão do `IFiscalEngine`) é o desenho certo nos dois
+caminhos. O que mudou foi a recomendação de o que colocar atrás dela.
 
-O contrato do item da etapa 1 é **idêntico** nos dois caminhos. Só muda quem
-preenche o quadro tributário.
+> **Recomendação revisada em 12/08/2026: assinar.**
+>
+> A recomendação anterior era construir simples, apoiada na premissa de que o
+> primeiro cliente vendia só NFC-e interna a consumidor final — "a matriz dele
+> cabe em meia dúzia de regras". **Essa premissa caiu**: o usuário confirmou que
+> vai vender para fora do estado.
+>
+> Isso traz ST interestadual (protocolo e MVA ajustada por combinação
+> origem-destino-produto), DIFAL com alíquota interna e FCP de cada UF de
+> destino, e pauta fiscal que varia por estado. Não é tabela que se escreve uma
+> vez; é manutenção mensal permanente, e errar produz nota autorizada com imposto
+> errado.
+>
+> Pedir orçamento é a **primeira tarefa** da etapa 2. Se o custo inviabilizar, o
+> caminho é matriz própria restrita às UFs onde há venda real — decisão
+> consciente, não descoberta no meio.
+
+**Quem cadastra as regras não é o lojista.** O dono da lanchonete não sabe o que é
+MVA. O modelo é conjunto base por UF e ramo, ajustado no onboarding por quem
+conhece a matéria, com o cliente final nunca vendo a tela. A etapa 2 foi revisada
+para refletir isso.
+
+**Pergunta aberta para o contador, que muda o escopo pela metade:** emitente do
+Simples Nacional recolhe DIFAL em venda a consumidor final não contribuinte de
+outra UF? Há entendimento consolidado de que não (ADI 5464, STF). Se confirmado,
+toda a partilha sai do escopo das etapas 2 e 3.
+
+O contrato do item da etapa 1 é **idêntico** em todos esses caminhos. Só muda
+quem preenche o quadro tributário.
 
 ## Aviso sobre a validade destas changes
 

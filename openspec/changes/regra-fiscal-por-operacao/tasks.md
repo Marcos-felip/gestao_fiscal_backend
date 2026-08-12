@@ -1,6 +1,17 @@
+## 0. Decisões que precedem o código
+
+> Nenhuma tarefa da seção 2 em diante deve começar antes destas. As duas mudam o
+> que se implementa, não como.
+
+- [ ] 0.1 **Assinar ou construir a matriz tributária.** Pedir orçamento a pelo menos dois fornecedores e comparar com o custo de manter tabelas próprias de MVA, pauta, alíquota interna e FCP das UFs de destino. Recomendação registrada em `design.md`: **assinar**.
+- [ ] 0.2 **Confirmar com o contador se o DIFAL é devido** por emitente do Simples Nacional em venda a consumidor final não contribuinte de outra UF (ADI 5464). Resposta negativa tira a partilha do escopo desta change e da etapa 3.
+- [ ] 0.3 Registrar as duas respostas em `design.md` e rodar `openspec-update-change` para refletir o escopo resultante
+- [ ] 0.4 Levantar em quais UFs haverá venda de fato — a matriz própria, se for esse o caminho, é dimensionada por isso e não pelas 27
+
 ## 1. Pré-requisito
 
 - [ ] 1.1 Confirmar que a etapa 1 (`contrato-tributario-do-item`) está aplicada — sem o bloco tributário no item não há onde gravar a resposta
+- [ ] 1.2 Confirmar o tipo de destinatário que a operação vai ter: empresa contribuinte, consumidor final não contribuinte, ou os dois
 
 ## 2. Porta e contexto
 
@@ -29,9 +40,15 @@
 - [ ] 5.2 `regraAplicada` gravado no snapshot, junto do quadro
 - [ ] 5.3 **Garantir não-regressão:** base sem regra cadastrada produz payload idêntico ao de antes
 
-## 6. CRUD e simulação
+## 6. Configuração e simulação
+
+> A tela de regras é ferramenta de **configuração e diagnóstico**, usada no
+> onboarding por quem conhece a matéria — não fluxo do lojista. Não deve entrar
+> na navegação do usuário comum.
 
 - [ ] 6.1 Módulo `fiscal-rules` com controller, service e DTOs, filtrando `{ companyId, deletedAt: null }`
+- [ ] 6.4 Conjunto base de regras por UF e ramo, aplicável a uma empresa no onboarding — o cliente não parte de zero nem cadastra matriz tributária
+- [ ] 6.5 Aplicar o conjunto base é operação idempotente e não sobrescreve regra ajustada manualmente
 - [ ] 6.2 Endpoint de simulação, devolvendo quadro e regra aplicada sem criar documento
 - [ ] 6.3 Simulação não consome numeração nem grava nada
 

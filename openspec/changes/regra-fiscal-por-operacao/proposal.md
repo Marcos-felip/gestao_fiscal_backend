@@ -31,10 +31,15 @@ continua limitado a uma única operação.
 - **Contexto da operação** como entrada: NCM, CEST, origem, regime do emitente,
   UF de origem e destino, se o destinatário é contribuinte, consumidor final,
   finalidade da nota e tipo de operação.
-- **Implementação própria e simples** como primeira: regras cadastradas por
-  empresa, resolvendo CFOP + situação tributária + alíquotas, com fallback para
-  os campos do produto quando nenhuma regra casar.
-- **Cadastro de regras** com CRUD e permissão própria (`fiscal.rules.read/edit`).
+- **Implementação atrás da porta**, resolvendo CFOP + situação tributária +
+  alíquotas, com fallback para os campos do produto quando nenhuma regra casar.
+  **Qual implementação depende de uma decisão que precede o código** — assinar a
+  matriz de um fornecedor ou construir própria. Ver `design.md`; a recomendação
+  atual é **assinar**.
+- **Cadastro de regras** com CRUD e permissão própria (`fiscal.rules.read/edit`),
+  como ferramenta de **configuração e diagnóstico** — não como fluxo do lojista.
+  Regras nascem de um conjunto base por UF e ramo; o cliente final não cadastra
+  matriz tributária.
 - **Precedência explícita e visível**: regra mais específica vence, e a resposta
   informa **qual regra respondeu** — sem isso, depurar uma nota errada vira
   adivinhação.
@@ -63,9 +68,11 @@ continua limitado a uma única operação.
   consultar a regra em vez de ler o produto direto.
 - **Depende da etapa 1**: sem o bloco tributário no item, não há onde a resposta
   da regra ser gravada.
-- **Decisão pendente registrada no roteiro**: construir ou assinar a matriz
-  tributária. Esta change entrega a implementação própria **e a porta** — se a
-  decisão virar "assinar", o trabalho perdido é a implementação, não o desenho.
+- **Duas decisões precedem o código**, e estão detalhadas em `design.md`:
+  **(a)** assinar ou construir a matriz tributária — a recomendação virou
+  *assinar*, depois que o cliente confirmou venda interestadual; **(b)** se o
+  DIFAL é devido por emitente do Simples (ADI 5464), que muda o escopo pela
+  metade e precisa do contador.
 - **Risco de comportamento**: um produto que hoje emite com CFOP 5102 fixo passa
   a depender da resolução. A change precisa garantir que, sem regra cadastrada, o
   resultado seja idêntico ao de hoje.
