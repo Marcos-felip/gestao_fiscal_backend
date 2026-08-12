@@ -980,10 +980,10 @@ Os mesmos códigos estão marcados com 🔹 na coluna **Perfil sugerido** do [ca
   "cest": "string 7 dígitos (opcional)",
   "cfop": "string 4 dígitos iniciando em 5 (opcional)",
   "origin": "number 0-8 (opcional)",
-  "csosn": "102 | 103 | 300 | 400 | 500 — emitente do Simples (opcional)",
-  "cstIcms": "40 | 41 | 50 — emitente do Regime Normal (opcional)",
-  "cstPis": "string (opcional)",
-  "cstCofins": "string (opcional)",
+  "csosn": "101 | 102 | 103 | 201 | 202 | 203 | 300 | 400 | 500 | 900 — emitente do Simples (opcional)",
+  "cstIcms": "00 | 10 | 20 | 30 | 40 | 41 | 50 | 51 | 60 | 70 | 90 — emitente do Regime Normal (opcional)",
+  "cstPis": "CST de PIS, 2 dígitos — exigido para fiscalComplete",
+  "cstCofins": "CST de COFINS, 2 dígitos — exigido para fiscalComplete",
   "aliquotaIcms": "number >= 0 (opcional)",
   "aliquotaPis": "number >= 0 (opcional)",
   "aliquotaCofins": "number >= 0 (opcional)",
@@ -992,9 +992,20 @@ Os mesmos códigos estão marcados com 🔹 na coluna **Perfil sugerido** do [ca
 ```
 
 O backend deriva **`fiscalComplete`** na gravação, com as mesmas regras do motor fiscal: NCM
-de 8 dígitos, CFOP começando com 5, origem de 0 a 8 e situação tributária dentro do conjunto
-aceito (CSOSN para o Simples, CST de ICMS para o Regime Normal). Produto incompleto bloqueia
-a emissão da NFC-e da venda que o contém.
+de 8 dígitos, CFOP começando com 5, origem de 0 a 8, situação tributária de ICMS dentro do
+conjunto aceito (CSOSN para o Simples, CST de ICMS para o Regime Normal) e **CST de PIS e de
+COFINS**. Produto incompleto bloqueia a emissão da NFC-e da venda que o contém.
+
+> **Os CST de PIS e COFINS passaram a ser exigidos.** O motor deixou de completá-los com CST
+> 07 fixo — o código agora vem do cadastro. Quando o CST é tributado por percentual (`01`,
+> `02`), a alíquota correspondente também é exigida; situação não tributada (`04` a `09`) não
+> comporta alíquota nenhuma.
+
+> **O conjunto de situações de ICMS aumentou.** A lista antiga era "as que se resolvem sem
+> valores"; agora vale toda situação para a qual exista grupo no XML. Situações que exigem
+> substituição tributária, redução de base ou crédito do Simples são aceitas no cadastro, mas
+> a emissão ainda as recusa — esses valores dependem da matriz tributária por operação, que é
+> a etapa 2 do roteiro fiscal.
 
 **Erros:** `409` SKU ou código de barras já cadastrado
 

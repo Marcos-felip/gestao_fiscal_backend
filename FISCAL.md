@@ -285,6 +285,64 @@ usada tanto pelo download individual quanto pela exportação em lote. Ela devol
 quando o arquivo não é recuperável, e quem chama decide o que isso significa: `404` no
 download de um documento, linha marcada como ausente no manifesto da exportação.
 
+### Quadro tributário do item — quem decide é o backend
+
+Até a etapa 1 do roteiro, o motor **decidia** imposto: recebia só `origem` e
+`csosn` e completava o resto com regra fixa em C# — toda nota saía com PIS e
+COFINS em CST 07. Isso acabou. O item agora carrega o quadro tributário completo
+e o motor apenas **traduz** para os grupos do XML.
+
+Cada item do payload leva `imposto` com `icms`, `pis`, `cofins` e, quando houver,
+`ipi`. Os campos `origem` e `csosn` **saíram** do item: a origem e a situação
+tributária moram dentro de `imposto.icms`. O contrato campo a campo, com a tabela
+de qual situação exige o quê, está em `fiscal_service/docs/CONTRATO_TRIBUTARIO.md`.
+
+A tabela é espelhada em `src/fiscal/emission/fiscal-rules.ts`
+(`CAMPOS_POR_CSOSN`, `CAMPOS_POR_CST_ICMS`, `formaDaContribuicao`). Duplicação
+deliberada: no motor porque ele monta o XML, aqui porque é onde o erro ainda pode
+virar mensagem em português antes de queimar um número de nota.
+
+**O que esta etapa preenche e o que ela recusa.** O quadro é composto do que o
+cadastro do produto já sabe — base é o valor do item, alíquota é a cadastrada,
+valor é o produto dos dois. O que exige matriz tributária de verdade — ST, MVA,
+redução de base, crédito do Simples — **não é adivinhado**: o item é recusado
+nomeando o campo que falta. Quem resolve é a etapa 2
+([ROADMAP_FISCAL.md](./ROADMAP_FISCAL.md)).
+
+### Versão do snapshot
+
+| Versão | Item | Emite? |
+|---|---|---|
+| 1 | sem quadro tributário | **não** |
+| 2 | com quadro tributário e totais fiscais | sim |
+
+Documento em versão 1 continua sendo **lido** — consulta e tela de detalhe
+funcionam normalmente. O que ele não faz mais é emitir: os itens não têm imposto
+e o motor deixou de aceitar item sem ele. O retry devolve `400` mandando emitir
+documento novo.
+
+Recompor o quadro no reprocessamento, a partir do cadastro de hoje, foi
+descartado: o snapshot deixaria de retratar a venda, que é exatamente o que ele
+existe para impedir.
+
+### ⚠️ O CST de PIS/COFINS é decisão do contador — não há valor padrão
+
+Produto sem `cst_pis` e `cst_cofins` fica **fiscalmente incompleto e não emite**.
+Isso é deliberado, e a alternativa foi considerada e descartada.
+
+Chegou a existir um backfill gravando `07` ("operação isenta da contribuição"),
+que é o que o motor cravava antes desta etapa. Ele foi removido: preencher
+automaticamente resolveria a emissão e criaria um problema pior — bebida fria é
+**monofásica** e tem CST próprio de revenda, e `07` escondido no cadastro viraria
+escrituração errada que ninguém revisita, porque nada mais reclama.
+
+Sem valor padrão, o produto reclama até alguém decidir. É a única forma de a
+decisão chegar a quem sabe tomá-la.
+
+**Ao cadastrar produto novo:** o CST de PIS e de COFINS precisa vir do contador.
+Quando o CST é tributado por percentual (`01`, `02`), a alíquota também é
+exigida; situação não tributada (`04` a `09`) não comporta alíquota.
+
 ### O XML é o entregável — a plataforma não gera SPED
 
 A escrituração é do contador. A plataforma **não** gera EFD ICMS/IPI, EFD Contribuições nem
