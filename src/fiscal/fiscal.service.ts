@@ -10,12 +10,27 @@ import {
   FiscalEnvironment,
   Prisma,
 } from '@prisma/client';
+import { Readable } from 'stream';
+// archiver preso na linha 7.x de propósito: a 8.x é ESM-only e, num app
+// CommonJS, só carrega pelo `require(esm)` experimental do Node.
+import archiver, { Archiver } from 'archiver';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFiscalSettingsDto } from './dto/create-fiscal-settings.dto';
 import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { QueryFiscalRejectionsDto } from './dto/query-fiscal-rejections.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
+import { ExportXmlsDto } from './dto/export-xmls.dto';
+import {
+  DocumentoExportavel,
+  LIMITE_DOCUMENTOS,
+  mensagemLimiteDocumentos,
+  montarLoteDeExportacao,
+  montarManifesto,
+  NOME_MANIFESTO,
+  nomeArquivoZip,
+  resolverPeriodo,
+} from './export/fiscal-export';
 import { buildFiscalSnapshot } from './emission/fiscal-snapshot.builder';
 import { isFiscalStorageKey } from './emission/fiscal-storage';
 import {
@@ -34,6 +49,19 @@ const STATUS_REPROCESSAVEL: FiscalDocumentStatus[] = [
   FiscalDocumentStatus.REJEITADO,
   FiscalDocumentStatus.PENDENTE,
 ];
+
+/** Campos que a exportação em lote lê de cada documento. */
+const SELECAO_EXPORTACAO = {
+  chaveAcesso: true,
+  numero: true,
+  serie: true,
+  modelo: true,
+  status: true,
+  dataAutorizacao: true,
+  valorTotal: true,
+  xmlAutorizado: true,
+  xmlCancelamento: true,
+} satisfies Prisma.FiscalDocumentSelect;
 
 /** Linha da central de rejeições. */
 export interface FiscalRejectionItem extends Prisma.FiscalDocumentGetPayload<null> {
@@ -987,19 +1015,152 @@ export class FiscalService {
       },
     });
 
-    // O conteúdo pode estar no storage (referência) ou gravado na coluna.
-    if (!isFiscalStorageKey(xmlContent)) {
-      return xmlContent;
+    const conteudo = await this.lerXmlArmazenado(xmlContent);
+
+    if (conteudo === null) {
+      throw new NotFoundException(
+        `XML ${tipo} não pôde ser recuperado do armazenamento`,
+      );
+    }
+
+    return conteudo;
+  }
+
+  /**
+   * Resolve o XML gravado no documento, que pode estar em dois formatos: o
+   * conteúdo direto na coluna ou uma chave do storage — `persistirArquivos`
+   * grava de um jeito ou de outro conforme `storage.isConfigured()`.
+   *
+   * Devolve `null` em vez de lançar quando o arquivo não é recuperável: quem
+   * chama decide se isso é um `404` (download individual) ou uma linha marcada
+   * como ausente no manifesto (exportação em lote).
+   */
+  private async lerXmlArmazenado(valor: string | null): Promise<string | null> {
+    if (!valor) {
+      return null;
+    }
+
+    if (!isFiscalStorageKey(valor)) {
+      return valor;
     }
 
     try {
-      return await this.storageService.download(xmlContent);
+      return await this.storageService.download(valor);
     } catch (error) {
       this.logger.error(
-        `Falha ao ler o XML ${tipo} do storage (${xmlContent}): ${error instanceof Error ? error.message : String(error)}`,
+        `Falha ao ler o XML do storage (${valor}): ${error instanceof Error ? error.message : String(error)}`,
       );
-      throw new NotFoundException(
-        `XML ${tipo} não pôde ser recuperado do armazenamento`,
+      return null;
+    }
+  }
+
+  /**
+   * Exporta, num ZIP em stream, os XMLs dos documentos fiscais de um período.
+   *
+   * Só entram `AUTORIZADO` e `CANCELADO`: são os documentos que existem para o
+   * fisco e vão para a escrituração. Rejeitado nunca existiu; erro e pendente
+   * não chegaram à SEFAZ.
+   */
+  async exportarXmls(
+    companyId: string,
+    dto: ExportXmlsDto,
+  ): Promise<{ nomeArquivo: string; arquivo: Readable }> {
+    const periodo = resolverPeriodo(dto.dataInicio, dto.dataFim);
+    const ambiente = dto.ambiente ?? FiscalEnvironment.PRODUCAO;
+
+    const where: Prisma.FiscalDocumentWhereInput = {
+      companyId,
+      deletedAt: null,
+      ambiente,
+      status: {
+        in: [FiscalDocumentStatus.AUTORIZADO, FiscalDocumentStatus.CANCELADO],
+      },
+      // Pela data de emissão: é a data que consta do XML e que define em qual
+      // período o contador escritura o documento.
+      dataEmissao: { gte: periodo.inicio, lte: periodo.fim },
+      ...(dto.establishmentId
+        ? { establishmentId: dto.establishmentId }
+        : undefined),
+      ...(dto.modelo ? { modelo: dto.modelo } : undefined),
+    };
+
+    // Antes de montar qualquer coisa: recusar o lote grande demais é barato,
+    // descobrir isso com o stream aberto não é.
+    const total = await this.prisma.fiscalDocument.count({ where });
+
+    if (total > LIMITE_DOCUMENTOS) {
+      throw new BadRequestException(mensagemLimiteDocumentos(total));
+    }
+
+    const documentos = await this.prisma.fiscalDocument.findMany({
+      where,
+      orderBy: [{ dataEmissao: 'asc' }, { numero: 'asc' }],
+      select: SELECAO_EXPORTACAO,
+    });
+
+    const empresa = await this.prisma.company.findFirst({
+      where: { id: companyId },
+      select: { name: true, nomeFantasia: true, razaoSocial: true },
+    });
+
+    const arquivo = archiver('zip', { zlib: { level: 9 } });
+
+    arquivo.on('error', (error: Error) => {
+      this.logger.error(
+        `Falha ao montar o ZIP da exportação: ${error.message}`,
+      );
+    });
+
+    void this.preencherZipDaExportacao(arquivo, documentos);
+
+    return {
+      nomeArquivo: nomeArquivoZip(
+        empresa?.nomeFantasia ||
+          empresa?.razaoSocial ||
+          empresa?.name ||
+          'empresa',
+        periodo,
+        ambiente,
+      ),
+      arquivo,
+    };
+  }
+
+  /**
+   * Alimenta o ZIP documento a documento e fecha com o manifesto.
+   *
+   * XML que não volta do storage **não** derruba a exportação: entra como
+   * ausente no manifesto e o lote segue. Um arquivo perdido em agosto não pode
+   * impedir o fechamento do mês inteiro, e é a mesma filosofia do
+   * `persistirArquivos` — falha de storage não invalida nota autorizada.
+   */
+  private async preencherZipDaExportacao(
+    arquivo: Archiver,
+    documentos: DocumentoExportavel[],
+  ): Promise<void> {
+    try {
+      const manifesto = await montarLoteDeExportacao(
+        documentos,
+        (valor) => this.lerXmlArmazenado(valor),
+        {
+          adicionar: (nome, conteudo) =>
+            arquivo.append(conteudo, { name: nome }),
+        },
+      );
+
+      arquivo.append(Buffer.from(montarManifesto(manifesto), 'utf-8'), {
+        name: NOME_MANIFESTO,
+      });
+
+      await arquivo.finalize();
+    } catch (error) {
+      // Aborta o stream em vez de finalizar: melhor o download falhar do que o
+      // contador receber um ZIP incompleto que parece completo.
+      this.logger.error(
+        `Exportação de XMLs interrompida: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      arquivo.destroy(
+        error instanceof Error ? error : new Error(String(error)),
       );
     }
   }

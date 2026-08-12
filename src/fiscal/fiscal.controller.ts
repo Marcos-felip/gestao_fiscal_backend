@@ -40,6 +40,7 @@ import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { QueryFiscalRejectionsDto } from './dto/query-fiscal-rejections.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
+import { ExportXmlsDto } from './dto/export-xmls.dto';
 import { UploadCertificateDto } from './dto/upload-certificate.dto';
 import { CancelFiscalDocumentDto } from './dto/cancel-fiscal-document.dto';
 import { FiscalOperationsService } from './fiscal-operations.service';
@@ -412,6 +413,42 @@ export class FiscalController {
     @Query() query: QueryFiscalRejectionsDto,
   ) {
     return this.fiscalService.findRejections(companyId, query);
+  }
+
+  @Get('documents/xml/export')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({
+    summary: 'Exportar em lote os XMLs de um período',
+    description:
+      'Devolve um ZIP com os XMLs dos documentos AUTORIZADO e CANCELADO do ' +
+      'período, mais o manifesto `_relacao.csv` para conferência. Documento ' +
+      'cancelado leva o XML autorizado e o do evento de cancelamento. ' +
+      'Limites: 92 dias e 5.000 documentos por exportação.',
+  })
+  @ApiResponse({ status: 200, description: 'Arquivo ZIP com os XMLs' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Período inválido, longo demais ou acima do limite de documentos',
+  })
+  async exportarXmls(
+    @CurrentCompany() companyId: string,
+    @Query() query: ExportXmlsDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const { nomeArquivo, arquivo } = await this.fiscalService.exportarXmls(
+      companyId,
+      query,
+    );
+
+    response.setHeader('Content-Type', 'application/zip');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${nomeArquivo}"`,
+    );
+
+    return new StreamableFile(arquivo);
   }
 
   @Get('documents/:id')
