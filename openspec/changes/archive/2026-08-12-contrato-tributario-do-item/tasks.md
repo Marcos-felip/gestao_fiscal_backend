@@ -83,4 +83,4 @@ contador, não um preenchimento automático.
 ## 8. Achados desta implementação
 
 - [x] 8.1 **Bug corrigido:** `products.service.update` calculava `fiscalComplete` sem `cstPis`, `cstCofins` nem as alíquotas. Passava despercebido porque nenhum deles entrava na regra; com a regra nova, todo produto atualizado viraria incompleto.
-- [ ] 8.2 **Não feito:** emissão real ponta a ponta contra o motor com o contrato novo. Os testes cobrem a montagem, a validação e o payload; falta emitir uma NFC-e de homologação.
+- [x] 8.2 **Validado em 13/08/2026:** NFC-e de homologação autorizada com o contrato novo — chave `31260851720322000146650010000000011185782928`, protocolo `131260000762680`. O XML autorizado traz `ICMSSN102`, `PISNT` e `COFINSNT` por item, montados a partir do quadro tributário do produto. A primeira tentativa foi rejeitada porque o motor rodava em contêiner Docker com a imagem anterior ao contrato: `dotnet build` no host não atualiza o motor — é `docker compose build fiscal-service && docker compose up -d`.

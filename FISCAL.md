@@ -453,6 +453,22 @@ A mesma chave é usada dos dois lados: o Nest a envia em `X-Api-Key`, o motor a 
 `FISCAL_API_KEY`. Com o motor rodando, confira a integração em
 `GET /api/v1/fiscal/engine/health`.
 
+### Depois de mudar o contrato: reconstruir a **imagem**
+
+O motor roda em contêiner, e a imagem carrega o `dotnet publish` feito na hora do build.
+`dotnet build` no host recompila o `bin/` do repositório — que o contêiner não usa:
+
+```bash
+cd ../fiscal_service
+docker compose build fiscal-service && docker compose up -d fiscal-service
+```
+
+Sintoma de imagem velha: rejeição citando um campo que **não existe mais** no fonte do
+motor. Confirme sem adivinhar comparando o contrato servido com o esperado —
+`http://localhost:8080/swagger/v1/swagger.json`, em `components.schemas.ItemNfceDto`.
+Aconteceu em 13/08/2026: a etapa 1 já estava nos três repositórios e a emissão continuava
+rejeitando por `Itens[0].Csosn`, campo removido do motor no commit do contrato novo.
+
 ---
 
 ## 10. Modelo de dados
