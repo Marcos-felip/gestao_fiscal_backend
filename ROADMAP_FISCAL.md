@@ -31,8 +31,8 @@ da etapa 1.
 | 0 | Exportar XMLs em lote por período | backend, frontend | ✅ concluída |
 | 1 | Contrato tributário do item | motor, backend, frontend | ✅ concluída |
 | 2 | Regra fiscal por operação | backend, frontend | ⏸ **adiada** — ver abaixo |
-| 3 | NF-e modelo 55: emissão **interna** | motor, backend, frontend | **próxima** |
-| 4 | Eventos: CC-e e inutilização | motor, backend, frontend | depois da 3 |
+| 3 | NF-e modelo 55: emissão **interna** | motor, backend, frontend | ✅ implementada — falta emitir em homologação |
+| 4 | Eventos: CC-e e inutilização | motor, backend, frontend | **próxima** |
 | 5 | Devolução de mercadoria | backend, frontend | ⏸ **adiada** |
 | 6 | IBS e CBS | motor, backend | 2027 |
 
@@ -135,6 +135,26 @@ Qualquer uma destas:
 
 Enquanto nenhuma acontecer, a etapa 2 completa é custo sem uso.
 
+
+## O que a etapa 3 deixou em aberto
+
+Implementada nos três repositórios em 13/08/2026, com 121 testes no motor, 674
+no backend e 273 no frontend. O que **não** foi feito, e por quê:
+
+- **Emissão real em homologação.** Falta um cliente PJ com código IBGE e
+  indicador de IE cadastrados, e uma venda para ele. É o mesmo passo que fechou
+  a etapa 1 — sem ele, o caminho está testado mas não exercitado.
+- **DANFE do modelo 55 é HTML, não PDF.** O layout retrato pronto depende de
+  `System.Drawing.Common`, Windows-only no .NET 8, e o motor roda em contêiner
+  Linux — medido, não suposto. O download no frontend ainda assume PDF.
+- **Transporte, volumes e cobrança** existem no contrato dos três repositórios e
+  têm teste, mas o formulário não os coleta: venda de balcão não tem frete, e o
+  grupo ausente já significa "sem frete".
+- **Série e numeração de NF-e na tela de configuração.** O backend tem os
+  campos; a tela só é necessária para continuar numeração vinda de outro sistema.
+- **Estoque por estabelecimento** (seção 1c da change) continua adiado: cada
+  empresa da base tem uma MATRIZ e nenhuma filial, então a limitação não é
+  observável. Ela passa a existir na primeira filial.
 
 ## Aviso sobre a validade destas changes
 
