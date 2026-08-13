@@ -2446,6 +2446,49 @@ Reenfileira mantendo série, número e documento — não duplica a nota. Aceita
 
 ---
 
+> **`GET /fiscal/rejections` foi removido em 13/08/2026.** A central de rejeições
+> era um filtro promovido a endpoint e a tela: `GET /fiscal/documents` já filtra
+> por `status=REJEITADO` ou `ERRO`, e o reprocessamento sempre morou no detalhe
+> do documento (`POST /fiscal/documents/:id/retry`). Manter as duas rotas
+> significava dois lugares para a mesma lista divergirem.
+
+---
+
+## Paginação
+
+Todos os endpoints de listagem suportam paginação:
+
+**Query params:**
+- `page`: número da página (default: 1, min: 1)
+- `limit`: itens por página (default: 20, min: 1, max: 100)
+- `search`: busca textual por nome (quando suportado)
+
+**Formato da resposta paginada:**
+```json
+{
+  "data": [],
+  "total": 100,
+  "page": 1,
+  "limit": 20
+}
+```
+
+---
+
+## Catálogo de permissões
+
+Códigos no formato `dominio.acao`, armazenados na tabela `permissions`.
+
+- **OWNER** nunca é barrado — não depende de cadastro
+- **ADMIN** recebe todas as permissões quando a empresa é criada (`company_role_permissions`)
+- **MEMBER nasce sem nenhuma permissão.** Todo o acesso dele vem dos [perfis](#perfis-de-permissão) vinculados
+
+Por isso as tabelas abaixo não têm coluna MEMBER: para qualquer código, um MEMBER só tem acesso se
+algum perfil vinculado a ele contiver aquele código.
+
+Legenda: ✅ concedida por padrão à empresa nova · **Perfil sugerido** = 🔹 marca os códigos que
+compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao montar o primeiro perfil ·
+**Endpoint** = endpoint que exige a permissão (— = código cadastrado mas ainda não usado por nenhuma rota).
 
 ### Empresa (`company`)
 
@@ -2560,7 +2603,7 @@ Reenfileira mantendo série, número e documento — não duplica a nota. Aceita
 
 | Código | Descrição | OWNER | ADMIN | Perfil sugerido | Endpoint |
 |--------|-----------|:-----:|:-----:|:---------------:|----------|
-| `fiscal.read` | Ler documentos fiscais, XML, DANFE e rejeições | ✅ | ✅ | 🔹 | `GET /fiscal/documents*`, `GET /fiscal/rejections`, `POST /fiscal/documents/:id/consulta` |
+| `fiscal.read` | Ler documentos fiscais, XML e DANFE | ✅ | ✅ | 🔹 | `GET /fiscal/documents*`, `POST /fiscal/documents/:id/consulta` |
 | `fiscal.emit` | Emitir e reprocessar NFC-e | ✅ | ✅ | 🔹 | `POST /fiscal/documents/nfce`, `POST /fiscal/documents/:id/retry` |
 | `fiscal.cancel` | Cancelar documento autorizado | ✅ | ✅ | | `POST /fiscal/documents/:id/cancel` |
 | `fiscal.nfe.emit` | Emitir NF-e modelo 55 | ✅ | ✅ | | `POST /fiscal/documents/nfe` |

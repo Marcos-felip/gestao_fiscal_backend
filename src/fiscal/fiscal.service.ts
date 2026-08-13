@@ -209,11 +209,11 @@ export class FiscalService {
     if (dto.serieNfce !== undefined) data.serieNfce = dto.serieNfce;
     if (dto.proximoNumeroNfce !== undefined)
       data.proximoNumeroNfce = dto.proximoNumeroNfce;
+    if (dto.codigoCsc !== undefined) data.codigoCsc = dto.codigoCsc;
+    if (dto.idCsc !== undefined) data.idCsc = dto.idCsc;
     if (dto.serieNfe !== undefined) data.serieNfe = dto.serieNfe;
     if (dto.proximoNumeroNfe !== undefined)
       data.proximoNumeroNfe = dto.proximoNumeroNfe;
-    if (dto.codigoCsc !== undefined) data.codigoCsc = dto.codigoCsc;
-    if (dto.idCsc !== undefined) data.idCsc = dto.idCsc;
     if (dto.certificadoRef !== undefined)
       data.certificadoRef = dto.certificadoRef;
     if (dto.certificadoSenhaRef !== undefined)
@@ -259,19 +259,19 @@ export class FiscalService {
       eventos.push({
         ...base,
         tipo: 'serie',
-        valorAnterior: String(settings.serieNfce),
-        valorNovo: String(dto.serieNfce),
+        valorAnterior: `NFC-e ${settings.serieNfce}`,
+        valorNovo: `NFC-e ${dto.serieNfce}`,
       });
     }
 
-    // Série da NF-e é auditada com tipo próprio: no histórico, "mudou a série"
-    // sem dizer de qual modelo seria uma pista pela metade.
+    // Série da NF-e audita separado: são duas sequências fiscais distintas, e
+    // um evento que não diga de qual modelo é não serve para reconstituir nada.
     if (dto.serieNfe !== undefined && dto.serieNfe !== settings.serieNfe) {
       eventos.push({
         ...base,
-        tipo: 'serie_nfe',
-        valorAnterior: String(settings.serieNfe),
-        valorNovo: String(dto.serieNfe),
+        tipo: 'serie',
+        valorAnterior: `NF-e ${settings.serieNfe}`,
+        valorNovo: `NF-e ${dto.serieNfe}`,
       });
     }
 

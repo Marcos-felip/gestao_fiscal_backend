@@ -44,8 +44,7 @@ export class UpdateFiscalSettingsDto {
   @ApiPropertyOptional({
     description:
       'Série da NF-e modelo 55. Independente da série da NFC-e: são duas ' +
-      'sequências fiscais distintas, e misturá-las produz salto de numeração ' +
-      'nos dois modelos.',
+      'sequências fiscais distintas, e misturá-las gera salto de numeração.',
     minimum: 1,
     maximum: 999,
   })
@@ -55,7 +54,12 @@ export class UpdateFiscalSettingsDto {
   @Max(999)
   serieNfe?: number;
 
-  @ApiPropertyOptional({ description: 'Próximo número da NF-e', minimum: 1 })
+  @ApiPropertyOptional({
+    description:
+      'Próximo número da NF-e. Serve para continuar a numeração de outro ' +
+      'sistema — começando do zero, o padrão 1 já emite.',
+    minimum: 1,
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

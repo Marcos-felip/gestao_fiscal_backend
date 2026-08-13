@@ -35,6 +35,8 @@ const configuracao = (overrides: Record<string, unknown> = {}) => ({
   ambiente: FiscalEnvironment.HOMOLOGACAO,
   serieNfce: 1,
   proximoNumeroNfce: 1,
+  serieNfe: 1,
+  proximoNumeroNfe: 1,
   codigoCsc: 'A1B2C3D4E5F60718293A4B5C6D7E8F90',
   idCsc: '000001',
   certificadoRef: 'enc(pfx)',
@@ -67,14 +69,6 @@ const mockPrisma = {
 const mockStorage = { isConfigured: jest.fn(), download: jest.fn() };
 const mockEngine = { consultar: jest.fn() };
 const mockCertificates = { loadCredentials: jest.fn() };
-
-/** Filtro `where` usado na consulta da central. */
-const whereDaConsulta = (): Record<string, unknown> => {
-  const [argumento] = mockPrisma.fiscalDocument.findMany.mock.calls[0] as [
-    { where: Record<string, unknown> },
-  ];
-  return argumento.where;
-};
 
 describe('FiscalService', () => {
   let service: FiscalService;
@@ -110,7 +104,6 @@ describe('FiscalService', () => {
     });
   });
 
-
   describe('updateSettings', () => {
     it('recusa trocar de ambiente pelo update', async () => {
       await expect(
@@ -120,7 +113,7 @@ describe('FiscalService', () => {
       ).rejects.toThrow(/ativar/);
     });
 
-    it('audita a troca de série com o valor anterior e o novo', async () => {
+    it('audita a troca de série da NFC-e dizendo de qual modelo é', async () => {
       await service.updateSettings(
         'company-1',
         'estab-1',
@@ -128,14 +121,46 @@ describe('FiscalService', () => {
         'user-1',
       );
 
+      // O modelo entra no valor porque existem duas séries independentes: um
+      // evento `tipo: 'serie'` com `valorAnterior: '1'` não permitiria dizer,
+      // depois, se a série trocada foi a da NFC-e ou a da NF-e.
       expect(mockPrisma.fiscalSettingsEvent.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           tipo: 'serie',
-          valorAnterior: '1',
-          valorNovo: '2',
+          valorAnterior: 'NFC-e 1',
+          valorNovo: 'NFC-e 2',
           usuarioId: 'user-1',
         }),
       });
+    });
+
+    it('audita a troca de série da NF-e separado da NFC-e', async () => {
+      await service.updateSettings(
+        'company-1',
+        'estab-1',
+        { serieNfe: 3 },
+        'user-1',
+      );
+
+      expect(mockPrisma.fiscalSettingsEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          tipo: 'serie',
+          valorAnterior: 'NF-e 1',
+          valorNovo: 'NF-e 3',
+          usuarioId: 'user-1',
+        }),
+      });
+    });
+
+    it('não audita série quando só a numeração muda', async () => {
+      await service.updateSettings(
+        'company-1',
+        'estab-1',
+        { proximoNumeroNfe: 4312 },
+        'user-1',
+      );
+
+      expect(mockPrisma.fiscalSettingsEvent.create).not.toHaveBeenCalled();
     });
 
     it('audita a troca de CSC sem gravar o código', async () => {
