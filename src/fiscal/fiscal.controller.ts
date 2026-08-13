@@ -687,24 +687,32 @@ export class FiscalController {
   @Get('documents/:id/danfe')
   @UseGuards(RequirePermissionGuard)
   @RequirePermission('fiscal.read')
-  @ApiOperation({ summary: 'Download do DANFE (PDF) de um documento fiscal' })
+  @ApiOperation({
+    summary: 'Download do DANFE de um documento fiscal',
+    description:
+      'O formato varia por modelo: NFC-e devolve PDF, NF-e devolve HTML. ' +
+      'Use o Content-Type da resposta em vez de assumir PDF.',
+  })
   @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
-  @ApiResponse({ status: 200, description: 'PDF do DANFE' })
+  @ApiResponse({
+    status: 200,
+    description: 'DANFE em PDF (NFC-e) ou HTML (NF-e)',
+  })
   @ApiResponse({ status: 404, description: 'DANFE não disponível' })
   async getDanfe(
     @Param('id') id: string,
     @CurrentCompany() companyId: string,
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
-    const pdf = await this.fiscalService.getDanfe(id, companyId);
+    const danfe = await this.fiscalService.getDanfe(id, companyId);
 
-    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Type', danfe.contentType);
     response.setHeader(
       'Content-Disposition',
-      `inline; filename="danfe-${id}.pdf"`,
+      `inline; filename="danfe-${id}.${danfe.extensao}"`,
     );
 
-    return new StreamableFile(pdf);
+    return new StreamableFile(danfe.conteudo);
   }
 
   @Get('documents/:id/xml/:tipo')

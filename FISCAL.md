@@ -475,6 +475,20 @@ destinatário pessoa jurídica. Tudo que está fora é recusado por
 `buildNfeSnapshot` **antes de reservar numeração** — o motor recusaria de novo,
 mas aí o número já teria sido consumido.
 
+### Quem escolhe o modelo: o tipo de pessoa do cliente
+
+`OnSaleConfirmedListener` emite NFC-e automaticamente ao confirmar a venda —
+**exceto quando o cliente é pessoa jurídica**. Nesse caso ele não emite nada, e
+a venda fica em `NAO_EMITIDO` esperando a emissão explícita da NF-e.
+
+Não é preferência de fluxo, é necessidade: **`fiscal_documents.sale_id` é
+único**. Se a NFC-e automática criasse o documento, a NF-e daquela venda ficaria
+impossível de emitir — o endpoint existiria e seria inalcançável. Foi assim que
+o defeito apareceu, ao emitir a primeira NF-e de verdade.
+
+A NF-e **não** é automática porque `indFinal` (revenda ou consumo) não tem
+resposta segura sem perguntar. É a única pergunta do diálogo de emissão.
+
 **`indIeDest` não se deduz do tipo de pessoa.** Prestadora de serviço é pessoa
 jurídica e não é contribuinte de ICMS. O parceiro guarda o indicador em
 `partners.ind_ie_dest`, e a inscrição estadual só viaja quando ele é `1`.

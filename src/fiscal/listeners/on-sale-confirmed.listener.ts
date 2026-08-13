@@ -11,7 +11,11 @@ import {
   FiscalSnapshot,
 } from '../emission/fiscal-snapshot.builder';
 import { checkEmissionSettings } from '../emission/fiscal-preconditions';
-import { FiscalDocumentModel, FiscalDocumentStatus } from '@prisma/client';
+import {
+  FiscalDocumentModel,
+  FiscalDocumentStatus,
+  PersonType,
+} from '@prisma/client';
 import { randomUUID } from 'crypto';
 
 /**
@@ -90,6 +94,24 @@ export class OnSaleConfirmedListener {
 
     if (!sale || !company) {
       this.logger.warn(`Venda não encontrada: ${event.saleId}`);
+      return;
+    }
+
+    // Venda a pessoa jurídica sai como NF-e, não como NFC-e — é o recorte
+    // definido na etapa 3: PF → NFC-e, PJ → NF-e, sem critério a inventar.
+    //
+    // A emissão da NF-e **não** é automática porque ela exige uma resposta que
+    // ninguém pode presumir: se a mercadoria vai para revenda ou para consumo
+    // (`indFinal`). O mesmo produto, para o mesmo cliente, muda conforme o
+    // destino. A venda fica em NAO_EMITIDO e a tela oferece "Emitir NF-e".
+    //
+    // Sem isto, o documento de NFC-e ocupa o `sale_id` — que é único — e a NF-e
+    // daquela venda se torna impossível de emitir.
+    if (sale.customer?.personType === PersonType.PJ) {
+      this.logger.log(
+        `Venda ${event.saleId} é para pessoa jurídica: emissão automática de ` +
+          'NFC-e pulada, aguardando emissão de NF-e',
+      );
       return;
     }
 

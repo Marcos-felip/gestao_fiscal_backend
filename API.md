@@ -2345,9 +2345,14 @@ responde conforme o modelo do documento — não assuma PDF.
 
 ---
 
-#### GET /fiscal/documents/:id/danfe — Baixar o DANFE (PDF)
+#### GET /fiscal/documents/:id/danfe — Baixar o DANFE
 
-> **Permissão:** `fiscal.read` · responde `application/pdf`
+> **Permissão:** `fiscal.read`
+
+**O formato varia por modelo:** NFC-e responde `application/pdf`, NF-e responde
+`text/html; charset=utf-8`. O `Content-Disposition` acompanha, com `.pdf` ou
+`.html`. **Não assuma PDF** — servir HTML declarando PDF entrega um arquivo que
+o navegador se recusa a renderizar.
 
 ---
 

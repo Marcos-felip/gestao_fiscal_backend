@@ -83,4 +83,16 @@
 
 ## 8. Achados desta implementação
 
-- [ ] 8.1 **Não feito:** emissão real ponta a ponta de NF-e em homologação. Falta um cliente PJ com código IBGE e indicador de IE cadastrados, e uma venda para ele
+- [x] 8.1 **Validado em 13/08/2026:** NF-e de homologação autorizada — chave `31260851720322000146550010000000031458732971`, protocolo `131260152620587`. O XML saiu com `mod` 55, `tpImp` 1 (retrato), `idDest` 1, `dest` completo com `indIEDest` 9, sem `infNFeSupl` e com o quadro tributário do item intacto
+
+## 9. Achados da emissão real
+
+> Nenhum destes apareceu em teste unitário. Todos exigiram subir os três
+> serviços e emitir de verdade.
+
+- [x] 9.1 **Defeito de fundo:** confirmar a venda sempre criava NFC-e, e `fiscal_documents.sale_id` é único — a NF-e daquela venda ficava impossível de emitir. O endpoint existia e era inalcançável pelo fluxo normal. O listener passou a **não** emitir NFC-e quando o cliente é pessoa jurídica, deixando a venda em `NAO_EMITIDO`
+- [x] 9.2 **Defeito de boot:** `EmitNfeDto` referenciava classes aninhadas declaradas depois dela. Compila sem erro e derruba o processo com `Cannot access 'NfeTransporteDto' before initialization` — `emitDecoratorMetadata` resolve `design:type` na definição da classe. Ordem invertida no arquivo, com o porquê comentado
+- [x] 9.3 **DANFE servido com o tipo errado:** o download declarava `application/pdf` e devolvia HTML. `getDanfe` passou a derivar tipo e extensão da chave do storage
+- [x] 9.4 **Rejeição 234 com IE inventada:** a SEFAZ confere a inscrição estadual contra o CNPJ **mesmo em homologação**. Destinatário contribuinte exige um par CNPJ/IE que exista de verdade; a validação foi feita com destinatário não contribuinte, que é caso legítimo (colégio não recolhe ICMS)
+- [ ] 9.5 **Rejeição 391 com PIX:** a NFC-e automática de uma venda paga em PIX foi recusada com "Não informados os dados do cartão de crédito/débito nas Formas de Pagamento". O motor mapeia PIX para `tPag` 17, que exige o grupo `card` com `tpIntegra`. **Vale para NFC-e e NF-e** e não é da etapa 3 — merece correção própria
+- [ ] 9.6 **Numeração queimada em falha de criação:** a reserva incrementa antes do `create`, então um erro ali consome o número. Aconteceu na tentativa que bateu no 409. É o comportamento seguro (nunca reusar), mas merece um evento de auditoria dizendo que o número foi perdido

@@ -1318,7 +1318,35 @@ export class FiscalService {
   /**
    * Retorna o PDF do DANFE de um documento fiscal autorizado.
    */
-  async getDanfe(fiscalDocumentId: string, companyId: string): Promise<Buffer> {
+  /**
+   * DANFE do documento, junto do formato em que ele foi gravado.
+   *
+   * O formato **não** é constante: o da NFC-e é PDF e o da NF-e é HTML. Servir
+   * HTML com `Content-Type: application/pdf` entrega ao lojista um arquivo que
+   * nenhum leitor abre — e o navegador nem tenta, porque acredita no cabeçalho.
+   * A extensão gravada na chave do storage é a fonte da verdade.
+   */
+  async getDanfe(
+    fiscalDocumentId: string,
+    companyId: string,
+  ): Promise<{ conteudo: Buffer; contentType: string; extensao: string }> {
+    const { conteudo, chave } = await this.lerDanfe(
+      fiscalDocumentId,
+      companyId,
+    );
+    const html = chave?.toLowerCase().endsWith('.html') ?? false;
+
+    return {
+      conteudo,
+      contentType: html ? 'text/html; charset=utf-8' : 'application/pdf',
+      extensao: html ? 'html' : 'pdf',
+    };
+  }
+
+  private async lerDanfe(
+    fiscalDocumentId: string,
+    companyId: string,
+  ): Promise<{ conteudo: Buffer; chave: string | null }> {
     const document = await this.prisma.fiscalDocument.findFirst({
       where: { id: fiscalDocumentId, companyId, deletedAt: null },
     });
@@ -1339,12 +1367,21 @@ export class FiscalService {
       },
     });
 
+    // Sem storage configurado o DANFE fica na própria coluna, em base64, e não
+    // há chave para consultar a extensão — nesse caso ele é sempre o PDF da
+    // NFC-e, porque a NF-e nasceu depois do storage.
     if (!isFiscalStorageKey(document.danfeUrl)) {
-      return Buffer.from(document.danfeUrl, 'base64');
+      return {
+        conteudo: Buffer.from(document.danfeUrl, 'base64'),
+        chave: null,
+      };
     }
 
     try {
-      return await this.storageService.downloadBuffer(document.danfeUrl);
+      return {
+        conteudo: await this.storageService.downloadBuffer(document.danfeUrl),
+        chave: document.danfeUrl,
+      };
     } catch (error) {
       this.logger.error(
         `Falha ao ler o DANFE do storage (${document.danfeUrl}): ${error instanceof Error ? error.message : String(error)}`,
