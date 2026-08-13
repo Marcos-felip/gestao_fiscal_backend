@@ -6,15 +6,27 @@ import { DfeNetFiscalEngine } from '../fiscal-engine/dfe-net-fiscal-engine.servi
 import {
   EmitirNfceRequest,
   EmitirNfceResult,
+  EmitirNfeRequest,
+  EmitirNfeResult,
   FiscalCertificateCredentials,
   FiscalRejeicao,
 } from '../fiscal-engine/fiscal-engine.interface';
 import { FiscalCertificateService } from '../certificates/fiscal-certificate.service';
-import { buildEmitirNfceRequest } from '../emission/emit-request.builder';
-import { buildFiscalStorageKey } from '../emission/fiscal-storage';
+import {
+  buildEmitirNfceRequest,
+  buildEmitirNfeRequest,
+} from '../emission/emit-request.builder';
+import {
+  buildFiscalStorageKey,
+  danfeFormato,
+} from '../emission/fiscal-storage';
 import { StorageService } from '../../storage/storage.service';
 import { FISCAL_EMISSION_QUEUE } from '../../queue/queue.constants';
-import { FiscalDocumentStatus, FiscalStatus } from '@prisma/client';
+import {
+  FiscalDocumentModel,
+  FiscalDocumentStatus,
+  FiscalStatus,
+} from '@prisma/client';
 
 export interface FiscalEmissionJobData {
   fiscalDocumentId: string;
@@ -102,9 +114,11 @@ export class FiscalEmissionProcessor extends WorkerHost {
       },
     });
 
+    const ehNfe = document.modelo === FiscalDocumentModel.NFE;
+
     // Payload e certificado: pré-condição inválida ou certificado vencido
     // param a emissão de vez — reprocessar não resolve.
-    let request: EmitirNfceRequest;
+    let request: EmitirNfceRequest | EmitirNfeRequest;
     try {
       // O CSC é por ambiente: usar o do ambiente carimbado no documento, e
       // não o da configuração em uso, que pode ter mudado desde a criação.
@@ -117,13 +131,20 @@ export class FiscalEmissionProcessor extends WorkerHost {
         },
       });
 
-      const payload = buildEmitirNfceRequest(document.snapshot, {
-        serie: document.serie,
-        numero: document.numero,
-        ambiente: document.ambiente,
-        codigoCsc: settings?.codigoCsc,
-        idCsc: settings?.idCsc,
-      });
+      // A NF-e não leva CSC: o código é exclusivo da NFC-e e o motor o recusa.
+      const payload = ehNfe
+        ? buildEmitirNfeRequest(document.snapshot, {
+            serie: document.serie,
+            numero: document.numero,
+            ambiente: document.ambiente,
+          })
+        : buildEmitirNfceRequest(document.snapshot, {
+            serie: document.serie,
+            numero: document.numero,
+            ambiente: document.ambiente,
+            codigoCsc: settings?.codigoCsc,
+            idCsc: settings?.idCsc,
+          });
 
       // Certificado decriptado só aqui, na borda da chamada ao motor.
       const credentials: FiscalCertificateCredentials =
@@ -152,7 +173,9 @@ export class FiscalEmissionProcessor extends WorkerHost {
     }
 
     try {
-      const result = await this.engine.emitir(request);
+      const result = ehNfe
+        ? await this.engine.emitirNfe(request as EmitirNfeRequest)
+        : await this.engine.emitir(request as EmitirNfceRequest);
 
       const newStatus = result.sucesso
         ? FiscalDocumentStatus.AUTORIZADO
@@ -180,7 +203,8 @@ export class FiscalEmissionProcessor extends WorkerHost {
             rejeicaoCodigo: result.rejeicao?.codigo,
             rejeicaoMensagem: descreverRejeicao(result.rejeicao),
             dataAutorizacao,
-            qrCode: result.qrCode,
+            // A NF-e não tem QR Code de consulta; o campo fica nulo nela.
+            qrCode: ehNfe ? null : (result as EmitirNfceResult).qrCode,
             ...arquivos,
           },
         });
@@ -252,7 +276,7 @@ export class FiscalEmissionProcessor extends WorkerHost {
    */
   private async persistirArquivos(
     companyId: string,
-    result: EmitirNfceResult,
+    result: EmitirNfceResult | EmitirNfeResult,
     chaveAcesso: string,
     dataAutorizacao: Date,
   ): Promise<{ xmlAutorizado?: string; danfeUrl?: string }> {
@@ -284,16 +308,21 @@ export class FiscalEmissionProcessor extends WorkerHost {
       }
 
       if (result.danfeBase64) {
+        // O DANFE da NF-e é HTML e o da NFC-e é PDF. Gravar com a extensão
+        // errada entrega ao lojista um arquivo que nenhum leitor abre.
+        const { extensao, mime } = danfeFormato(
+          (result as EmitirNfeResult).danfeContentType,
+        );
         const chave = buildFiscalStorageKey(
           companyId,
           chaveAcesso,
-          'pdf',
+          extensao,
           dataAutorizacao,
         );
         await this.storage.upload(
           chave,
           Buffer.from(result.danfeBase64, 'base64'),
-          'application/pdf',
+          mime,
         );
         arquivos.danfeUrl = chave;
       }

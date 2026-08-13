@@ -375,6 +375,7 @@ model Partner {
   tradeName    String?     @map("trade_name")
   cpfCnpj      String?     @map("cpf_cnpj")
   rgIe         String?     @map("rg_ie")
+  indIeDest    Int?        @map("ind_ie_dest")
   email        String?
   phone        String?
   cep          String?
@@ -384,6 +385,7 @@ model Partner {
   neighborhood String?
   city         String?
   state        String?     @db.Char(2)
+  ibgeCode     String?     @map("ibge_code")
   isActive     Boolean     @default(true) @map("is_active")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
@@ -748,6 +750,8 @@ model FiscalSettings {
   ambiente         FiscalEnvironment @default(HOMOLOGACAO)
   serieNfce        Int               @default(1) @map("serie_nfce")
   proximoNumeroNfce Int              @default(1) @map("proximo_numero_nfce")
+  serieNfe         Int               @default(1) @map("serie_nfe")
+  proximoNumeroNfe Int               @default(1) @map("proximo_numero_nfe")
   codigoCsc        String?           @map("codigo_csc")
   idCsc            String?           @map("id_csc")
   /// Referência criptografada ao certificado A1 no cofre (KMS/Vault)

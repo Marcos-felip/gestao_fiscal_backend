@@ -319,8 +319,20 @@
 | `email` | VARCHAR | ❌ | E-mail |
 | `phone` | VARCHAR | ❌ | Telefone |
 | *(campos de endereço)* | — | ❌ | Mesmos campos de Establishment |
+| `ibge_code` | VARCHAR | ❌ | Código IBGE do município (7 dígitos) — o `cMun` do destinatário da NF-e |
+| `ind_ie_dest` | INT | ❌ | Indicador de IE na NF-e: `1` contribuinte, `2` isento, `9` não contribuinte |
 | `is_active` | BOOLEAN | ✅ | |
 | `deleted_at` | TIMESTAMP | ❌ | Soft delete |
+
+> `ibge_code` e `ind_ie_dest` são **nulos por padrão e obrigatórios só na
+> emissão de NF-e**. Não há valor certo para presumir: `ind_ie_dest` não se
+> deduz do tipo de pessoa — prestadora de serviço é PJ e não é contribuinte de
+> ICMS. Cliente sem eles é recusado nomeando o campo, em vez de o cadastro
+> bloquear quem nunca vai receber NF-e.
+>
+> Quando `ind_ie_dest = 1`, o `rg_ie` passa a ser lido como inscrição estadual e
+> é obrigatório. Nos outros dois casos ele **não** é enviado ao motor: mandar IE
+> de quem se declarou não contribuinte é contradição que a SEFAZ recusa.
 
 ### `stock_movements` — Movimentações de Estoque
 
@@ -680,6 +692,8 @@ Colunas de parcelamento, espelhando `sales`:
 | `ambiente` | ENUM `FiscalEnvironment` | ✅ | Default `HOMOLOGACAO` |
 | `serie_nfce` | INT | ✅ | Série da NFC-e (1 a 999), default 1 |
 | `proximo_numero_nfce` | INT | ✅ | Próximo número a reservar, default 1 |
+| `serie_nfe` | INT | ✅ | Série da NF-e modelo 55 (1 a 999), default 1 |
+| `proximo_numero_nfe` | INT | ✅ | Próximo número da NF-e a reservar, default 1 |
 | `codigo_csc` | VARCHAR | ❌ | CSC do ambiente (segredo; não sai em auditoria) |
 | `id_csc` | VARCHAR | ❌ | Identificador do CSC |
 | `certificado_ref` | TEXT | ❌ | .pfx cifrado em AES-256-GCM |
@@ -929,6 +943,7 @@ As migrations ficam em `prisma/migrations/`.
 | `20260804120000_fiscal_module_mvp` | Cria `fiscal_settings`, `fiscal_documents`, `fiscal_status_history` e `fiscal_document_events` e os enums `FiscalDocumentModel`, `FiscalEnvironment`, `FiscalDocumentStatus`, `TaxRegimeCode` e `FiscalPaymentCode`; estende `companies` e `products` com os campos fiscais; acrescenta os 5 códigos `fiscal.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
 | `20260804154411_fiscal_certificate_events` | Cria `fiscal_certificate_events` para auditar o envio e a substituição do certificado A1 |
 | `20260804180000_fiscal_settings_por_ambiente` | Troca o UNIQUE de `fiscal_settings` de `establishment_id` para `(establishment_id, ambiente)` — homologação e produção passam a ter série, numeração, CSC e certificado próprios; adiciona `producao_liberada`, `producao_liberada_em` e `producao_liberada_por`; cria `fiscal_settings_events` para auditar série, CSC, troca de ambiente e liberação de produção |
+| `20260813120000_nfe_modelo_55` | Adiciona `serie_nfe` e `proximo_numero_nfe` a `fiscal_settings` (sequência própria da NF-e), `ind_ie_dest` e `ibge_code` a `partners`, e semeia `fiscal.nfe.emit` e `fiscal.nfe.cancel` com os três passos |
 
 > As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
 >

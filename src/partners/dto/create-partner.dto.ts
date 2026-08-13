@@ -1,8 +1,10 @@
 import {
   IsEmail,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -84,4 +86,29 @@ export class CreatePartnerDto {
   @IsString()
   @MaxLength(2)
   state?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Código IBGE do município (7 dígitos). Obrigatório para receber NF-e — ' +
+      'é o campo cMun do destinatário.',
+    example: '3143302',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{7}$/, { message: 'Código IBGE deve ter 7 dígitos' })
+  ibgeCode?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Indicador de inscrição estadual na NF-e: 1 contribuinte, 2 isento de ' +
+      'inscrição, 9 não contribuinte. Não se deduz do tipo de pessoa — ' +
+      'prestadora de serviço é pessoa jurídica e não é contribuinte de ICMS.',
+    enum: [1, 2, 9],
+  })
+  @IsOptional()
+  @IsIn([1, 2, 9], {
+    message:
+      'Indicador de IE deve ser 1 (contribuinte), 2 (isento) ou 9 (não contribuinte)',
+  })
+  indIeDest?: number;
 }

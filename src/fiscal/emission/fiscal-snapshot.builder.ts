@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { PaymentMethod, Prisma, TaxRegimeCode } from '@prisma/client';
 import {
+  IND_IE_DEST,
+  IND_IE_DEST_VALORES,
+  IndIeDest,
   NfceCofins,
   NfceDestinatario,
   NfceEmitente,
@@ -9,6 +12,9 @@ import {
   NfceItemImposto,
   NfcePagamento,
   NfcePis,
+  NfeCobranca,
+  NfeDestinatario,
+  NfeTransporte,
 } from '../fiscal-engine/fiscal-engine.interface';
 import {
   apenasDigitos,
@@ -78,8 +84,34 @@ export interface FiscalTotais {
   vNF: number;
 }
 
+/**
+ * Dados que só a NF-e tem. Ausente no snapshot da NFC-e.
+ *
+ * `tipoOperacao` e `finalidade` entram mesmo aceitando um valor só: o dia em
+ * que o recorte abrir, o documento antigo precisa dizer o que foi emitido — e
+ * snapshot congelado não ganha campo depois.
+ */
+export interface FiscalNfeCabecalho {
+  naturezaOperacao: string;
+  /** 0 entrada · 1 saída */
+  tipoOperacao: number;
+  /** 1 normal · 2 complementar · 3 ajuste · 4 devolução */
+  finalidade: number;
+  /** `indFinal`: venda para consumo (true) ou para revenda (false) */
+  consumidorFinal: boolean;
+  /** `indPres` */
+  presenca: number;
+  transporte?: NfeTransporte;
+  cobranca?: NfeCobranca;
+}
+
 export interface FiscalSnapshot {
   versao: FiscalSnapshotVersao;
+  /**
+   * Modelo do documento. Ausente nos snapshots gravados antes da NF-e, que são
+   * todos NFC-e — por isso a leitura assume `NFCE` quando não vem.
+   */
+  modelo?: 'NFCE' | 'NFE';
   venda: {
     id: string;
     numero: number;
@@ -90,6 +122,10 @@ export interface FiscalSnapshot {
   };
   emitente: NfceEmitente;
   destinatario?: NfceDestinatario;
+  /** Destinatário completo da NF-e. Presente apenas quando `modelo` é `NFE`. */
+  destinatarioNfe?: NfeDestinatario;
+  /** Cabeçalho exclusivo da NF-e. Presente apenas quando `modelo` é `NFE`. */
+  nfe?: FiscalNfeCabecalho;
   itens: NfceItem[];
   pagamentos: NfcePagamento[];
   /** Σ dos itens já com o desconto rateado */
@@ -170,6 +206,259 @@ export function buildFiscalSnapshot(
     valorTotal,
     totais: montarTotais(itens, valorTotal),
     recebimento: montarRecebimento(sale),
+  };
+}
+
+// ──────────────────────────────────────────────
+// NF-e modelo 55
+// ──────────────────────────────────────────────
+
+/** Natureza da operação quando o chamador não informa nenhuma. */
+export const NATUREZA_OPERACAO_PADRAO_NFE = 'VENDA DE MERCADORIA';
+
+/** `indPres` 1 — presencial. É de onde a venda vem: o balcão. */
+const PRESENCA_PRESENCIAL = 1;
+
+/** `tpNF` 1 — saída. Único aceito no recorte atual. */
+const TIPO_OPERACAO_SAIDA = 1;
+
+/** `finNFe` 1 — normal. Único aceito no recorte atual. */
+const FINALIDADE_NORMAL = 1;
+
+export interface NfeSnapshotOptions {
+  naturezaOperacao?: string;
+  /**
+   * Venda para consumo (`true`) ou para revenda (`false`).
+   *
+   * Não tem padrão porque não há resposta segura: o mesmo produto, para o mesmo
+   * cliente, muda conforme o destino da mercadoria. Quem sabe é quem lançou a
+   * venda.
+   */
+  consumidorFinal: boolean;
+  presenca?: number;
+  transporte?: NfeTransporte;
+  cobranca?: NfeCobranca;
+}
+
+/**
+ * Monta o snapshot fiscal de uma NF-e modelo 55.
+ *
+ * Compartilha com a NFC-e tudo que é igual — emitente, itens, quadro
+ * tributário, pagamentos e totais — e acrescenta o que só a NF-e tem: o
+ * destinatário completo e o cabeçalho de operação.
+ *
+ * **Recorte vigente:** operação interna e destinatário pessoa jurídica. O que
+ * está fora é recusado aqui, antes de reservar numeração — o motor recusaria
+ * de novo, mas aí o número já teria sido consumido.
+ */
+export function buildNfeSnapshot(
+  company: CompanyForSnapshot,
+  sale: SaleForSnapshot,
+  opcoes: NfeSnapshotOptions,
+): FiscalSnapshot {
+  const problemas: string[] = [];
+
+  const crt = resolverCrt(company, problemas);
+  const emitente = montarEmitente(company, sale, crt, problemas);
+  const destinatario = montarDestinatarioNfe(sale, emitente, problemas);
+  const { itens, valorTotal, subtotal, desconto } = montarItens(
+    sale,
+    crt,
+    problemas,
+  );
+  const pagamentos = montarPagamentos(sale, valorTotal, problemas);
+
+  if (problemas.length > 0) {
+    throw new BadRequestException(
+      `Não é possível emitir a NF-e: ${problemas.join('; ')}`,
+    );
+  }
+
+  return {
+    versao: VERSAO_SNAPSHOT_ATUAL,
+    modelo: 'NFE',
+    venda: {
+      id: sale.id,
+      numero: sale.saleNumber,
+      subtotal,
+      desconto,
+      total: arredondar(Number(sale.totalAmount)),
+      data: sale.saleDate.toISOString(),
+    },
+    emitente,
+    destinatarioNfe: destinatario,
+    nfe: {
+      naturezaOperacao:
+        opcoes.naturezaOperacao?.trim() || NATUREZA_OPERACAO_PADRAO_NFE,
+      tipoOperacao: TIPO_OPERACAO_SAIDA,
+      finalidade: FINALIDADE_NORMAL,
+      consumidorFinal: opcoes.consumidorFinal,
+      presenca: opcoes.presenca ?? PRESENCA_PRESENCIAL,
+      transporte: opcoes.transporte,
+      cobranca: opcoes.cobranca,
+    },
+    itens,
+    pagamentos,
+    valorTotal,
+    totais: montarTotais(itens, valorTotal),
+    recebimento: montarRecebimento(sale),
+  };
+}
+
+/**
+ * Destinatário da NF-e, a partir do cliente da venda.
+ *
+ * Tudo é obrigatório, e cada falta é nomeada: quem cadastrou o cliente precisa
+ * saber qual campo abrir para completar, não receber "destinatário inválido".
+ */
+function montarDestinatarioNfe(
+  sale: SaleForSnapshot,
+  emitente: NfceEmitente,
+  problemas: string[],
+): NfeDestinatario {
+  const cliente = sale.customer;
+
+  if (!cliente) {
+    problemas.push(
+      'a NF-e exige destinatário identificado — informe o cliente na venda',
+    );
+    return destinatarioVazio();
+  }
+
+  const cpfCnpj = apenasDigitos(cliente.cpfCnpj);
+
+  if (cliente.personType !== 'PJ' || cpfCnpj.length !== 14) {
+    problemas.push(
+      `o cliente "${cliente.name}" não é pessoa jurídica — a NF-e exige CNPJ; ` +
+        'para pessoa física, emita NFC-e',
+    );
+  } else if (!isCpfCnpjValido(cpfCnpj)) {
+    problemas.push(`CNPJ do cliente "${cliente.name}" é inválido`);
+  }
+
+  const uf = (cliente.state ?? '').trim().toUpperCase();
+  const cep = apenasDigitos(cliente.cep);
+  const codigoMunicipio = apenasDigitos(cliente.ibgeCode);
+
+  if (!cliente.street || !cliente.number) {
+    problemas.push('informe logradouro e número do cliente');
+  }
+  if (!cliente.neighborhood) {
+    problemas.push('informe o bairro do cliente');
+  }
+  if (!cliente.city) {
+    problemas.push('informe o município do cliente');
+  }
+  if (!isCodigoIbgeValido(codigoMunicipio)) {
+    problemas.push('informe o código IBGE (7 dígitos) do município do cliente');
+  }
+  if (!isCepValido(cep)) {
+    problemas.push('informe o CEP do cliente');
+  }
+  if (!isUfValida(uf)) {
+    problemas.push('informe uma UF válida no cadastro do cliente');
+  } else if (uf !== emitente.uf) {
+    problemas.push(
+      `operação interestadual está fora do escopo atual: emitente em ` +
+        `${emitente.uf}, cliente em ${uf}`,
+    );
+  }
+
+  const indicadorIe = resolverIndicadorIe(cliente, problemas);
+  const inscricaoEstadual = resolverInscricaoEstadual(
+    cliente,
+    indicadorIe,
+    problemas,
+  );
+
+  return {
+    cpfCnpj,
+    nome: limitar(cliente.name, 60),
+    logradouro: cliente.street ?? '',
+    numero: cliente.number ?? '',
+    complemento: cliente.complement ?? undefined,
+    bairro: cliente.neighborhood ?? '',
+    codigoMunicipio,
+    municipio: cliente.city ?? '',
+    uf,
+    cep,
+    indicadorIe,
+    inscricaoEstadual,
+    telefone: apenasDigitos(cliente.phone) || undefined,
+    email: cliente.email ?? undefined,
+  };
+}
+
+/**
+ * O indicador de IE não tem padrão seguro.
+ *
+ * Presumir "não contribuinte" para quem tem inscrição estadual, ou o contrário,
+ * grava a presunção num snapshot congelado e escritura errado no destinatário.
+ */
+function resolverIndicadorIe(
+  cliente: NonNullable<SaleForSnapshot['customer']>,
+  problemas: string[],
+): IndIeDest {
+  const valor = cliente.indIeDest;
+
+  if (valor === null || valor === undefined) {
+    problemas.push(
+      `informe o indicador de inscrição estadual do cliente "${cliente.name}" ` +
+        '(contribuinte, isento ou não contribuinte)',
+    );
+    return IND_IE_DEST.NAO_CONTRIBUINTE;
+  }
+
+  if (!IND_IE_DEST_VALORES.includes(valor as IndIeDest)) {
+    problemas.push(
+      `indicador de inscrição estadual inválido no cliente "${cliente.name}": ${valor}`,
+    );
+    return IND_IE_DEST.NAO_CONTRIBUINTE;
+  }
+
+  return valor as IndIeDest;
+}
+
+/**
+ * A inscrição estadual só viaja quando o cliente é contribuinte.
+ *
+ * O campo `rgIe` do parceiro guarda RG ou IE conforme o tipo de pessoa; mandá-lo
+ * para um não contribuinte faria o motor recusar, porque a declaração e o dado
+ * se contradiriam.
+ */
+function resolverInscricaoEstadual(
+  cliente: NonNullable<SaleForSnapshot['customer']>,
+  indicadorIe: IndIeDest,
+  problemas: string[],
+): string | undefined {
+  if (indicadorIe !== IND_IE_DEST.CONTRIBUINTE) return undefined;
+
+  const inscricao = apenasDigitos(cliente.rgIe);
+
+  if (!isInscricaoEstadualValida(inscricao)) {
+    problemas.push(
+      `o cliente "${cliente.name}" está declarado como contribuinte — ` +
+        'informe a inscrição estadual dele (2 a 14 dígitos)',
+    );
+    return undefined;
+  }
+
+  return limitar(inscricao, 14);
+}
+
+/** Só existe para que a montagem continue e colete todos os problemas. */
+function destinatarioVazio(): NfeDestinatario {
+  return {
+    cpfCnpj: '',
+    nome: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    codigoMunicipio: '',
+    municipio: '',
+    uf: '',
+    cep: '',
+    indicadorIe: IND_IE_DEST.NAO_CONTRIBUINTE,
   };
 }
 

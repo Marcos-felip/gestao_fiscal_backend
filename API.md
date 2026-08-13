@@ -1102,9 +1102,21 @@ Produtos que bloqueariam a emissão, com o motivo de cada pendência.
   "complement": "string (opcional)",
   "neighborhood": "string (opcional)",
   "city": "string (opcional)",
-  "state": "string (2 chars, opcional)"
+  "state": "string (2 chars, opcional)",
+  "ibgeCode": "string (7 dígitos, opcional)",
+  "indIeDest": "1 | 2 | 9 (opcional)"
 }
 ```
+
+**`ibgeCode` e `indIeDest` existem para a NF-e.** São opcionais no cadastro e
+obrigatórios na emissão: cliente sem eles é recusado nomeando o campo, em vez de
+bloquear o cadastro de quem nunca vai receber NF-e.
+
+- `ibgeCode` — código IBGE do município, o `cMun` do destinatário.
+- `indIeDest` — `1` contribuinte, `2` isento de inscrição, `9` não contribuinte.
+  **Não se deduz do tipo de pessoa:** prestadora de serviço é pessoa jurídica e
+  não é contribuinte de ICMS. Quando `1`, o `rgIe` passa a ser lido como
+  inscrição estadual e é obrigatório; nos outros dois casos ele não é enviado.
 
 ---
 
@@ -2260,6 +2272,67 @@ de uma vez
 
 ---
 
+#### POST /fiscal/documents/nfe — Emitir NF-e modelo 55
+
+> **Permissão:** `fiscal.nfe.emit` — separada da NFC-e: quem opera o caixa não
+> necessariamente emite NF-e
+
+**Recorte vigente (13/08/2026):** venda **interna** (mesma UF), **saída**,
+finalidade **normal**, destinatário **pessoa jurídica**. Pessoa física continua
+sendo atendida pela NFC-e.
+
+```jsonc
+{
+  "saleId": "uuid",
+  "establishmentId": "uuid",        // opcional; padrão: o da venda
+  "consumidorFinal": false,          // obrigatório — ver abaixo
+  "naturezaOperacao": "VENDA DE MERCADORIA",  // opcional
+  "presenca": 1,                     // opcional; padrão 1 (presencial)
+
+  "transporte": {                    // opcional; ausente = sem frete
+    "modalidade": 0,                 // 0,1,2,3,4 ou 9
+    "transportadora": { "cpfCnpj": "...", "nome": "...", "uf": "MG" },
+    "veiculo": { "placa": "HAB1234", "uf": "MG", "rntc": "12345" },
+    "volumes": [{ "quantidade": 3, "especie": "CAIXA", "pesoBruto": 13.2 }]
+  },
+
+  "cobranca": {                      // opcional; presente na venda a prazo
+    "numeroFatura": "001",
+    "valorLiquido": 100.00,
+    "duplicatas": [
+      { "numero": "001/1", "vencimento": "2026-09-13", "valor": 50.00 }
+    ]
+  }
+}
+```
+
+**`consumidorFinal` não tem padrão de propósito.** Ele distingue venda para
+revenda (`false`) de venda para consumo (`true`), e o mesmo produto muda
+conforme o destino da mercadoria — quem sabe é quem lançou a venda, não o
+sistema.
+
+**Resposta 201:** o documento em `PENDENTE`, já enfileirado. Numeração e série
+são as da NF-e, independentes das da NFC-e.
+
+**Erros `400`** — todos antes de reservar numeração, e todos nomeando o campo:
+
+| Situação | Mensagem |
+|---|---|
+| Venda sem cliente | "a NF-e exige destinatário identificado — informe o cliente na venda" |
+| Cliente pessoa física | "o cliente … não é pessoa jurídica — a NF-e exige CNPJ; para pessoa física, emita NFC-e" |
+| Cliente em outra UF | "operação interestadual está fora do escopo atual: emitente em MG, cliente em SP" |
+| Sem `indIeDest` | "informe o indicador de inscrição estadual do cliente …" |
+| Contribuinte sem IE | "o cliente … está declarado como contribuinte — informe a inscrição estadual dele" |
+| Sem código IBGE | "informe o código IBGE (7 dígitos) do município do cliente" |
+| Endereço incompleto | nomeia cada campo faltante de uma vez |
+
+**O DANFE da NF-e é HTML, não PDF.** O layout retrato pronto depende de uma
+biblioteca Windows-only e o motor roda em contêiner Linux; o arquivo é gravado
+com extensão `.html` e servido com `text/html`. `GET /fiscal/documents/:id/danfe`
+responde conforme o modelo do documento — não assuma PDF.
+
+---
+
 #### GET /fiscal/documents/:id/history — Histórico de status
 
 > **Permissão:** `fiscal.read` — cada transição com motivo, usuário e data
@@ -2532,6 +2605,8 @@ compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao mo
 | `fiscal.read` | Ler documentos fiscais, XML, DANFE e rejeições | ✅ | ✅ | 🔹 | `GET /fiscal/documents*`, `GET /fiscal/rejections`, `POST /fiscal/documents/:id/consulta` |
 | `fiscal.emit` | Emitir e reprocessar NFC-e | ✅ | ✅ | 🔹 | `POST /fiscal/documents/nfce`, `POST /fiscal/documents/:id/retry` |
 | `fiscal.cancel` | Cancelar documento autorizado | ✅ | ✅ | | `POST /fiscal/documents/:id/cancel` |
+| `fiscal.nfe.emit` | Emitir NF-e modelo 55 | ✅ | ✅ | | `POST /fiscal/documents/nfe` |
+| `fiscal.nfe.cancel` | Cancelar NF-e modelo 55 | ✅ | ✅ | | reservada — o cancelamento hoje passa por `fiscal.cancel` |
 | `fiscal.settings.read` | Ler configuração fiscal, certificado e checklist | ✅ | ✅ | 🔹 | `GET /fiscal/settings*`, `GET /fiscal/engine/health` |
 | `fiscal.settings.edit` | Editar configuração, certificado e ambientes | ✅ | ✅ | | `POST/PATCH /fiscal/settings*` |
 

@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { FiscalEnvironment, Prisma } from '@prisma/client';
 import {
   EmitirNfceRequest,
+  EmitirNfeRequest,
   FiscalCertificateCredentials,
 } from '../fiscal-engine/fiscal-engine.interface';
 import {
@@ -96,6 +97,68 @@ export function buildEmitirNfceRequest(
     serie: context.serie,
     numero: context.numero,
     ambiente: mapAmbiente(context.ambiente),
+  };
+}
+
+/** Payload da NF-e sem o certificado — ele entra só na borda da chamada. */
+export type NfeEmissionPayload = Omit<
+  EmitirNfeRequest,
+  keyof FiscalCertificateCredentials
+>;
+
+/** Contexto da NF-e. Sem CSC: o motor recusa o campo no modelo 55. */
+export interface NfeEmissionContext {
+  serie: number;
+  numero: number;
+  ambiente: FiscalEnvironment;
+}
+
+/**
+ * Converte o snapshot da NF-e no payload do motor.
+ *
+ * Como no da NFC-e, os somatórios são conferidos de novo aqui: é a última
+ * parada antes de queimar a numeração na SEFAZ.
+ */
+export function buildEmitirNfeRequest(
+  snapshot: Prisma.JsonValue | null,
+  context: NfeEmissionContext,
+): NfeEmissionPayload {
+  const dados = lerSnapshot(snapshot);
+
+  if (dados.modelo !== 'NFE' || !dados.destinatarioNfe || !dados.nfe) {
+    throw new BadRequestException(
+      'Este documento não foi criado como NF-e modelo 55 — emita um documento novo para esta venda',
+    );
+  }
+
+  if (context.serie < 1 || context.serie > 999) {
+    throw new BadRequestException('Série da NF-e deve estar entre 1 e 999');
+  }
+
+  if (context.numero < 1 || context.numero > 999_999_999) {
+    throw new BadRequestException(
+      'Número da NF-e deve estar entre 1 e 999999999',
+    );
+  }
+
+  conferirSomatorios(dados);
+
+  return {
+    emitente: dados.emitente,
+    destinatario: dados.destinatarioNfe,
+    itens: dados.itens,
+    pagamentos: dados.pagamentos,
+    valorTotal: dados.valorTotal,
+    serie: context.serie,
+    numero: context.numero,
+    ambiente: mapAmbiente(context.ambiente),
+    naturezaOperacao: dados.nfe.naturezaOperacao,
+    tipoOperacao: dados.nfe.tipoOperacao,
+    finalidade: dados.nfe.finalidade,
+    consumidorFinal: dados.nfe.consumidorFinal,
+    presenca: dados.nfe.presenca,
+    transporte: dados.nfe.transporte,
+    cobranca: dados.nfe.cobranca,
   };
 }
 

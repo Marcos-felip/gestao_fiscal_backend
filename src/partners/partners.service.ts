@@ -74,6 +74,8 @@ export class PartnersService {
         neighborhood: dto.neighborhood,
         city: dto.city,
         state: dto.state,
+        ibgeCode: dto.ibgeCode,
+        indIeDest: dto.indIeDest,
       },
     });
   }
@@ -103,6 +105,8 @@ export class PartnersService {
         neighborhood: dto.neighborhood,
         city: dto.city,
         state: dto.state,
+        ibgeCode: dto.ibgeCode,
+        indIeDest: dto.indIeDest,
         isActive: dto.isActive,
       },
     });

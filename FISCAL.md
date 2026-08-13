@@ -453,6 +453,36 @@ A mesma chave é usada dos dois lados: o Nest a envia em `X-Api-Key`, o motor a 
 `FISCAL_API_KEY`. Com o motor rodando, confira a integração em
 `GET /api/v1/fiscal/engine/health`.
 
+### NF-e modelo 55
+
+Rota, DTO e snapshot próprios; item e quadro tributário são **os mesmos** da
+NFC-e. O contrato completo do motor está em `fiscal_service/docs/CONTRATO_NFE.md`.
+
+| | NFC-e | NF-e |
+|---|---|---|
+| Rota do backend | `POST /fiscal/documents/nfce` | `POST /fiscal/documents/nfe` |
+| Permissão | `fiscal.emit` | `fiscal.nfe.emit` |
+| Rota do motor | `/api/nfce/emit` | `/api/nfe/emit` |
+| Destinatário | opcional | obrigatório, com endereço, IBGE e `indIEDest` |
+| CSC | obrigatório | **recusado** pelo motor |
+| QR Code | sim | não existe |
+| Série e numeração | `serieNfce` / `proximoNumeroNfce` | `serieNfe` / `proximoNumeroNfe` |
+| DANFE | PDF | **HTML** |
+| Snapshot | `modelo` ausente ou `NFCE` | `modelo: 'NFE'` + `destinatarioNfe` + `nfe` |
+
+**Recorte vigente (13/08/2026):** venda interna, saída, finalidade normal,
+destinatário pessoa jurídica. Tudo que está fora é recusado por
+`buildNfeSnapshot` **antes de reservar numeração** — o motor recusaria de novo,
+mas aí o número já teria sido consumido.
+
+**`indIeDest` não se deduz do tipo de pessoa.** Prestadora de serviço é pessoa
+jurídica e não é contribuinte de ICMS. O parceiro guarda o indicador em
+`partners.ind_ie_dest`, e a inscrição estadual só viaja quando ele é `1`.
+
+**O DANFE da NF-e é HTML.** `danfeFormato()` escolhe extensão e MIME a partir do
+`danfeContentType` que o motor declara — gravar HTML com extensão `.pdf`
+entregaria ao lojista um arquivo que nenhum leitor abre.
+
 ### Depois de mudar o contrato: reconstruir a **imagem**
 
 O motor roda em contêiner, e a imagem carrega o `dotnet publish` feito na hora do build.

@@ -14,6 +14,9 @@ export interface IFiscalEngine {
   /** Monta, assina e transmite a NFC-e à SEFAZ. */
   emitir(request: EmitirNfceRequest): Promise<EmitirNfceResult>;
 
+  /** Monta, assina e transmite a NF-e modelo 55 à SEFAZ. */
+  emitirNfe(request: EmitirNfeRequest): Promise<EmitirNfeResult>;
+
   /** Consulta a situação de um documento pela chave de acesso. */
   consultar(request: ConsultarNfceRequest): Promise<ConsultarNfceResult>;
 
@@ -293,6 +296,137 @@ export interface EmitirNfceRequest extends FiscalCertificateCredentials {
   /** 1 a 999999999 */
   numero: number;
   ambiente: FiscalAmbiente;
+}
+
+// ──────────────────────────────────────────────
+// NF-e modelo 55
+// ──────────────────────────────────────────────
+
+/**
+ * Indicador de IE do destinatário (`indIEDest`).
+ *
+ * **Não se deduz do tipo de pessoa.** Prestadora de serviço é pessoa jurídica
+ * e não é contribuinte de ICMS. Quem declara é o cadastro do parceiro.
+ */
+export const IND_IE_DEST = {
+  CONTRIBUINTE: 1,
+  ISENTO: 2,
+  NAO_CONTRIBUINTE: 9,
+} as const;
+
+export type IndIeDest = (typeof IND_IE_DEST)[keyof typeof IND_IE_DEST];
+
+export const IND_IE_DEST_VALORES = Object.values(IND_IE_DEST) as IndIeDest[];
+
+/** Destinatário da NF-e: ao contrário da NFC-e, nada aqui é opcional. */
+export interface NfeDestinatario {
+  /** Somente dígitos. CNPJ — CPF é recusado no recorte atual. */
+  cpfCnpj: string;
+  /** Máx. 60 caracteres */
+  nome: string;
+  logradouro: string;
+  numero: string;
+  complemento?: string;
+  bairro: string;
+  /** Código IBGE do município, 7 dígitos */
+  codigoMunicipio: string;
+  municipio: string;
+  uf: string;
+  /** Somente dígitos, 8 caracteres */
+  cep: string;
+  indicadorIe: IndIeDest;
+  /** Obrigatória quando contribuinte; recusada nos outros dois casos. */
+  inscricaoEstadual?: string;
+  telefone?: string;
+  email?: string;
+}
+
+export interface NfeTransportadora {
+  cpfCnpj: string;
+  nome: string;
+  inscricaoEstadual?: string;
+  endereco?: string;
+  municipio?: string;
+  uf?: string;
+}
+
+export interface NfeVeiculo {
+  placa: string;
+  uf: string;
+  rntc?: string;
+}
+
+export interface NfeVolume {
+  quantidade?: number;
+  especie?: string;
+  marca?: string;
+  numeracao?: string;
+  pesoLiquido?: number;
+  pesoBruto?: number;
+}
+
+/** Omitido por completo, a nota declara "sem frete". */
+export interface NfeTransporte {
+  /** 0 remetente · 1 destinatário · 2 terceiros · 3/4 próprio · 9 sem frete */
+  modalidade: number;
+  transportadora?: NfeTransportadora;
+  veiculo?: NfeVeiculo;
+  volumes?: NfeVolume[];
+}
+
+export interface NfeDuplicata {
+  numero: string;
+  /** ISO `aaaa-MM-dd` */
+  vencimento: string;
+  valor: number;
+}
+
+export interface NfeCobranca {
+  numeroFatura?: string;
+  valorOriginal?: number;
+  valorDesconto?: number;
+  valorLiquido?: number;
+  duplicatas?: NfeDuplicata[];
+}
+
+export interface EmitirNfeRequest extends FiscalCertificateCredentials {
+  emitente: NfceEmitente;
+  destinatario: NfeDestinatario;
+  itens: NfceItem[];
+  pagamentos: NfcePagamento[];
+  valorTotal: number;
+  /** 1 a 999 */
+  serie: number;
+  /** 1 a 999999999 */
+  numero: number;
+  ambiente: FiscalAmbiente;
+  naturezaOperacao?: string;
+  /** 0 entrada · 1 saída. O recorte atual aceita apenas saída. */
+  tipoOperacao: number;
+  /** 1 normal · 2 complementar · 3 ajuste · 4 devolução. Só normal por ora. */
+  finalidade: number;
+  /** `indFinal`: venda para consumo (true) ou para revenda (false). */
+  consumidorFinal: boolean;
+  /** `indPres`: 0 não se aplica · 1 presencial · 2 internet · 9 outros. */
+  presenca: number;
+  transporte?: NfeTransporte;
+  cobranca?: NfeCobranca;
+}
+
+export interface EmitirNfeResult {
+  sucesso: boolean;
+  chaveAcesso?: string;
+  protocolo?: string;
+  xmlAutorizadoBase64?: string;
+  /** DANFE em base64 — o tipo está em `danfeContentType`. */
+  danfeBase64?: string;
+  /**
+   * Tipo do conteúdo do DANFE. O da NF-e é **HTML**, não PDF: o layout retrato
+   * pronto depende de `System.Drawing.Common`, Windows-only no .NET 8, e o
+   * motor roda em contêiner Linux. Guardar como PDF corromperia o arquivo.
+   */
+  danfeContentType?: string;
+  rejeicao?: FiscalRejeicao;
 }
 
 /** Motivo da recusa devolvido pelo motor ou pela SEFAZ. */

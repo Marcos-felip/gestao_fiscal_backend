@@ -11,6 +11,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { Readable } from 'stream';
+import { randomUUID } from 'crypto';
 // archiver preso na linha 7.x de propósito: a 8.x é ESM-only e, num app
 // CommonJS, só carrega pelo `require(esm)` experimental do Node.
 import archiver, { Archiver } from 'archiver';
@@ -20,6 +21,7 @@ import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { QueryFiscalRejectionsDto } from './dto/query-fiscal-rejections.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
+import { EmitNfeDto } from './dto/emit-nfe.dto';
 import { ExportXmlsDto } from './dto/export-xmls.dto';
 import {
   DocumentoExportavel,
@@ -31,7 +33,10 @@ import {
   nomeArquivoZip,
   resolverPeriodo,
 } from './export/fiscal-export';
-import { buildFiscalSnapshot } from './emission/fiscal-snapshot.builder';
+import {
+  buildFiscalSnapshot,
+  buildNfeSnapshot,
+} from './emission/fiscal-snapshot.builder';
 import { isFiscalStorageKey } from './emission/fiscal-storage';
 import {
   assertEmissionSettings,
@@ -922,6 +927,151 @@ export class FiscalService {
 
     this.logger.log(
       `Emissão manual criada: documento=${fiscalDocument.id}, venda=${dto.saleId}, número=${numero}`,
+    );
+
+    return fiscalDocument;
+  }
+
+  /**
+   * Emite uma NF-e modelo 55 para uma venda concluída.
+   *
+   * Espelha `createManualEmission`, com três diferenças que importam: o
+   * snapshot exige destinatário completo, a numeração é a série própria da
+   * NF-e, e o CSC não participa.
+   *
+   * **Recorte vigente:** operação interna e destinatário pessoa jurídica. O
+   * `buildNfeSnapshot` recusa o resto **antes** de reservar numeração — o motor
+   * recusaria de novo, mas aí o número já teria sido queimado.
+   */
+  async createNfeEmission(
+    companyId: string,
+    dto: EmitNfeDto,
+    userId: string,
+  ): Promise<Prisma.FiscalDocumentGetPayload<null>> {
+    const [sale, company] = await Promise.all([
+      this.prisma.sale.findFirst({
+        where: {
+          id: dto.saleId,
+          companyId,
+          deletedAt: null,
+          status: 'CONCLUIDA',
+        },
+        include: {
+          items: { include: { product: true } },
+          payments: true,
+          customer: true,
+          establishment: true,
+        },
+      }),
+      this.prisma.company.findFirst({
+        where: { id: companyId, deletedAt: null },
+      }),
+    ]);
+
+    if (!sale || !company) {
+      throw new NotFoundException(
+        'Venda concluída não encontrada para emissão fiscal',
+      );
+    }
+
+    const existing = await this.prisma.fiscalDocument.findFirst({
+      where: {
+        saleId: dto.saleId,
+        companyId,
+        deletedAt: null,
+        status: {
+          notIn: [
+            FiscalDocumentStatus.REJEITADO,
+            FiscalDocumentStatus.ERRO,
+            FiscalDocumentStatus.CANCELADO,
+          ],
+        },
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException(
+        'Já existe um documento fiscal ativo para esta venda',
+      );
+    }
+
+    const establishmentId = dto.establishmentId ?? sale.establishmentId;
+
+    const fiscalSettings = await this.prisma.fiscalSettings.findFirst({
+      where: { establishmentId, companyId, ativo: true, deletedAt: null },
+    });
+
+    if (!fiscalSettings) {
+      throw new BadRequestException(
+        'Configuração fiscal não encontrada ou inativa para este estabelecimento',
+      );
+    }
+
+    assertEmissionSettings(fiscalSettings);
+
+    const snapshot = buildNfeSnapshot(company, sale, {
+      naturezaOperacao: dto.naturezaOperacao,
+      consumidorFinal: dto.consumidorFinal,
+      presenca: dto.presenca,
+      transporte: dto.transporte,
+      cobranca: dto.cobranca,
+    });
+
+    // Numeração própria: NF-e e NFC-e são sequências fiscais distintas.
+    await this.prisma.fiscalSettings.update({
+      where: { id: fiscalSettings.id },
+      data: { proximoNumeroNfe: { increment: 1 } },
+    });
+
+    const numero = fiscalSettings.proximoNumeroNfe;
+
+    const fiscalDocument = await this.prisma.fiscalDocument.create({
+      data: {
+        companyId,
+        establishmentId,
+        saleId: dto.saleId,
+        modelo: FiscalDocumentModel.NFE,
+        serie: fiscalSettings.serieNfe,
+        numero,
+        ambiente: fiscalSettings.ambiente,
+        status: FiscalDocumentStatus.PENDENTE,
+        idempotencyKey:
+          dto.idempotencyKey ?? `nfe-${dto.saleId}-${randomUUID()}`,
+        engine: 'dfe-net',
+        valorTotal: sale.totalAmount,
+        dataEmissao: new Date(),
+        snapshot: snapshot as unknown as Prisma.InputJsonValue,
+      },
+      include: {
+        establishment: { select: { id: true, name: true } },
+      },
+    });
+
+    await this.prisma.fiscalStatusHistory.create({
+      data: {
+        fiscalDocumentId: fiscalDocument.id,
+        statusFrom: FiscalDocumentStatus.NAO_EMITIDO,
+        statusTo: FiscalDocumentStatus.PENDENTE,
+        motivo: 'Emissão de NF-e solicitada',
+        usuarioId: userId,
+      },
+    });
+
+    await this.prisma.fiscalDocumentEvent.create({
+      data: {
+        fiscalDocumentId: fiscalDocument.id,
+        tipo: 'emissao',
+        detalhes: {
+          action: 'nfe_emission_created',
+          saleId: dto.saleId,
+          consumidorFinal: dto.consumidorFinal,
+        },
+        usuarioId: userId,
+      },
+    });
+
+    this.logger.log(
+      `NF-e criada: documento=${fiscalDocument.id}, venda=${dto.saleId}, número=${numero}`,
     );
 
     return fiscalDocument;

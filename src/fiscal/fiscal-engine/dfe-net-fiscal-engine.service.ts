@@ -7,6 +7,8 @@ import {
   ConsultarNfceResult,
   EmitirNfceRequest,
   EmitirNfceResult,
+  EmitirNfeRequest,
+  EmitirNfeResult,
   FiscalEngineHealth,
   FiscalEngineTransportError,
   FiscalRejeicao,
@@ -18,6 +20,7 @@ import {
 /** Rotas do microserviço .NET (sem prefixo de versão). */
 const ROUTES = {
   emit: '/api/nfce/emit',
+  emitNfe: '/api/nfe/emit',
   consulta: '/api/nfce/consulta',
   cancel: '/api/nfce/cancel',
   statusServico: '/api/sefaz/status-servico',
@@ -118,6 +121,53 @@ export class DfeNetFiscalEngine implements IFiscalEngine {
       xmlAutorizadoBase64: this.text(body.xmlAutorizadoBase64),
       danfeBase64: this.text(body.danfeBase64),
       qrCode: this.text(body.qrCode),
+    };
+  }
+
+  async emitirNfe(request: EmitirNfeRequest): Promise<EmitirNfeResult> {
+    this.logger.log(
+      `Emitindo NF-e: série=${request.serie}, número=${request.numero}, ambiente=${request.ambiente}, itens=${request.itens.length}`,
+    );
+
+    const response = await this.post(ROUTES.emitNfe, request);
+
+    if (this.isRejected(response)) {
+      const rejeicao = this.parseRejeicao(response);
+      this.logger.warn(
+        `NF-e rejeitada: série=${request.serie}, número=${request.numero}, código=${rejeicao.codigo}, mensagem=${rejeicao.mensagem}`,
+      );
+      return { sucesso: false, rejeicao };
+    }
+
+    const body = this.asRecord(response);
+
+    const chaveAcesso = this.text(body.chaveAcesso);
+    if (!chaveAcesso) {
+      throw new FiscalEngineTransportError(
+        'Motor fiscal retornou sucesso sem chave de acesso',
+        'INVALID_RESPONSE',
+        response.status,
+      );
+    }
+
+    const protocolo = this.text(body.protocolo);
+    if (!protocolo) {
+      this.logger.warn(
+        `NF-e autorizada sem protocolo no retorno: chave=${chaveAcesso}`,
+      );
+    }
+
+    this.logger.log(
+      `NF-e autorizada: chave=${chaveAcesso}, protocolo=${protocolo ?? '-'}`,
+    );
+
+    return {
+      sucesso: true,
+      chaveAcesso,
+      protocolo,
+      xmlAutorizadoBase64: this.text(body.xmlAutorizadoBase64),
+      danfeBase64: this.text(body.danfeBase64),
+      danfeContentType: this.text(body.danfeContentType),
     };
   }
 

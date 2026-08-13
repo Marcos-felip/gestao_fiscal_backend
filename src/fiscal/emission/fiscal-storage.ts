@@ -7,7 +7,21 @@
  */
 const PREFIXO = 'fiscal/';
 
-export type FiscalFileExtension = 'xml' | 'pdf';
+/**
+ * `html` existe por causa do DANFE do modelo 55: ele não é PDF, e gravá-lo com
+ * extensão `.pdf` entregaria ao lojista um arquivo que nenhum leitor abre.
+ */
+export type FiscalFileExtension = 'xml' | 'pdf' | 'html';
+
+/** Extensão e MIME do DANFE, a partir do que o motor declarou ter gerado. */
+export function danfeFormato(contentType?: string): {
+  extensao: FiscalFileExtension;
+  mime: string;
+} {
+  return contentType?.toLowerCase().includes('html')
+    ? { extensao: 'html', mime: 'text/html; charset=utf-8' }
+    : { extensao: 'pdf', mime: 'application/pdf' };
+}
 
 export function buildFiscalStorageKey(
   companyId: string,

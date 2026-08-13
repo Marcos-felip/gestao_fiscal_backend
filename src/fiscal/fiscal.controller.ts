@@ -40,6 +40,7 @@ import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
 import { QueryFiscalRejectionsDto } from './dto/query-fiscal-rejections.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
+import { EmitNfeDto } from './dto/emit-nfe.dto';
 import { ExportXmlsDto } from './dto/export-xmls.dto';
 import { UploadCertificateDto } from './dto/upload-certificate.dto';
 import { CancelFiscalDocumentDto } from './dto/cancel-fiscal-document.dto';
@@ -517,6 +518,56 @@ export class FiscalController {
 
     this.logger.log(
       `Emissão manual enfileirada: documento=${fiscalDocument.id}`,
+    );
+
+    return fiscalDocument;
+  }
+
+  @Post('documents/nfe')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.nfe.emit')
+  @ApiOperation({
+    summary: 'Emitir NF-e modelo 55 para uma venda concluída',
+    description:
+      'Exige destinatário pessoa jurídica com endereço completo, código IBGE e ' +
+      'indicador de inscrição estadual. Operação interestadual está fora do ' +
+      'escopo atual e é recusada nomeando as UFs. Permissão separada da NFC-e: ' +
+      'quem opera o caixa não necessariamente emite NF-e.',
+  })
+  @ApiResponse({ status: 201, description: 'Emissão enfileirada' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Venda já possui documento fiscal ativo, ou destinatário incompleto — ' +
+      'a resposta nomeia cada campo que falta',
+  })
+  async emitNfe(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Body() dto: EmitNfeDto,
+  ) {
+    const fiscalDocument = await this.fiscalService.createNfeEmission(
+      companyId,
+      dto,
+      user.id,
+    );
+
+    await this.fiscalQueue.add(
+      'emitir',
+      {
+        fiscalDocumentId: fiscalDocument.id,
+        companyId,
+        usuarioId: user.id,
+      },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        jobId: `fiscal-${fiscalDocument.id}`,
+      },
+    );
+
+    this.logger.log(
+      `Emissão de NF-e enfileirada: documento=${fiscalDocument.id}`,
     );
 
     return fiscalDocument;
