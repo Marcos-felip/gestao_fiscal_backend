@@ -38,7 +38,6 @@ import { FiscalService } from './fiscal.service';
 import { CreateFiscalSettingsDto } from './dto/create-fiscal-settings.dto';
 import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
-import { QueryFiscalRejectionsDto } from './dto/query-fiscal-rejections.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
 import { EmitNfeDto } from './dto/emit-nfe.dto';
 import { ExportXmlsDto } from './dto/export-xmls.dto';
@@ -398,22 +397,6 @@ export class FiscalController {
     @Query() query: QueryFiscalDocumentsDto,
   ) {
     return this.fiscalService.findAllDocuments(companyId, query);
-  }
-
-  @Get('rejections')
-  @UseGuards(RequirePermissionGuard)
-  @RequirePermission('fiscal.read')
-  @ApiOperation({
-    summary: 'Central de rejeições',
-    description:
-      'Documentos em REJEITADO ou ERRO, com motivo, tentativas e se aceitam reprocessamento.',
-  })
-  @ApiResponse({ status: 200 })
-  findRejections(
-    @CurrentCompany() companyId: string,
-    @Query() query: QueryFiscalRejectionsDto,
-  ) {
-    return this.fiscalService.findRejections(companyId, query);
   }
 
   @Get('documents/xml/export')

@@ -19,7 +19,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateFiscalSettingsDto } from './dto/create-fiscal-settings.dto';
 import { UpdateFiscalSettingsDto } from './dto/update-fiscal-settings.dto';
 import { QueryFiscalDocumentsDto } from './dto/query-fiscal-documents.dto';
-import { QueryFiscalRejectionsDto } from './dto/query-fiscal-rejections.dto';
 import { EmitNfceDto } from './dto/emit-nfce.dto';
 import { EmitNfeDto } from './dto/emit-nfe.dto';
 import { ExportXmlsDto } from './dto/export-xmls.dto';
@@ -48,13 +47,6 @@ import { StorageService } from '../storage/storage.service';
 import { DfeNetFiscalEngine } from './fiscal-engine/dfe-net-fiscal-engine.service';
 import { FiscalCertificateService } from './certificates/fiscal-certificate.service';
 
-/** Status que o `POST /fiscal/documents/:id/retry` aceita reprocessar. */
-const STATUS_REPROCESSAVEL: FiscalDocumentStatus[] = [
-  FiscalDocumentStatus.ERRO,
-  FiscalDocumentStatus.REJEITADO,
-  FiscalDocumentStatus.PENDENTE,
-];
-
 /** Campos que a exportação em lote lê de cada documento. */
 const SELECAO_EXPORTACAO = {
   chaveAcesso: true,
@@ -67,16 +59,6 @@ const SELECAO_EXPORTACAO = {
   xmlAutorizado: true,
   xmlCancelamento: true,
 } satisfies Prisma.FiscalDocumentSelect;
-
-/** Linha da central de rejeições. */
-export interface FiscalRejectionItem extends Prisma.FiscalDocumentGetPayload<null> {
-  reprocessavel: boolean;
-  ultimaTentativa?: {
-    data: Date;
-    usuarioId: string | null;
-    motivo: string | null;
-  };
-}
 
 @Injectable()
 export class FiscalService {
@@ -227,6 +209,9 @@ export class FiscalService {
     if (dto.serieNfce !== undefined) data.serieNfce = dto.serieNfce;
     if (dto.proximoNumeroNfce !== undefined)
       data.proximoNumeroNfce = dto.proximoNumeroNfce;
+    if (dto.serieNfe !== undefined) data.serieNfe = dto.serieNfe;
+    if (dto.proximoNumeroNfe !== undefined)
+      data.proximoNumeroNfe = dto.proximoNumeroNfe;
     if (dto.codigoCsc !== undefined) data.codigoCsc = dto.codigoCsc;
     if (dto.idCsc !== undefined) data.idCsc = dto.idCsc;
     if (dto.certificadoRef !== undefined)
@@ -276,6 +261,17 @@ export class FiscalService {
         tipo: 'serie',
         valorAnterior: String(settings.serieNfce),
         valorNovo: String(dto.serieNfce),
+      });
+    }
+
+    // Série da NF-e é auditada com tipo próprio: no histórico, "mudou a série"
+    // sem dizer de qual modelo seria uma pista pela metade.
+    if (dto.serieNfe !== undefined && dto.serieNfe !== settings.serieNfe) {
+      eventos.push({
+        ...base,
+        tipo: 'serie_nfe',
+        valorAnterior: String(settings.serieNfe),
+        valorNovo: String(dto.serieNfe),
       });
     }
 
@@ -673,85 +669,6 @@ export class FiscalService {
       }),
       this.prisma.fiscalDocument.count({ where }),
     ]);
-
-    return { data, total, page, limit };
-  }
-
-  /**
-   * Central de rejeições: documentos que não foram autorizados, com o motivo,
-   * as tentativas e quando/por quem foi a última.
-   *
-   * `reprocessavel` diz se o `POST /fiscal/documents/:id/retry` aceita o
-   * documento — é a mesma lista de status que a operação de retry admite.
-   */
-  async findRejections(
-    companyId: string,
-    query: QueryFiscalRejectionsDto,
-  ): Promise<{
-    data: FiscalRejectionItem[];
-    total: number;
-    page: number;
-    limit: number;
-  }> {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.FiscalDocumentWhereInput = {
-      companyId,
-      deletedAt: null,
-      status: query.status
-        ? (query.status as FiscalDocumentStatus)
-        : {
-            in: [FiscalDocumentStatus.REJEITADO, FiscalDocumentStatus.ERRO],
-          },
-    };
-
-    if (query.establishmentId) {
-      where.establishmentId = query.establishmentId;
-    }
-    if (query.rejeicaoCodigo) {
-      where.rejeicaoCodigo = query.rejeicaoCodigo;
-    }
-    if (query.search) {
-      where.rejeicaoMensagem = {
-        contains: query.search,
-        mode: 'insensitive',
-      };
-    }
-    if (query.startDate || query.endDate) {
-      const createdAt: Prisma.DateTimeFilter = {};
-      if (query.startDate) createdAt.gte = new Date(query.startDate);
-      if (query.endDate) createdAt.lte = new Date(query.endDate);
-      where.createdAt = createdAt;
-    }
-
-    const [documentos, total] = await Promise.all([
-      this.prisma.fiscalDocument.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { updatedAt: 'desc' },
-        include: {
-          establishment: { select: { id: true, name: true } },
-          sale: { select: { id: true, saleNumber: true } },
-          statusHistory: { orderBy: { createdAt: 'desc' }, take: 1 },
-        },
-      }),
-      this.prisma.fiscalDocument.count({ where }),
-    ]);
-
-    const data = documentos.map(({ statusHistory, ...documento }) => ({
-      ...documento,
-      reprocessavel: STATUS_REPROCESSAVEL.includes(documento.status),
-      ultimaTentativa: statusHistory[0]
-        ? {
-            data: statusHistory[0].createdAt,
-            usuarioId: statusHistory[0].usuarioId,
-            motivo: statusHistory[0].motivo,
-          }
-        : undefined,
-    }));
 
     return { data, total, page, limit };
   }

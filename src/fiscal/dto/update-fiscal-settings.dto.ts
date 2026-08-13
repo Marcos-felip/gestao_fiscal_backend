@@ -43,6 +43,26 @@ export class UpdateFiscalSettingsDto {
 
   @ApiPropertyOptional({
     description:
+      'Série da NF-e modelo 55. Independente da série da NFC-e: são duas ' +
+      'sequências fiscais distintas, e misturá-las produz salto de numeração ' +
+      'nos dois modelos.',
+    minimum: 1,
+    maximum: 999,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  serieNfe?: number;
+
+  @ApiPropertyOptional({ description: 'Próximo número da NF-e', minimum: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  proximoNumeroNfe?: number;
+
+  @ApiPropertyOptional({
+    description:
       'Código CSC: 16 a 64 caracteres alfanuméricos, obtido no portal da SEFAZ ' +
       'da UF. É específico do ambiente — o de homologação não vale em produção.',
     minLength: CSC_TAMANHO_MINIMO,

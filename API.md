@@ -2446,53 +2446,6 @@ Reenfileira mantendo série, número e documento — não duplica a nota. Aceita
 
 ---
 
-#### GET /fiscal/rejections — Central de rejeições
-
-> **Permissão:** `fiscal.read`
-
-**Query params:** `page`, `limit`, `search` (texto da mensagem), `status` (`REJEITADO` ou
-`ERRO`; sem filtro traz os dois), `establishmentId`, `rejeicaoCodigo`, `startDate`, `endDate`
-
-**Resposta 200:** cada linha traz o documento com `rejeicaoCodigo`, `rejeicaoMensagem`,
-`attempts`, `reprocessavel` e `ultimaTentativa: { data, usuarioId, motivo }`.
-
----
-
-## Paginação
-
-Todos os endpoints de listagem suportam paginação:
-
-**Query params:**
-- `page`: número da página (default: 1, min: 1)
-- `limit`: itens por página (default: 20, min: 1, max: 100)
-- `search`: busca textual por nome (quando suportado)
-
-**Formato da resposta paginada:**
-```json
-{
-  "data": [],
-  "total": 100,
-  "page": 1,
-  "limit": 20
-}
-```
-
----
-
-## Catálogo de permissões
-
-Códigos no formato `dominio.acao`, armazenados na tabela `permissions`.
-
-- **OWNER** nunca é barrado — não depende de cadastro
-- **ADMIN** recebe todas as permissões quando a empresa é criada (`company_role_permissions`)
-- **MEMBER nasce sem nenhuma permissão.** Todo o acesso dele vem dos [perfis](#perfis-de-permissão) vinculados
-
-Por isso as tabelas abaixo não têm coluna MEMBER: para qualquer código, um MEMBER só tem acesso se
-algum perfil vinculado a ele contiver aquele código.
-
-Legenda: ✅ concedida por padrão à empresa nova · **Perfil sugerido** = 🔹 marca os códigos que
-compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao montar o primeiro perfil ·
-**Endpoint** = endpoint que exige a permissão (— = código cadastrado mas ainda não usado por nenhuma rota).
 
 ### Empresa (`company`)
 
