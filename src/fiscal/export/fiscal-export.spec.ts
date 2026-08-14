@@ -30,6 +30,7 @@ const documento = (
   valorTotal: new Prisma.Decimal('123.45'),
   xmlAutorizado: '<nfeProc>autorizado</nfeProc>',
   xmlCancelamento: null,
+  correctionLetters: [],
   ...overrides,
 });
 
@@ -95,6 +96,12 @@ describe('nomeArquivoXml', () => {
       `${CHAVE}-cancelamento.xml`,
     );
   });
+
+  it('numera a carta de correção, que se repete na mesma chave', () => {
+    // Sem a sequência, a segunda correção sobrescreveria a primeira no ZIP.
+    expect(nomeArquivoXml(CHAVE, 'cce', 1)).toBe(`${CHAVE}-cce-01.xml`);
+    expect(nomeArquivoXml(CHAVE, 'cce', 12)).toBe(`${CHAVE}-cce-12.xml`);
+  });
 });
 
 describe('nomeArquivoZip', () => {
@@ -142,6 +149,7 @@ describe('montarManifesto', () => {
     dataAutorizacao: new Date('2026-08-10T14:32:05Z'),
     status: FiscalDocumentStatus.AUTORIZADO,
     valorTotal: '123.45',
+    correcoes: 0,
     ausentes: [],
     ...overrides,
   });
@@ -162,8 +170,17 @@ describe('montarManifesto', () => {
     const [, primeira] = csv.trim().split('\r\n');
 
     expect(primeira).toBe(
-      `${CHAVE};7;1;NFCE;10/08/2026 14:32:05;AUTORIZADO;123,45;`,
+      `${CHAVE};7;1;NFCE;10/08/2026 14:32:05;AUTORIZADO;123,45;0;`,
     );
+  });
+
+  it('avisa no manifesto que a nota tem correção', () => {
+    // Quem confere o lote precisa saber que o texto da nota mudou depois — o
+    // XML autorizado sozinho não mostra isso.
+    const csv = montarManifesto([linha({ correcoes: 2 })]);
+
+    expect(csv).toContain('Cartas de correção');
+    expect(csv.trim().split('\r\n')[1]).toContain(';123,45;2;');
   });
 
   it('registra os arquivos ausentes na última coluna', () => {
@@ -242,6 +259,54 @@ describe('montarLoteDeExportacao', () => {
     // sem nenhum arquivo.
     expect([...destino.arquivos.keys()]).toEqual([`${CHAVE}-nfe.xml`]);
     expect(manifesto[0].ausentes).toEqual(['cancelamento']);
+  });
+
+  it('leva as cartas de correção, uma por sequência', async () => {
+    const destino = criarDestino();
+
+    const manifesto = await montarLoteDeExportacao(
+      [
+        documento({
+          correctionLetters: [
+            { sequencia: 1, xmlEvento: '<procEventoNFe>cce 1</procEventoNFe>' },
+            { sequencia: 2, xmlEvento: '<procEventoNFe>cce 2</procEventoNFe>' },
+          ],
+        }),
+      ],
+      lerDaColuna,
+      destino,
+    );
+
+    expect([...destino.arquivos.keys()].sort()).toEqual([
+      `${CHAVE}-cce-01.xml`,
+      `${CHAVE}-cce-02.xml`,
+      `${CHAVE}-nfe.xml`,
+    ]);
+    expect(manifesto[0].correcoes).toBe(2);
+    expect(manifesto[0].ausentes).toEqual([]);
+  });
+
+  it('marca a correção ausente pela sequência, sem derrubar o resto', async () => {
+    const destino = criarDestino();
+
+    const manifesto = await montarLoteDeExportacao(
+      [
+        documento({
+          correctionLetters: [
+            { sequencia: 1, xmlEvento: '<procEventoNFe>cce 1</procEventoNFe>' },
+            { sequencia: 2, xmlEvento: null },
+          ],
+        }),
+      ],
+      lerDaColuna,
+      destino,
+    );
+
+    expect([...destino.arquivos.keys()].sort()).toEqual([
+      `${CHAVE}-cce-01.xml`,
+      `${CHAVE}-nfe.xml`,
+    ]);
+    expect(manifesto[0].ausentes).toEqual(['cce-02']);
   });
 
   it('não interrompe o lote quando um XML não volta do storage', async () => {

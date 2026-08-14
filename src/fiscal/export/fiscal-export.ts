@@ -80,17 +80,26 @@ export function mensagemLimiteDocumentos(total: number): string {
   );
 }
 
-export type TipoArquivoFiscal = 'nfe' | 'cancelamento';
+export type TipoArquivoFiscal = 'nfe' | 'cancelamento' | 'cce';
 
 /**
  * Nome do arquivo dentro do ZIP, pela chave de acesso — é a convenção que os
  * softwares de escrituração esperam, e a chave já garante unicidade.
+ *
+ * A carta de correção leva a sequência no nome: uma nota pode ter até 20, todas
+ * com a mesma chave, e sem a sequência a última sobrescreveria as anteriores.
  */
 export function nomeArquivoXml(
   chaveAcesso: string,
   tipo: TipoArquivoFiscal,
+  sequencia?: number,
 ): string {
-  return `${chaveAcesso}-${tipo}.xml`;
+  const sufixo =
+    sequencia === undefined
+      ? tipo
+      : `${tipo}-${String(sequencia).padStart(2, '0')}`;
+
+  return `${chaveAcesso}-${sufixo}.xml`;
 }
 
 /**
@@ -137,6 +146,12 @@ function normalizarParaNomeDeArquivo(valor: string): string {
 /** Nome do manifesto dentro do ZIP. O underscore o mantém no topo da listagem. */
 export const NOME_MANIFESTO = '_relacao.csv';
 
+/** Carta de correção, do ponto de vista da exportação. */
+export interface CartaDeCorrecaoExportavel {
+  sequencia: number;
+  xmlEvento: string | null;
+}
+
 /** Campos que a exportação lê de cada documento fiscal. */
 export interface DocumentoExportavel {
   chaveAcesso: string | null;
@@ -148,6 +163,7 @@ export interface DocumentoExportavel {
   valorTotal: Prisma.Decimal | null;
   xmlAutorizado: string | null;
   xmlCancelamento: string | null;
+  correctionLetters: CartaDeCorrecaoExportavel[];
 }
 
 /** Resolve o XML gravado no documento; `null` quando não é recuperável. */
@@ -174,7 +190,7 @@ export async function montarLoteDeExportacao(
   const manifesto: LinhaManifesto[] = [];
 
   for (const documento of documentos) {
-    const ausentes: TipoArquivoFiscal[] = [];
+    const ausentes: string[] = [];
     const chaveAcesso = documento.chaveAcesso;
 
     // Sem chave de acesso não há como nomear o arquivo: entra como ausente.
@@ -205,6 +221,21 @@ export async function montarLoteDeExportacao(
       }
     }
 
+    // A correção altera o que a nota diz sem gerar nota nova. Escriturar o XML
+    // autorizado sem ela é escriturar o texto que a própria empresa corrigiu.
+    for (const carta of documento.correctionLetters) {
+      const evento = chaveAcesso ? await lerXml(carta.xmlEvento) : null;
+
+      if (chaveAcesso && evento) {
+        destino.adicionar(
+          nomeArquivoXml(chaveAcesso, 'cce', carta.sequencia),
+          evento,
+        );
+      } else {
+        ausentes.push(`cce-${String(carta.sequencia).padStart(2, '0')}`);
+      }
+    }
+
     manifesto.push({
       chaveAcesso,
       numero: documento.numero,
@@ -213,6 +244,7 @@ export async function montarLoteDeExportacao(
       dataAutorizacao: documento.dataAutorizacao,
       status: documento.status,
       valorTotal: documento.valorTotal?.toString() ?? null,
+      correcoes: documento.correctionLetters.length,
       ausentes,
     });
   }
@@ -229,8 +261,10 @@ export interface LinhaManifesto {
   dataAutorizacao: Date | null;
   status: string;
   valorTotal: string | null;
+  /** Quantas cartas de correção a nota tem — zero na maioria. */
+  correcoes: number;
   /** Arquivos que deveriam existir e não puderam ser recuperados. */
-  ausentes: TipoArquivoFiscal[];
+  ausentes: string[];
 }
 
 const COLUNAS_MANIFESTO = [
@@ -241,6 +275,7 @@ const COLUNAS_MANIFESTO = [
   'Data de autorização',
   'Status',
   'Valor total',
+  'Cartas de correção',
   'Arquivos ausentes',
 ];
 
@@ -262,6 +297,7 @@ export function montarManifesto(linhas: LinhaManifesto[]): string {
       formatarDataHora(linha.dataAutorizacao),
       linha.status,
       formatarValor(linha.valorTotal),
+      linha.correcoes,
       linha.ausentes.join(' '),
     ]
       .map(escaparCampo)

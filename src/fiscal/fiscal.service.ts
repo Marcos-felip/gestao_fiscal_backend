@@ -58,6 +58,12 @@ const SELECAO_EXPORTACAO = {
   valorTotal: true,
   xmlAutorizado: true,
   xmlCancelamento: true,
+  // A correção muda o que a nota diz sem gerar nota nova: o lote precisa levá-la
+  // junto, senão o contador escritura o texto que a empresa já corrigiu.
+  correctionLetters: {
+    select: { sequencia: true, xmlEvento: true },
+    orderBy: { sequencia: 'asc' },
+  },
 } satisfies Prisma.FiscalDocumentSelect;
 
 @Injectable()

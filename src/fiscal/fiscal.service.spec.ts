@@ -591,6 +591,12 @@ describe('FiscalService', () => {
           valorTotal: null,
           xmlAutorizado: '<nfeProc>autorizado</nfeProc>',
           xmlCancelamento: '<procEventoNFe>cancelado</procEventoNFe>',
+          correctionLetters: [
+            {
+              sequencia: 1,
+              xmlEvento: '<procEventoNFe>correcao</procEventoNFe>',
+            },
+          ],
         },
       ]);
 
@@ -605,6 +611,10 @@ describe('FiscalService', () => {
         zip.includes(
           '31260851720322000146650010000000071009048390-cancelamento.xml',
         ),
+      ).toBe(true);
+      // A correção vai junto: sem ela o contador escritura o texto corrigido.
+      expect(
+        zip.includes('31260851720322000146650010000000071009048390-cce-01.xml'),
       ).toBe(true);
     });
   });
