@@ -282,6 +282,34 @@ describe('FiscalEventsService', () => {
       expect(mockPrisma.fiscalSettings.findFirst).not.toHaveBeenCalled();
     });
 
+    it('registra a faixa que a SEFAZ diz já estar inutilizada, com o protocolo dela', async () => {
+      // O pedido anterior foi homologado e a resposta não voltou a tempo: sem
+      // isto a faixa fica no limbo — sugerida para sempre, recusada para sempre.
+      mockEngine.inutilizar.mockResolvedValue({
+        sucesso: false,
+        motivoRejeicao:
+          'Rejeicao: Ja existe pedido de Inutilizacao com a mesma faixa de inutilizacao (nProt: 131260152624931)',
+      });
+
+      await service.inutilize('company-1', pedido);
+
+      const [argumento] = mockPrisma.fiscalInutilization.create.mock
+        .calls[0] as [{ data: { protocolo: string } }];
+      expect(argumento.data.protocolo).toBe('131260152624931');
+    });
+
+    it('continua recusando quando a rejeição é de outro motivo', async () => {
+      mockEngine.inutilizar.mockResolvedValue({
+        sucesso: false,
+        motivoRejeicao: 'Rejeicao: Falha no esquema XML',
+      });
+
+      await expect(service.inutilize('company-1', pedido)).rejects.toThrow(
+        /esquema XML/,
+      );
+      expect(mockPrisma.fiscalInutilization.create).not.toHaveBeenCalled();
+    });
+
     it('recusa estabelecimento sem configuração fiscal ativa', async () => {
       mockPrisma.fiscalSettings.findFirst.mockResolvedValue(null);
 

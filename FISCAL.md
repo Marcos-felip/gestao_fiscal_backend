@@ -529,6 +529,20 @@ correções simultâneas), o limite de 20, e a conferência da faixa contra os
 números já usados. O quadro completo está em
 `fiscal_service/docs/CONTRATO_EVENTOS.md`.
 
+### Duas armadilhas da inutilização, descobertas emitindo
+
+Ambas no motor, ambas invisíveis nos testes unitários — só a primeira faixa real as revelou
+(14/08/2026):
+
+1. **O ano vai com dois dígitos.** O `ID` do pedido é `ID + cUF + ano + CNPJ + modelo + série +
+   faixa`, de tamanho fixo. Mandar `2026` em vez de `26` estica o identificador e a SEFAZ
+   devolve **215 — Falha no esquema XML**, sem dizer qual campo. A conversão vive no
+   `DFeNetAdapter`, não no contrato: quem chama fala em ano cheio.
+2. **O timeout padrão da biblioteca (5s) é curto demais.** O pedido chega e é homologado, mas a
+   resposta não volta a tempo; deste lado vira erro e nada é gravado. A tentativa seguinte volta
+   como duplicidade — com o ato já praticado. Agora são 30s, e a duplicidade é reconciliada pelo
+   protocolo que a própria recusa carrega.
+
 ### Ciclo de status do documento
 
 ```

@@ -3,6 +3,7 @@ import {
   buracosDaNumeracao,
   conflitosNaFaixa,
   mensagemDeConflito,
+  protocoloDeDuplicidade,
 } from './fiscal-events.rules';
 
 /**
@@ -55,9 +56,41 @@ describe('mensagemDeConflito', () => {
     expect(mensagem).toContain('e mais 2');
   });
 
-  it('concorda o plural com a quantidade', () => {
-    expect(mensagemDeConflito([usado(4)])).toContain('o número');
-    expect(mensagemDeConflito([usado(4), usado(5)])).toContain('os números');
+  it('concorda o plural com a quantidade, inclusive no verbo', () => {
+    // A primeira versão dizia "o número 3 … que já pertencem", e apareceu assim
+    // na primeira recusa real.
+    expect(mensagemDeConflito([usado(4)])).toContain(
+      'o número 4, que já pertence a um documento emitido',
+    );
+    expect(mensagemDeConflito([usado(4), usado(5)])).toContain(
+      'os números 4, 5, que já pertencem a documentos emitidos',
+    );
+  });
+});
+
+describe('protocoloDeDuplicidade', () => {
+  it('extrai o protocolo da recusa por faixa já inutilizada', () => {
+    // Mensagem real da SEFAZ MG, 14/08/2026 — o pedido anterior tinha sido
+    // homologado, mas a resposta não voltou a tempo.
+    expect(
+      protocoloDeDuplicidade(
+        'Rejeicao: Ja existe pedido de Inutilizacao com a mesma faixa de inutilizacao (nProt: 131260152624931)',
+      ),
+    ).toBe('131260152624931');
+  });
+
+  it('ignora recusa de outro motivo', () => {
+    expect(protocoloDeDuplicidade('Rejeicao: Falha no esquema XML')).toBeNull();
+  });
+
+  it('devolve nulo quando a duplicidade vem sem protocolo', () => {
+    expect(
+      protocoloDeDuplicidade('Ja existe pedido de Inutilizacao para a faixa'),
+    ).toBeNull();
+  });
+
+  it('devolve nulo sem motivo nenhum', () => {
+    expect(protocoloDeDuplicidade(undefined)).toBeNull();
   });
 });
 

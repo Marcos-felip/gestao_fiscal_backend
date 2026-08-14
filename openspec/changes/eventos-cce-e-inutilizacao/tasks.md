@@ -63,7 +63,19 @@
 - [x] 8.3 `FISCAL.md`: os três eventos e o ciclo de status
 - [x] 8.4 Avisar a change irmã do frontend (`gestao_fiscal_frontend/openspec/changes/eventos-cce-e-inutilizacao`)
 
-## 9. Fora do escopo desta change
+## 9. Validação em homologação — feita em 14/08/2026
 
-- [ ] 9.1 Validação ponta a ponta em homologação (CC-e numa nota real e inutilização de
-  uma faixa) — depende do motor no ar e do certificado; fica junto da entrega do frontend
+- [x] 9.1 NF-e nº 5 autorizada; **CC-e sequências 1 e 2 homologadas** (protocolos
+  `131260152625029` e `131260152624964`), XML íntegro com `cStat 135`
+- [x] 9.2 CC-e recusada em documento `REJEITADO`, com a mensagem em PT-BR
+- [x] 9.3 **Três faixas inutilizadas** — NF-e 1 e 2, NFC-e 2 (modelo 65 também)
+- [x] 9.4 NF-e nº 2, que estava `REJEITADO`, passou a `INUTILIZADO` com histórico
+- [x] 9.5 Guarda da faixa recusou 1–5 nomeando os números 3 e 5 e suas chaves
+- [x] 9.6 Faixas pendentes refletiram as inutilizações — NF-e nº 1 saiu da lista
+
+### O que a validação corrigiu
+
+- **Motor:** ano com dois dígitos (a SEFAZ devolvia `215 — Falha no esquema XML`) e timeout de
+  5s → 30s (o pedido era homologado e a resposta não voltava a tempo)
+- **Backend:** faixa que a SEFAZ diz já estar inutilizada passa a ser gravada com o protocolo da
+  recusa, em vez de virar erro para sempre; e a concordância da mensagem de conflito no singular

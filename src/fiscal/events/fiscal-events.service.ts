@@ -24,6 +24,7 @@ import {
   LIMITE_CARTAS_CORRECAO,
   mensagemDeConflito,
   NumeroUsado,
+  protocoloDeDuplicidade,
 } from './fiscal-events.rules';
 
 /** Status em que o documento ainda ocupa o número perante o fisco. */
@@ -302,9 +303,23 @@ export class FiscalEventsService {
       ...credentials,
     });
 
-    if (!result.sucesso) {
+    // A SEFAZ pode recusar dizendo que a faixa **já foi inutilizada** e devolver
+    // o protocolo daquele pedido. É o que sobra quando a resposta anterior não
+    // voltou a tempo: o ato existe lá e não existe aqui. Gravar com o protocolo
+    // dela é o que tira a faixa do limbo — sem isso o sistema sugere inutilizar
+    // para sempre e a SEFAZ recusa para sempre.
+    const protocoloAnterior = protocoloDeDuplicidade(result.motivoRejeicao);
+
+    if (!result.sucesso && !protocoloAnterior) {
       throw new BadRequestException(
         `Inutilização recusada pela SEFAZ: ${result.motivoRejeicao ?? 'motivo não informado'}`,
+      );
+    }
+
+    if (protocoloAnterior) {
+      this.logger.warn(
+        `Faixa ${dto.numeroInicial}-${dto.numeroFinal} da série ${dto.serie} já estava ` +
+          `inutilizada na SEFAZ (protocolo ${protocoloAnterior}); registrando o que faltava deste lado`,
       );
     }
 
@@ -325,7 +340,7 @@ export class FiscalEventsService {
         numeroFinal: dto.numeroFinal,
         ano,
         justificativa: dto.justificativa,
-        protocolo: result.protocolo,
+        protocolo: result.protocolo ?? protocoloAnterior,
         xmlInutilizacao,
         usuarioId: userId,
       },

@@ -49,11 +49,33 @@ export function mensagemDeConflito(conflitos: NumeroUsado[]): string {
     .join(', ');
 
   const resto = conflitos.length > 5 ? ` e mais ${conflitos.length - 5}` : '';
+  const singular = conflitos.length === 1;
 
   return (
-    `A faixa inclui ${conflitos.length === 1 ? 'o número' : 'os números'} ${lista}${resto}, ` +
-    'que já pertencem a documentos emitidos. Inutilize apenas numeração que nunca virou nota.'
+    `A faixa inclui ${singular ? 'o número' : 'os números'} ${lista}${resto}, ` +
+    `que já ${singular ? 'pertence' : 'pertencem'} a ${singular ? 'um documento emitido' : 'documentos emitidos'}. ` +
+    'Inutilize apenas numeração que nunca virou nota.'
   );
+}
+
+/**
+ * Protocolo de uma inutilização que a SEFAZ diz **já existir** para a faixa.
+ *
+ * Acontece quando o pedido chega e é homologado mas a resposta não volta a
+ * tempo: deste lado vira erro, nada é gravado, e a tentativa seguinte recebe a
+ * duplicidade. Sem ler o protocolo dessa recusa, a faixa fica invisível para
+ * sempre — o sistema continua sugerindo inutilizá-la e a SEFAZ continua
+ * recusando. Aconteceu na primeira inutilização real, em 14/08/2026.
+ */
+export function protocoloDeDuplicidade(
+  motivo: string | undefined,
+): string | null {
+  if (!motivo) return null;
+  if (!/j[áa]\s+existe\s+pedido\s+de\s+inutiliza/i.test(motivo)) return null;
+
+  const protocolo = /nProt:?\s*(\d{15})/i.exec(motivo);
+
+  return protocolo ? protocolo[1] : null;
 }
 
 /**

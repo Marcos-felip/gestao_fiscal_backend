@@ -818,6 +818,10 @@ inutilização guarda série, modelo e faixa.
   digitar
 - Documento em `ERRO` ou `REJEITADO` dentro da faixa passa a `INUTILIZADO`
 - Sem sequência: a numeração inutilizada não volta a ser usada
+- **Faixa que a SEFAZ diz já estar inutilizada é gravada com o protocolo dela**, em vez de virar
+  erro. É o que sobra quando o pedido é homologado e a resposta não volta a tempo: o ato existe
+  lá e não existe aqui. Sem essa reconciliação a faixa fica no limbo — o sistema sugere
+  inutilizá-la para sempre e a SEFAZ recusa para sempre
 
 ### Documento fiscal é append-only
 
