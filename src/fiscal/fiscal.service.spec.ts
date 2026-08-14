@@ -33,6 +33,7 @@ const configuracao = (overrides: Record<string, unknown> = {}) => ({
   companyId: 'company-1',
   establishmentId: 'estab-1',
   ambiente: FiscalEnvironment.HOMOLOGACAO,
+  modelosEmitidos: ['NFCE'],
   serieNfce: 1,
   proximoNumeroNfce: 1,
   serieNfe: 1,
@@ -63,6 +64,7 @@ const mockPrisma = {
   },
   fiscalSettingsEvent: { create: jest.fn(), findMany: jest.fn() },
   company: { findFirst: jest.fn() },
+  product: { count: jest.fn() },
   $transaction: jest.fn(),
 };
 
@@ -97,6 +99,7 @@ describe('FiscalService', () => {
     mockPrisma.$transaction.mockImplementation(
       (operacoes: Promise<unknown>[]) => Promise.all(operacoes),
     );
+    mockPrisma.product.count.mockResolvedValue(0);
     mockPrisma.company.findFirst.mockResolvedValue({
       name: 'Empresa Teste',
       nomeFantasia: null,
@@ -346,7 +349,45 @@ describe('FiscalService', () => {
 
       expect(resultado.liberada).toBe(true);
       expect(resultado.liberadaEm).toEqual(new Date('2026-08-04T12:00:00Z'));
-      expect(resultado.itens).toHaveLength(6);
+      // 2 de certificado + 4 da NFC-e + o aviso de produtos pendentes.
+      expect(resultado.itens).toHaveLength(7);
+    });
+
+    it('inclui a contagem de produtos sem quadro tributário', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({ ambiente: FiscalEnvironment.PRODUCAO }),
+      );
+      mockPrisma.product.count.mockResolvedValue(4);
+
+      const resultado = await service.getProductionChecklist(
+        'company-1',
+        'estab-1',
+      );
+
+      const item = resultado.itens.find((i) => i.item.includes('Produtos'));
+      expect(item?.ok).toBe(false);
+      expect(item?.bloqueante).toBe(false);
+    });
+
+    it('não cobra o que é da NFC-e de quem só emite NF-e', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          modelosEmitidos: ['NFE'],
+          codigoCsc: null,
+          idCsc: null,
+        }),
+      );
+
+      const resultado = await service.getProductionChecklist(
+        'company-1',
+        'estab-1',
+      );
+
+      expect(resultado.itens.some((i) => i.item.includes('CSC'))).toBe(false);
+      expect(
+        resultado.itens.some((i) => i.item.includes('Série da NF-e')),
+      ).toBe(true);
     });
 
     it('inclui o item de consulta pública validada', async () => {

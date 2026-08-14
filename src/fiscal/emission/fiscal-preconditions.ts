@@ -104,7 +104,38 @@ export function assertEmissionSettings(settings: EmissionSettings): void {
 export interface ProductionChecklistSettings extends EmissionSettings {
   serieNfce: number;
   proximoNumeroNfce: number;
+  serieNfe: number;
+  proximoNumeroNfe: number;
+  /** Modelos que o estabelecimento emite; vazio é tratado como os dois. */
+  modelosEmitidos?: ModeloFiscal[];
   consultaPublicaValidadaEm?: Date | null;
+}
+
+/** Modelo de documento, do ponto de vista do checklist. */
+export type ModeloFiscal = 'NFCE' | 'NFE';
+
+/** Dados de fora da configuração que o checklist também mostra. */
+export interface ProductionChecklistContexto {
+  /** Produtos ativos sem o quadro tributário completo. */
+  produtosComPendencia?: number;
+}
+
+const TODOS_OS_MODELOS: ModeloFiscal[] = ['NFCE', 'NFE'];
+
+const NOME_DO_MODELO: Record<ModeloFiscal, string> = {
+  NFCE: 'NFC-e',
+  NFE: 'NF-e',
+};
+
+/**
+ * Modelos considerados na apuração.
+ *
+ * Lista vazia vale como "os dois": é o que a configuração antiga significava,
+ * e presumir menos travaria a liberação de quem já emite.
+ */
+function modelosDe(settings: ProductionChecklistSettings): ModeloFiscal[] {
+  const modelos = settings.modelosEmitidos ?? [];
+  return modelos.length > 0 ? modelos : TODOS_OS_MODELOS;
 }
 
 /**
@@ -127,18 +158,36 @@ export interface ProductionChecklistItem {
   ok: boolean;
   detalhe?: string;
   bloqueante?: boolean;
+  /**
+   * Modelo a que o item pertence. Ausente = vale para todos — é o caso do
+   * certificado, que assina os dois.
+   */
+  modelo?: ModeloFiscal;
 }
+
+/** Limites de série e numeração, iguais aos do motor. */
+const SERIE_MINIMA = 1;
+const SERIE_MAXIMA = 999;
+const NUMERO_MINIMO = 1;
+const NUMERO_MAXIMO = 999999999;
 
 /**
  * Checklist de ativação da produção.
  *
- * Confere certificado, CSC, série e numeração com os mesmos limites do motor.
+ * **Cada item declara a qual modelo pertence, e só entram os modelos que o
+ * estabelecimento emite.** Antes a lista era inteira de NFC-e: CSC e consulta
+ * pública bloqueavam quem só emite NF-e, e a série conferida era sempre a da
+ * NFC-e — dava para liberar produção sem ninguém ter olhado a numeração do
+ * modelo 55.
+ *
  * Devolve a lista inteira — o usuário precisa ver o que já está pronto, não só
  * o que falta.
  */
 export function buildProductionChecklist(
   settings: ProductionChecklistSettings,
+  contexto: ProductionChecklistContexto = {},
 ): ProductionChecklistItem[] {
+  const modelos = modelosDe(settings);
   const temCertificado = !!(
     settings.certificadoRef && settings.certificadoSenhaRef
   );
@@ -147,7 +196,7 @@ export function buildProductionChecklist(
     (!settings.certificadoValidade ||
       settings.certificadoValidade.getTime() > Date.now());
 
-  return [
+  const itens: ProductionChecklistItem[] = [
     {
       item: 'Certificado digital A1 enviado',
       ok: temCertificado,
@@ -162,33 +211,84 @@ export function buildProductionChecklist(
       detalhe: certificadoVigente ? undefined : 'certificado vencido',
       bloqueante: true,
     },
-    {
-      item: 'CSC e ID do CSC de produção configurados',
-      ok: isCscValido(settings.codigoCsc) && isIdCscValido(settings.idCsc),
-      detalhe: cscDetalhe(settings),
-      bloqueante: true,
-    },
-    {
-      item: 'Série entre 1 e 999',
-      ok: settings.serieNfce >= 1 && settings.serieNfce <= 999,
-      detalhe: `série atual: ${settings.serieNfce}`,
-      bloqueante: true,
-    },
-    {
-      item: 'Próximo número entre 1 e 999999999',
-      ok:
-        settings.proximoNumeroNfce >= 1 &&
-        settings.proximoNumeroNfce <= 999999999,
-      detalhe: `próximo número: ${settings.proximoNumeroNfce}`,
-      bloqueante: true,
-    },
-    {
-      item: 'Consulta pública validada em produção',
-      ok: !!settings.consultaPublicaValidadaEm,
-      detalhe: settings.consultaPublicaValidadaEm
-        ? `validada em ${settings.consultaPublicaValidadaEm.toLocaleDateString('pt-BR')}`
-        : 'após liberar e emitir a primeira nota, valide a consulta pública',
+  ];
+
+  // CSC e consulta pública são do QR Code da NFC-e. Quem vende só para empresa
+  // não tem CSC nem tem onde consultar.
+  if (modelos.includes('NFCE')) {
+    itens.push(
+      {
+        item: 'CSC e ID do CSC de produção configurados',
+        ok: isCscValido(settings.codigoCsc) && isIdCscValido(settings.idCsc),
+        detalhe: cscDetalhe(settings),
+        bloqueante: true,
+        modelo: 'NFCE',
+      },
+      ...itensDeNumeracao(
+        'NFCE',
+        settings.serieNfce,
+        settings.proximoNumeroNfce,
+      ),
+      {
+        item: 'Consulta pública validada em produção',
+        ok: !!settings.consultaPublicaValidadaEm,
+        detalhe: settings.consultaPublicaValidadaEm
+          ? `validada em ${settings.consultaPublicaValidadaEm.toLocaleDateString('pt-BR')}`
+          : 'após liberar e emitir a primeira nota, valide a consulta pública',
+        bloqueante: false,
+        modelo: 'NFCE',
+      },
+    );
+  }
+
+  if (modelos.includes('NFE')) {
+    itens.push(
+      ...itensDeNumeracao('NFE', settings.serieNfe, settings.proximoNumeroNfe),
+    );
+  }
+
+  // Não bloqueia: o CSOSN é decisão do contador e o sistema não preenche por
+  // ninguém. Mas dizer quantos faltam antes é melhor do que a rejeição aparecer
+  // na primeira venda do balcão.
+  if (contexto.produtosComPendencia !== undefined) {
+    const pendentes = contexto.produtosComPendencia;
+
+    itens.push({
+      item: 'Produtos com quadro tributário completo',
+      ok: pendentes === 0,
+      detalhe:
+        pendentes === 0
+          ? 'nenhum produto pendente'
+          : `${pendentes} ${pendentes === 1 ? 'produto não emite' : 'produtos não emitem'} até o cadastro fiscal ser completado`,
       bloqueante: false,
+    });
+  }
+
+  return itens;
+}
+
+/** Série e próximo número de um modelo, nomeando de qual se trata. */
+function itensDeNumeracao(
+  modelo: ModeloFiscal,
+  serie: number,
+  proximoNumero: number,
+): ProductionChecklistItem[] {
+  const nome = NOME_DO_MODELO[modelo];
+
+  return [
+    {
+      item: `Série da ${nome} entre ${SERIE_MINIMA} e ${SERIE_MAXIMA}`,
+      ok: serie >= SERIE_MINIMA && serie <= SERIE_MAXIMA,
+      detalhe: `série atual: ${serie}`,
+      bloqueante: true,
+      modelo,
+    },
+    {
+      item: `Próximo número da ${nome} entre ${NUMERO_MINIMO} e ${NUMERO_MAXIMO}`,
+      ok: proximoNumero >= NUMERO_MINIMO && proximoNumero <= NUMERO_MAXIMO,
+      detalhe: `próximo número: ${proximoNumero}`,
+      bloqueante: true,
+      modelo,
     },
   ];
 }

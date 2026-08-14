@@ -139,6 +139,12 @@ export class FiscalService {
         establishmentId: dto.establishmentId,
         companyId,
         ambiente,
+        // Ausente vale como os dois: o estabelecimento novo ainda não sabe o
+        // que vai emitir, e presumir menos travaria a liberação depois.
+        modelosEmitidos: dto.modelosEmitidos ?? [
+          FiscalDocumentModel.NFCE,
+          FiscalDocumentModel.NFE,
+        ],
         serieNfce: dto.serieNfce ?? 1,
         codigoCsc: dto.codigoCsc,
         idCsc: dto.idCsc,
@@ -212,6 +218,8 @@ export class FiscalService {
         'Use POST /fiscal/settings/:establishmentId/ambientes/:ambiente/ativar para trocar de ambiente',
       );
     }
+    if (dto.modelosEmitidos !== undefined)
+      data.modelosEmitidos = dto.modelosEmitidos;
     if (dto.serieNfce !== undefined) data.serieNfce = dto.serieNfce;
     if (dto.proximoNumeroNfce !== undefined)
       data.proximoNumeroNfce = dto.proximoNumeroNfce;
@@ -260,6 +268,20 @@ export class FiscalService {
       fiscalSettingsId: settings.id,
       usuarioId: userId,
     };
+
+    // Trocar os modelos muda o que a liberação de produção cobra: quem tira a
+    // NFC-e da lista deixa de ser barrado por CSC. Fica registrado.
+    if (
+      dto.modelosEmitidos !== undefined &&
+      dto.modelosEmitidos.join(',') !== settings.modelosEmitidos.join(',')
+    ) {
+      eventos.push({
+        ...base,
+        tipo: 'modelos_emitidos',
+        valorAnterior: settings.modelosEmitidos.join(', ') || '(nenhum)',
+        valorNovo: dto.modelosEmitidos.join(', '),
+      });
+    }
 
     if (dto.serieNfce !== undefined && dto.serieNfce !== settings.serieNfce) {
       eventos.push({
@@ -377,8 +399,28 @@ export class FiscalService {
     return {
       liberada: settings.producaoLiberada,
       liberadaEm: settings.producaoLiberadaEm,
-      itens: buildProductionChecklist(settings),
+      itens: buildProductionChecklist(settings, {
+        produtosComPendencia: await this.contarProdutosComPendencia(companyId),
+      }),
     };
+  }
+
+  /**
+   * Produtos ativos que ainda não emitem.
+   *
+   * Entra no checklist como aviso, não como bloqueio: o CSOSN é decisão do
+   * contador e o sistema não preenche por ninguém. Mas dizer quantos faltam
+   * antes da liberação é melhor do que a rejeição aparecer na primeira venda.
+   */
+  private contarProdutosComPendencia(companyId: string): Promise<number> {
+    return this.prisma.product.count({
+      where: {
+        companyId,
+        deletedAt: null,
+        isActive: true,
+        fiscalComplete: false,
+      },
+    });
   }
 
   /**

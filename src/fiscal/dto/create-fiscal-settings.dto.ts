@@ -1,5 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { FiscalDocumentModel } from '@prisma/client';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -29,6 +32,23 @@ export class CreateFiscalSettingsDto {
   @IsOptional()
   @IsEnum(['HOMOLOGACAO', 'PRODUCAO'])
   ambiente?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Modelos que o estabelecimento emite. Define o que o checklist de ' +
+      'produção cobra: CSC e consulta pública só valem para quem emite NFC-e. ' +
+      'Ausente na criação vale como os dois.',
+    enum: FiscalDocumentModel,
+    isArray: true,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty({
+    message:
+      'Informe ao menos um modelo — um estabelecimento sem modelo não emite nada',
+  })
+  @IsEnum(FiscalDocumentModel, { each: true })
+  modelosEmitidos?: FiscalDocumentModel[];
 
   @ApiPropertyOptional({
     description: 'Série da NFC-e',

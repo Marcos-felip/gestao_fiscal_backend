@@ -241,6 +241,22 @@ varia por UF — MG emite 32 hexadecimais, outras 36. `idCsc`: 1 a 6 dígitos, q
 
 O CSC é segredo: não vai para log, mensagem de erro nem auditoria.
 
+### O que cada modelo exige para produção
+
+O checklist é apurado a partir de `fiscal_settings.modelos_emitidos`, e só cobra
+o que se aplica:
+
+| Exigência | NFC-e | NF-e |
+|---|:---:|:---:|
+| Certificado A1 válido | ✅ | ✅ |
+| CSC e ID do CSC de produção | ✅ | — |
+| Consulta pública validada | ✅ (aviso) | — |
+| Série e próximo número | ✅ | ✅ (própria) |
+
+Sem esse campo o checklist não distinguia "não configurou CSC" de "não emite
+NFC-e": bloqueava quem vende só para empresa, e ao mesmo tempo liberava produção
+sem ninguém ter olhado a numeração do modelo 55.
+
 ### Ativação da produção
 
 Emitir em produção exige **liberação explícita**, para que nenhuma nota real saia por

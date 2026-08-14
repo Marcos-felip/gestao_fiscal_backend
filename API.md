@@ -2101,15 +2101,21 @@ Devolve as configurações de homologação e de produção, com `ativo` marcand
 
 > **Permissão:** `fiscal.settings.edit`
 
-**Body:** `serieNfce`, `proximoNumeroNfce`, `codigoCsc`, `idCsc`, `ativo`
+**Body:** `modelosEmitidos`, `serieNfce`, `proximoNumeroNfce`, `serieNfe`,
+`proximoNumeroNfe`, `codigoCsc`, `idCsc`, `ativo`
 
 `codigoCsc` e `idCsc` seguem o mesmo formato do POST (ver acima) e são recusados com `400`
 quando fora dele.
 
-Trocar `ambiente` por aqui é recusado com `400` — use a rota de ativação. Alterações de série
-e de CSC ficam registradas na auditoria.
+**`modelosEmitidos`** é um array de `NFE` e/ou `NFCE`, com **ao menos um** — um
+estabelecimento sem modelo não emite nada. É esse campo que define o que o
+checklist de produção cobra: CSC e consulta pública só valem para quem emite
+NFC-e. Na criação, ausente vale como os dois.
 
-**Erros:** `400` CSC ou idCSC fora do formato · `400` Troca de ambiente
+Trocar `ambiente` por aqui é recusado com `400` — use a rota de ativação. Alterações de série,
+de CSC e dos modelos emitidos ficam registradas na auditoria.
+
+**Erros:** `400` CSC ou idCSC fora do formato · `400` Troca de ambiente · `400` Lista de modelos vazia
 
 ---
 
@@ -2200,19 +2206,41 @@ Sonda o microserviço, sem certificado e sem SEFAZ. Nunca falha: motor fora do a
 > **Permissão:** `fiscal.settings.read`
 
 **Resposta 200:**
-```json
+```jsonc
 {
   "liberada": false,
   "liberadaEm": null,
   "itens": [
     { "item": "Certificado digital A1 enviado", "ok": true, "detalhe": "04/08/2027" },
     { "item": "Certificado dentro da validade", "ok": true },
-    { "item": "CSC e ID do CSC de produção configurados", "ok": false, "detalhe": "..." },
-    { "item": "Série entre 1 e 999", "ok": true, "detalhe": "série atual: 1" },
-    { "item": "Próximo número entre 1 e 999999999", "ok": true, "detalhe": "próximo número: 1" }
+    // `modelo` presente = o item pertence só àquele modelo
+    { "item": "CSC e ID do CSC de produção configurados", "ok": false, "detalhe": "...", "modelo": "NFCE" },
+    { "item": "Série da NFC-e entre 1 e 999", "ok": true, "detalhe": "série atual: 1", "modelo": "NFCE" },
+    { "item": "Próximo número da NFC-e entre 1 e 999999999", "ok": true, "detalhe": "próximo número: 1", "modelo": "NFCE" },
+    { "item": "Consulta pública validada em produção", "ok": false, "bloqueante": false, "modelo": "NFCE" },
+    { "item": "Série da NF-e entre 1 e 999", "ok": true, "detalhe": "série atual: 1", "modelo": "NFE" },
+    { "item": "Próximo número da NF-e entre 1 e 999999999", "ok": true, "detalhe": "próximo número: 5", "modelo": "NFE" },
+    { "item": "Produtos com quadro tributário completo", "ok": false, "bloqueante": false, "detalhe": "4 produtos não emitem…" }
   ]
 }
 ```
+
+**O checklist é apurado por modelo.** Só entram os itens dos modelos que o
+estabelecimento emite (`modelosEmitidos` da configuração):
+
+| Item | Vale para |
+|---|---|
+| Certificado enviado / dentro da validade | os dois — a assinatura é a mesma |
+| CSC, ID do CSC e consulta pública | **só NFC-e** |
+| Série e próximo número | **um item por modelo**, nomeando qual |
+| Produtos com quadro tributário completo | os dois, **não bloqueante** |
+
+Item sem `modelo` vale para todos. `bloqueante: false` aparece só onde o item não
+impede a liberação — a ausência do campo significa bloqueante.
+
+**Produtos com pendência fiscal** é aviso, não trava: o CSOSN é decisão do
+contador e o sistema não preenche por ninguém. Mas dizer quantos faltam antes da
+liberação é melhor do que a rejeição aparecer na primeira venda do balcão.
 
 ---
 

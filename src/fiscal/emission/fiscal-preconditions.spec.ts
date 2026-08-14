@@ -132,8 +132,11 @@ describe('produção liberada', () => {
 describe('buildProductionChecklist', () => {
   const producao = (overrides: Record<string, unknown> = {}) => ({
     ...settings(),
+    modelosEmitidos: ['NFCE'],
     serieNfce: 1,
     proximoNumeroNfce: 1,
+    serieNfe: 1,
+    proximoNumeroNfe: 1,
     consultaPublicaValidadaEm: new Date('2026-08-04T12:00:00Z'),
     ...overrides,
   });
@@ -171,11 +174,15 @@ describe('buildProductionChecklist', () => {
   });
 
   it.each([
-    ['série fora da faixa', { serieNfce: 1000 }, 'Série entre 1 e 999'],
+    [
+      'série fora da faixa',
+      { serieNfce: 1000 },
+      'Série da NFC-e entre 1 e 999',
+    ],
     [
       'numeração zerada',
       { proximoNumeroNfce: 0 },
-      'Próximo número entre 1 e 999999999',
+      'Próximo número da NFC-e entre 1 e 999999999',
     ],
   ])('aponta %s', (_caso, override, esperado) => {
     expect(pendentes(override)).toEqual([esperado]);
@@ -193,5 +200,101 @@ describe('buildProductionChecklist', () => {
         consultaPublicaValidadaEm: new Date('2026-08-04T12:00:00Z'),
       }),
     ).toEqual([]);
+  });
+
+  describe('por modelo emitido', () => {
+    const itens = (config: Record<string, unknown> = {}) =>
+      buildProductionChecklist(producao(config)).map((item) => item.item);
+
+    it('não cobra CSC de quem não emite NFC-e', () => {
+      // Era bloqueante para todos: quem vende só para empresa não tem CSC e
+      // não conseguia liberar produção por falta de um código que não usa.
+      const lista = itens({ modelosEmitidos: ['NFE'], codigoCsc: null });
+
+      expect(lista).not.toContain('CSC e ID do CSC de produção configurados');
+      expect(lista).not.toContain('Consulta pública validada em produção');
+    });
+
+    it('confere a numeração do modelo 55 de quem emite NF-e', () => {
+      // Antes o checklist olhava só a série da NFC-e: dava para liberar
+      // produção sem ninguém ter conferido a numeração da NF-e.
+      expect(pendentes({ modelosEmitidos: ['NFE'], serieNfe: 1000 })).toEqual([
+        'Série da NF-e entre 1 e 999',
+      ]);
+    });
+
+    it('não cobra numeração de NF-e de quem só emite NFC-e', () => {
+      expect(pendentes({ modelosEmitidos: ['NFCE'], serieNfe: 1000 })).toEqual(
+        [],
+      );
+    });
+
+    it('traz os dois blocos quando o estabelecimento emite os dois', () => {
+      const lista = itens({ modelosEmitidos: ['NFCE', 'NFE'] });
+
+      expect(lista).toContain('Série da NFC-e entre 1 e 999');
+      expect(lista).toContain('Série da NF-e entre 1 e 999');
+    });
+
+    it('trata lista vazia como os dois modelos', () => {
+      // É o que a configuração antiga significava; presumir menos travaria a
+      // liberação de quem já emite.
+      const lista = itens({ modelosEmitidos: [] });
+
+      expect(lista).toContain('CSC e ID do CSC de produção configurados');
+      expect(lista).toContain('Série da NF-e entre 1 e 999');
+    });
+
+    it('marca o modelo em cada item que pertence a um só', () => {
+      const checklist = buildProductionChecklist(
+        producao({ modelosEmitidos: ['NFCE', 'NFE'] }),
+      );
+
+      const certificado = checklist.find((i) => i.item.includes('Certificado'));
+      const serieNfe = checklist.find((i) => i.item.includes('Série da NF-e'));
+
+      // O certificado assina os dois: item sem modelo.
+      expect(certificado?.modelo).toBeUndefined();
+      expect(serieNfe?.modelo).toBe('NFE');
+    });
+  });
+
+  describe('produtos com pendência fiscal', () => {
+    it('avisa quantos produtos não emitem, sem bloquear', () => {
+      const checklist = buildProductionChecklist(producao(), {
+        produtosComPendencia: 3,
+      });
+      const item = checklist.find((i) => i.item.includes('Produtos'));
+
+      expect(item?.ok).toBe(false);
+      expect(item?.bloqueante).toBe(false);
+      expect(item?.detalhe).toContain('3 produtos não emitem');
+    });
+
+    it('concorda o singular', () => {
+      const checklist = buildProductionChecklist(producao(), {
+        produtosComPendencia: 1,
+      });
+
+      expect(
+        checklist.find((i) => i.item.includes('Produtos'))?.detalhe,
+      ).toContain('1 produto não emite');
+    });
+
+    it('aprova quando não há pendência', () => {
+      const checklist = buildProductionChecklist(producao(), {
+        produtosComPendencia: 0,
+      });
+
+      expect(checklist.find((i) => i.item.includes('Produtos'))?.ok).toBe(true);
+    });
+
+    it('omite o item quando a contagem não foi informada', () => {
+      expect(
+        buildProductionChecklist(producao()).some((i) =>
+          i.item.includes('Produtos'),
+        ),
+      ).toBe(false);
+    });
   });
 });

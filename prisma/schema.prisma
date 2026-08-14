@@ -751,6 +751,9 @@ model FiscalSettings {
   companyId        String            @map("company_id")
   company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   ambiente         FiscalEnvironment @default(HOMOLOGACAO)
+  /// Modelos que o estabelecimento emite. Define o que o checklist de producao
+  /// cobra: CSC e consulta publica so valem para quem emite NFC-e.
+  modelosEmitidos  FiscalDocumentModel[] @map("modelos_emitidos")
   serieNfce        Int               @default(1) @map("serie_nfce")
   proximoNumeroNfce Int              @default(1) @map("proximo_numero_nfce")
   serieNfe         Int               @default(1) @map("serie_nfe")
