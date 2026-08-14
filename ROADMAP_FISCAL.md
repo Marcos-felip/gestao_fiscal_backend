@@ -31,10 +31,16 @@ da etapa 1.
 | 0 | Exportar XMLs em lote por período | backend, frontend | ✅ concluída |
 | 1 | Contrato tributário do item | motor, backend, frontend | ✅ concluída |
 | 2 | Regra fiscal por operação | backend, frontend | ⏸ **adiada** — ver abaixo |
-| 3 | NF-e modelo 55: emissão **interna** | motor, backend, frontend | ✅ implementada — falta emitir em homologação |
-| 4 | Eventos: CC-e e inutilização | motor, backend, frontend | **próxima** |
+| 3 | NF-e modelo 55: emissão **interna** | motor, backend, frontend | ✅ concluída e emitida em homologação (14/08/2026) |
+| 4 | Eventos: CC-e e inutilização | motor, backend, frontend | ✅ concluída e homologada (14/08/2026) |
 | 5 | Devolução de mercadoria | backend, frontend | ⏸ **adiada** |
 | 6 | IBS e CBS | motor, backend | 2027 |
+
+> **O roteiro acabou dentro do escopo atual.** Com 0, 1, 3 e 4 concluídas, o
+> produto emite NFC-e e NF-e, cancela, corrige e inutiliza numeração — tudo
+> exercitado contra a SEFAZ. As etapas 2 e 5 estão adiadas por decisão, e a 6 tem
+> prazo externo. **O que vem a seguir não é uma etapa daqui: é a virada para
+> produção** — ver "Depois do roteiro", no fim.
 
 > **Escopo definido em 12/08/2026: NFC-e e NF-e, ambas dentro do estado.**
 > Sem venda interestadual, e sem NFS-e por enquanto. É o que reordena o roteiro.
@@ -136,25 +142,55 @@ Qualquer uma destas:
 Enquanto nenhuma acontecer, a etapa 2 completa é custo sem uso.
 
 
-## O que a etapa 3 deixou em aberto
+## O que as etapas 3 e 4 deixaram em aberto
 
-Implementada nos três repositórios em 13/08/2026, com 121 testes no motor, 674
-no backend e 273 no frontend. O que **não** foi feito, e por quê:
+As duas foram arquivadas em 14/08/2026, depois de emitidas em homologação. O que
+**não** foi feito, e por quê:
 
-- **Emissão real em homologação.** Falta um cliente PJ com código IBGE e
-  indicador de IE cadastrados, e uma venda para ele. É o mesmo passo que fechou
-  a etapa 1 — sem ele, o caminho está testado mas não exercitado.
-- **DANFE do modelo 55 é HTML, não PDF.** O layout retrato pronto depende de
-  `System.Drawing.Common`, Windows-only no .NET 8, e o motor roda em contêiner
-  Linux — medido, não suposto. O download no frontend ainda assume PDF.
-- **Transporte, volumes e cobrança** existem no contrato dos três repositórios e
-  têm teste, mas o formulário não os coleta: venda de balcão não tem frete, e o
-  grupo ausente já significa "sem frete".
-- **Série e numeração de NF-e na tela de configuração.** O backend tem os
-  campos; a tela só é necessária para continuar numeração vinda de outro sistema.
-- **Estoque por estabelecimento** (seção 1c da change) continua adiado: cada
+- **Checklist de produção do modelo 55.** O checklist confere certificado, CSC e
+  consulta pública — todos da NFC-e. A NF-e acrescenta série própria e nada mais.
+  Entra na virada para produção, abaixo.
+- **Detalhe do documento não mostra os grupos do modelo 55.** O snapshot da NF-e
+  traz destinatário completo, transporte e cobrança; a tela ainda mostra só o que
+  a NFC-e tem. É a pendência mais visível ao usuário.
+- **Transporte, volumes e cobrança no formulário.** Existem no contrato dos três
+  repositórios e têm teste, mas a tela não os coleta: venda de balcão não tem
+  frete, e o grupo ausente já significa "sem frete".
+- **Link direto para o cadastro do parceiro** a partir da pendência de emissão —
+  a mensagem do backend nomeia o cliente por nome, não por id.
+- **Estoque por estabelecimento** (seção 1c da etapa 3) continua adiado: cada
   empresa da base tem uma MATRIZ e nenhuma filial, então a limitação não é
   observável. Ela passa a existir na primeira filial.
+- **As telas de CC-e e inutilização não foram usadas pela interface.** O contrato
+  foi exercitado contra a SEFAZ pelo backend; falta o percurso pelo app.
+
+### O que a emissão real ensinou
+
+Três defeitos que nenhum teste unitário pegou, todos corrigidos em 14/08/2026:
+
+1. **Ano com quatro dígitos** na inutilização — o `ID` do pedido tem tamanho
+   fixo, e a SEFAZ devolvia `215 — Falha no esquema XML` sem dizer qual campo.
+2. **Timeout de 5s** no motor: o pedido era homologado e a resposta não voltava a
+   tempo. Deste lado virava erro, sem protocolo gravado.
+3. **A faixa ficava no limbo** por causa disso — existia na SEFAZ e não aqui.
+   Agora a recusa por duplicidade é reconciliada pelo protocolo que ela carrega.
+
+O padrão vale para o que vier: **o que a SEFAZ recusa em produção não se descobre
+em teste unitário.** Cada etapa precisa de um ato real antes de ser dada como
+pronta.
+
+## Depois do roteiro — a virada para produção
+
+Tudo acima está preso em homologação. O que falta para valer dinheiro é pequeno
+em código e grande em consequência:
+
+1. **Checklist de produção estendido ao modelo 55**, para que a liberação confira
+   o que a NF-e exige.
+2. **CSOSN correto em cada produto** — trabalho de cadastro, uma vez, com quem
+   sabe. É o que decide se a nota sai certa ou vira apontamento, e nenhum código
+   substitui.
+3. **CSC de produção e a liberação em si**, com a primeira nota real conferida
+   antes de o balcão começar a emitir.
 
 ## Aviso sobre a validade destas changes
 
