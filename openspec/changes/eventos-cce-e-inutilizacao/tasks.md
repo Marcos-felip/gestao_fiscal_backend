@@ -1,11 +1,12 @@
-> **Reveja esta proposta antes de começar** — escrita antes das etapas 0 e 3.
+> **Podada em 14/08/2026** contra o código real e contra o que a etapa 3
+> produziu.
 
 ## 1. Pré-requisitos
 
-- [ ] 1.1 Etapa 3 aplicada (cancelamento do modelo 55)
-- [ ] 1.2 Etapa 0 aplicada (a exportação passa a incluir os XMLs de CC-e)
-- [ ] 1.3 Change irmã do `fiscal_service` no ar
-- [ ] 1.4 Revisar esta proposta contra o que as etapas anteriores produziram
+- [x] 1.1 Etapa 3 aplicada e arquivada em 14/08/2026 — o cancelamento já atende o modelo 55
+- [x] 1.2 Etapa 0 aplicada (a exportação passa a incluir os XMLs de CC-e)
+- [x] 1.3 Change irmã do `fiscal_service` no ar — contrato em `fiscal_service/docs/CONTRATO_EVENTOS.md`
+- [x] 1.4 Revisar esta proposta contra o que as etapas anteriores produziram
 
 ## 2. Migrations
 
@@ -16,7 +17,7 @@
 ## 3. Carta de correção
 
 - [ ] 3.1 Rota e service, exigindo documento `AUTORIZADO`
-- [ ] 3.2 Sequência atribuída pelo sistema, a partir do que já existe para a nota
+- [ ] 3.2 Sequência atribuída pelo sistema, a partir do que já existe para a nota — **o motor não faz isso:** ele é stateless e só confere a faixa 1 a 20
 - [ ] 3.3 Validar texto entre 15 e 1000 caracteres, em PT-BR
 - [ ] 3.4 Recusar acima de 20 correções, citando o limite legal
 - [ ] 3.5 Guardar XML do evento no storage, no mesmo padrão do cancelamento
@@ -25,7 +26,8 @@
 ## 4. Inutilização
 
 - [ ] 4.1 Rota e service com série, modelo, ambiente, faixa e justificativa
-- [ ] 4.2 Recusar faixa que contenha número de documento autorizado, nomeando o conflito
+- [ ] 4.2 Recusar faixa que contenha número de documento autorizado ou cancelado, nomeando o número e a chave
+- [ ] 4.2b **Sugerir os buracos:** para uma série, os números de 1 até `proximoNumero - 1` sem documento são exatamente os candidatos. Calculável do que já existe — evita digitar a faixa errada
 - [ ] 4.3 Documento em erro definitivo passa a `INUTILIZADO` quando sua numeração é inutilizada
 - [ ] 4.4 Guardar XML e protocolo
 

@@ -28,6 +28,17 @@ export interface IFiscalEngine {
 
   /** Verifica se o próprio motor está no ar, sem falar com a SEFAZ. */
   health(): Promise<FiscalEngineHealth>;
+
+  /**
+   * Transmite a Carta de Correção (evento 110110).
+   *
+   * A sequência vai pronta: o motor é stateless e só confere a faixa de 1 a 20.
+   * Quem sabe qual é a próxima — e se a nota já chegou ao limite — é este lado.
+   */
+  cartaCorrecao(request: CartaCorrecaoRequest): Promise<CartaCorrecaoResult>;
+
+  /** Inutiliza uma faixa de numeração que nunca virou documento. */
+  inutilizar(request: InutilizarRequest): Promise<InutilizarResult>;
 }
 
 // ──────────────────────────────────────────────
@@ -427,6 +438,55 @@ export interface EmitirNfeResult {
    */
   danfeContentType?: string;
   rejeicao?: FiscalRejeicao;
+}
+
+// ──────────────────────────────────────────────
+// Eventos: carta de correção e inutilização
+// ──────────────────────────────────────────────
+
+export interface CartaCorrecaoRequest extends FiscalCertificateCredentials {
+  chaveAcesso: string;
+  /** 15 a 1000 caracteres */
+  correcao: string;
+  /** 1 a 20 */
+  sequenciaEvento: number;
+  /** CNPJ do emitente — o autor do evento */
+  cpfCnpj: string;
+  ambiente: FiscalAmbiente;
+}
+
+export interface CartaCorrecaoResult {
+  sucesso: boolean;
+  protocolo?: string;
+  xmlEventoBase64?: string;
+  motivoRejeicao?: string;
+  /**
+   * Texto legal de condição de uso da CC-e. Volta **inclusive na recusa** —
+   * quem confirma a correção precisa lê-lo antes, não depois de dar certo.
+   */
+  condicaoDeUso?: string;
+}
+
+export interface InutilizarRequest extends FiscalCertificateCredentials {
+  cnpj: string;
+  ano: number;
+  /** 55 (NF-e) ou 65 (NFC-e) */
+  modelo: number;
+  serie: number;
+  numeroInicial: number;
+  numeroFinal: number;
+  /** 15 a 255 caracteres */
+  justificativa: string;
+  /** Sem chave de acesso, não há de onde deduzir a UF. */
+  uf: string;
+  ambiente: FiscalAmbiente;
+}
+
+export interface InutilizarResult {
+  sucesso: boolean;
+  protocolo?: string;
+  xmlInutilizacaoBase64?: string;
+  motivoRejeicao?: string;
 }
 
 /** Motivo da recusa devolvido pelo motor ou pela SEFAZ. */

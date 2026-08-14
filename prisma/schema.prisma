@@ -262,6 +262,8 @@ model Company {
   fiscalDocuments  FiscalDocument[]
   fiscalCertificateEvents FiscalCertificateEvent[]
   fiscalSettingsEvents    FiscalSettingsEvent[]
+  correctionLetters       FiscalCorrectionLetter[]
+  inutilizations          FiscalInutilization[]
 
   @@map("companies")
 }
@@ -312,6 +314,7 @@ model Establishment {
   cashSessions     CashSession[]
   fiscalSettings   FiscalSettings[]
   fiscalDocuments  FiscalDocument[]
+  inutilizations   FiscalInutilization[]
 
   @@index([companyId])
   @@map("establishments")
@@ -872,8 +875,9 @@ model FiscalDocument {
   updatedAt        DateTime             @updatedAt @map("updated_at")
   deletedAt        DateTime?            @map("deleted_at")
 
-  statusHistory FiscalStatusHistory[]
-  events        FiscalDocumentEvent[]
+  statusHistory     FiscalStatusHistory[]
+  events            FiscalDocumentEvent[]
+  correctionLetters FiscalCorrectionLetter[]
 
   @@index([companyId])
   @@index([companyId, status])
@@ -882,6 +886,63 @@ model FiscalDocument {
 }
 
 /// Histórico de transições de status de um documento fiscal.
+/// Carta de Correcao Eletronica (evento 110110) de um documento autorizado.
+///
+/// Tabela propria, e nao uma linha em fiscal_document_events: a sequencia
+/// precisa de UNIQUE no banco. Conferir no codigo deixaria a porta aberta para
+/// duas correcoes concorrentes gravarem a mesma — e a SEFAZ recusaria a segunda
+/// depois, sem que ninguem entendesse por que.
+model FiscalCorrectionLetter {
+  id               String         @id @default(uuid())
+  companyId        String         @map("company_id")
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fiscalDocumentId String         @map("fiscal_document_id")
+  fiscalDocument   FiscalDocument @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+  /// Sequencia do evento para esta nota: 1 a 20
+  sequencia        Int
+  /// Texto da correcao, de 15 a 1000 caracteres
+  correcao         String
+  /// Texto legal de condicao de uso vigente quando a correcao foi feita
+  condicaoDeUso    String?        @map("condicao_de_uso")
+  protocolo        String?
+  /// XML do evento (chave do storage)
+  xmlEvento        String?        @map("xml_evento")
+  usuarioId        String?        @map("usuario_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@unique([fiscalDocumentId, sequencia])
+  @@index([companyId])
+  @@map("fiscal_correction_letters")
+}
+
+/// Inutilizacao de faixa de numeracao.
+///
+/// Nao tem FiscalDocument: age sobre numeros que nunca viraram documento. Por
+/// isso guarda serie, modelo e faixa, e nao uma chave de acesso.
+model FiscalInutilization {
+  id              String              @id @default(uuid())
+  companyId       String              @map("company_id")
+  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  establishmentId String              @map("establishment_id")
+  establishment   Establishment       @relation(fields: [establishmentId], references: [id])
+  modelo          FiscalDocumentModel
+  ambiente        FiscalEnvironment
+  serie           Int
+  numeroInicial   Int                 @map("numero_inicial")
+  numeroFinal     Int                 @map("numero_final")
+  ano             Int
+  justificativa   String
+  protocolo       String?
+  /// XML da inutilizacao (chave do storage)
+  xmlInutilizacao String?             @map("xml_inutilizacao")
+  usuarioId       String?             @map("usuario_id")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([establishmentId, modelo, serie])
+  @@map("fiscal_inutilizations")
+}
+
 model FiscalStatusHistory {
   id               String               @id @default(uuid())
   fiscalDocumentId String               @map("fiscal_document_id")

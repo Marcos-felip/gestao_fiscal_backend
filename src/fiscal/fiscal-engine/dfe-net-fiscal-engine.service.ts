@@ -9,6 +9,10 @@ import {
   EmitirNfceResult,
   EmitirNfeRequest,
   EmitirNfeResult,
+  CartaCorrecaoRequest,
+  CartaCorrecaoResult,
+  InutilizarRequest,
+  InutilizarResult,
   FiscalEngineHealth,
   FiscalEngineTransportError,
   FiscalRejeicao,
@@ -21,6 +25,8 @@ import {
 const ROUTES = {
   emit: '/api/nfce/emit',
   emitNfe: '/api/nfe/emit',
+  cartaCorrecao: '/api/eventos/carta-correcao',
+  inutilizar: '/api/eventos/inutilizar',
   consulta: '/api/nfce/consulta',
   cancel: '/api/nfce/cancel',
   statusServico: '/api/sefaz/status-servico',
@@ -168,6 +174,70 @@ export class DfeNetFiscalEngine implements IFiscalEngine {
       xmlAutorizadoBase64: this.text(body.xmlAutorizadoBase64),
       danfeBase64: this.text(body.danfeBase64),
       danfeContentType: this.text(body.danfeContentType),
+    };
+  }
+
+  async cartaCorrecao(
+    request: CartaCorrecaoRequest,
+  ): Promise<CartaCorrecaoResult> {
+    this.logger.log(
+      `Carta de correção: chave=${request.chaveAcesso}, sequência=${request.sequenciaEvento}`,
+    );
+
+    const response = await this.post(ROUTES.cartaCorrecao, request);
+    const body = this.asRecord(response);
+
+    // A condição de uso volta nos dois casos: é ela que o operador precisa ler
+    // antes de confirmar, e o 400 de recusa também a traz.
+    const condicaoDeUso = this.text(body.condicaoDeUso);
+
+    if (this.isRejected(response)) {
+      const rejeicao = this.parseRejeicao(response);
+      this.logger.warn(
+        `Carta de correção recusada: chave=${request.chaveAcesso}, motivo=${rejeicao.mensagem}`,
+      );
+      return {
+        sucesso: false,
+        motivoRejeicao:
+          this.text(this.loose(response).motivoRejeicao) ?? rejeicao.mensagem,
+        condicaoDeUso,
+      };
+    }
+
+    return {
+      sucesso: true,
+      protocolo: this.text(body.protocolo),
+      xmlEventoBase64: this.text(body.xmlEventoBase64),
+      condicaoDeUso,
+    };
+  }
+
+  async inutilizar(request: InutilizarRequest): Promise<InutilizarResult> {
+    this.logger.log(
+      `Inutilização: modelo=${request.modelo}, série=${request.serie}, ` +
+        `faixa=${request.numeroInicial}-${request.numeroFinal}`,
+    );
+
+    const response = await this.post(ROUTES.inutilizar, request);
+
+    if (this.isRejected(response)) {
+      const rejeicao = this.parseRejeicao(response);
+      this.logger.warn(
+        `Inutilização recusada: série=${request.serie}, motivo=${rejeicao.mensagem}`,
+      );
+      return {
+        sucesso: false,
+        motivoRejeicao:
+          this.text(this.loose(response).motivoRejeicao) ?? rejeicao.mensagem,
+      };
+    }
+
+    const body = this.asRecord(response);
+
+    return {
+      sucesso: true,
+      protocolo: this.text(body.protocolo),
+      xmlInutilizacaoBase64: this.text(body.xmlInutilizacaoBase64),
     };
   }
 
