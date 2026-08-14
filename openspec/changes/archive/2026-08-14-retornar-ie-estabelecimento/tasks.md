@@ -27,7 +27,7 @@
 - [x] 4.5 `update` só com `stateRegistration` continua gravando na matriz (não regredir)
 - [x] 4.6 Teste cobrindo a precedência em `fiscal-snapshot.builder.spec.ts`: estabelecimento com IE ganha da empresa; sem IE, cai no fallback
 - [x] 4.7 `npm test` verde (565 testes, 33 suítes) e `npm run build` limpo
-- [ ] 4.8 `npm run test:e2e` continua falhando por defeito pré-existente (boilerplate `GET /` vs. prefixo `/api/v1`) — mesma pendência anotada na change `validar-formato-csc`
+- [x] 4.8 **Resolvido em 14/08/2026:** o boilerplate testava um `AppController` que já não existe. Trocado por fumaça da aplicação — prefixo global, rotas fechadas sem token e 404 fora do prefixo. `npm run test:e2e` verde
 
 ## 5. Handoff
 

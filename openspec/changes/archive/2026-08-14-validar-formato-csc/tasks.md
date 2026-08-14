@@ -27,7 +27,7 @@
 - [x] 4.2 `fiscal-preconditions.spec.ts`: pendência de "malformado" separada da de "ausente"
 - [x] 4.3 ~~Teste e2e do `PATCH /fiscal/settings/:id`~~ → substituído por `fiscal-settings-csc.dto.spec.ts`, que roda `class-validator` diretamente (o mesmo que o `ValidationPipe` global faz) e confere a mensagem exata do 400. Um e2e de verdade exigiria harness de auth/tenant/permissão que não existe no repositório — fora do escopo desta change.
 - [x] 4.4 `npm test` verde (538 testes, 32 suítes) e `npm run build` limpo
-- [ ] 4.5 **Pendência pré-existente, não introduzida aqui:** `npm run test:e2e` falha desde antes desta change — `test/app.e2e-spec.ts` é o boilerplate do Nest e espera `GET /` → `Hello World!`, mas a aplicação usa o prefixo global `/api/v1`. Corrigir ou remover em change própria.
+- [x] 4.5 **Resolvido em 14/08/2026:** o boilerplate testava um `AppController` que já não existe. Trocado por fumaça da aplicação — prefixo global, rotas fechadas sem token e 404 fora do prefixo. `npm run test:e2e` verde
 
 ## 5. Contrato e documentação
 
