@@ -9,7 +9,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { DfeNetFiscalEngine } from '../fiscal-engine/dfe-net-fiscal-engine.service';
 import { FiscalCertificateService } from '../certificates/fiscal-certificate.service';
-import { buildFiscalStorageKey } from '../emission/fiscal-storage';
+import {
+  buildFiscalStorageKey,
+  isFiscalStorageKey,
+} from '../emission/fiscal-storage';
 import { mapAmbiente, apenasDigitos } from '../emission/fiscal-rules';
 import { CreateCorrectionLetterDto } from '../dto/create-correction-letter.dto';
 import { InutilizeNumberingDto } from '../dto/inutilize-numbering.dto';
@@ -184,6 +187,42 @@ export class FiscalEventsService {
       where: { fiscalDocumentId },
       orderBy: { sequencia: 'asc' },
     });
+  }
+
+  /**
+   * XML de uma carta de correção.
+   *
+   * Rota própria, e não mais um valor de `xml/:tipo`: aquela rota identifica o
+   * arquivo pelo documento, e aqui existem até 20 na mesma nota — a sequência
+   * faz parte do endereço.
+   */
+  async getCorrectionLetterXml(
+    companyId: string,
+    fiscalDocumentId: string,
+    sequencia: number,
+  ): Promise<string> {
+    await this.requireDocument(companyId, fiscalDocumentId);
+
+    const carta = await this.prisma.fiscalCorrectionLetter.findFirst({
+      where: { fiscalDocumentId, sequencia },
+      select: { xmlEvento: true },
+    });
+
+    if (!carta) {
+      throw new NotFoundException(
+        `Carta de correção ${sequencia} não encontrada para este documento`,
+      );
+    }
+
+    const conteudo = await this.lerXmlArmazenado(carta.xmlEvento);
+
+    if (conteudo === null) {
+      throw new NotFoundException(
+        `XML da carta de correção ${sequencia} não pôde ser recuperado`,
+      );
+    }
+
+    return conteudo;
   }
 
   // ──────────────────────────────────────────────
@@ -518,6 +557,24 @@ export class FiscalEventsService {
         `Falha ao guardar o XML de ${sufixo} (${chave}): ${error instanceof Error ? error.message : String(error)}`,
       );
       return xml;
+    }
+  }
+
+  /**
+   * Resolve o XML gravado: conteúdo direto na coluna ou chave do storage,
+   * conforme `persistirXml` tenha gravado de um jeito ou de outro.
+   */
+  private async lerXmlArmazenado(valor: string | null): Promise<string | null> {
+    if (!valor) return null;
+    if (!isFiscalStorageKey(valor)) return valor;
+
+    try {
+      return await this.storage.download(valor);
+    } catch (error) {
+      this.logger.error(
+        `Falha ao ler o XML do storage (${valor}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
     }
   }
 

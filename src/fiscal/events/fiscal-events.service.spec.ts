@@ -37,6 +37,7 @@ const mockPrisma = {
     count: jest.fn(),
     create: jest.fn(),
     findMany: jest.fn(),
+    findFirst: jest.fn(),
   },
   fiscalInutilization: { create: jest.fn(), findMany: jest.fn() },
   fiscalDocumentEvent: { create: jest.fn() },
@@ -48,7 +49,11 @@ const mockPrisma = {
 
 const mockEngine = { cartaCorrecao: jest.fn(), inutilizar: jest.fn() };
 const mockCertificates = { loadCredentials: jest.fn() };
-const mockStorage = { isConfigured: jest.fn(), upload: jest.fn() };
+const mockStorage = {
+  isConfigured: jest.fn(),
+  upload: jest.fn(),
+  download: jest.fn(),
+};
 
 describe('FiscalEventsService', () => {
   let service: FiscalEventsService;
@@ -169,6 +174,39 @@ describe('FiscalEventsService', () => {
           correcao: 'Corrigir o nome do bairro do destinatario',
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('XML da carta de correção', () => {
+    it('devolve o conteúdo gravado na coluna quando não há storage', async () => {
+      mockPrisma.fiscalCorrectionLetter.findFirst.mockResolvedValue({
+        xmlEvento: '<procEventoNFe>cce</procEventoNFe>',
+      });
+
+      await expect(
+        service.getCorrectionLetterXml('company-1', 'doc-1', 1),
+      ).resolves.toBe('<procEventoNFe>cce</procEventoNFe>');
+    });
+
+    it('baixa do storage quando o que está gravado é uma chave', async () => {
+      mockPrisma.fiscalCorrectionLetter.findFirst.mockResolvedValue({
+        xmlEvento: 'fiscal/company-1/2026/08/chave-cce-1.xml',
+      });
+      mockStorage.download.mockResolvedValue(
+        '<procEventoNFe>do s3</procEventoNFe>',
+      );
+
+      await expect(
+        service.getCorrectionLetterXml('company-1', 'doc-1', 1),
+      ).resolves.toContain('do s3');
+    });
+
+    it('recusa sequência que não existe, dizendo qual', async () => {
+      mockPrisma.fiscalCorrectionLetter.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getCorrectionLetterXml('company-1', 'doc-1', 7),
+      ).rejects.toThrow(/correção 7/);
     });
   });
 

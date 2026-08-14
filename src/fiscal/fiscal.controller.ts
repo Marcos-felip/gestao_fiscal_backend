@@ -5,6 +5,7 @@ import {
   Logger,
   Param,
   ParseEnumPipe,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -607,6 +608,30 @@ export class FiscalController {
     @CurrentCompany() companyId: string,
   ) {
     return this.eventsService.listCorrectionLetters(companyId, id);
+  }
+
+  @Get('documents/:id/cartas-correcao/:sequencia/xml')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({
+    summary: 'Download do XML de uma carta de correção',
+    description:
+      'A sequência faz parte do endereço porque uma nota aceita até 20 ' +
+      'correções, todas na mesma chave de acesso.',
+  })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiParam({
+    name: 'sequencia',
+    description: 'Sequência da correção (1 a 20)',
+  })
+  @ApiResponse({ status: 200, description: 'Conteúdo do XML' })
+  @ApiResponse({ status: 404, description: 'Carta ou XML não disponível' })
+  getCorrectionLetterXml(
+    @Param('id') id: string,
+    @Param('sequencia', ParseIntPipe) sequencia: number,
+    @CurrentCompany() companyId: string,
+  ) {
+    return this.eventsService.getCorrectionLetterXml(companyId, id, sequencia);
   }
 
   @Post('inutilizacoes')

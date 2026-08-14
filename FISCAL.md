@@ -399,6 +399,7 @@ adicional. O contrato HTTP para o frontend não muda quando o motor muda.
 | GET | `/documents/:id/xml/:tipo` | `fiscal.read` |
 | GET | `/documents/xml/export` | `fiscal.read` |
 | GET | `/documents/:id/cartas-correcao` | `fiscal.read` |
+| GET | `/documents/:id/cartas-correcao/:sequencia/xml` | `fiscal.read` |
 | GET | `/inutilizacoes/pendentes/:establishmentId` | `fiscal.inutilizar` |
 | POST | `/documents/nfce` | `fiscal.emit` |
 | POST | `/documents/nfe` | `fiscal.nfe.emit` |

@@ -2502,6 +2502,17 @@ Array ordenado por `sequencia`, no formato acima. Vazio quando não há correç�
 
 ---
 
+#### GET /fiscal/documents/:id/cartas-correcao/:sequencia/xml — XML da correção
+
+> **Permissão:** `fiscal.read` · responde o XML como **texto cru**, não JSON
+
+Rota própria em vez de mais um valor de `xml/:tipo`: aquela identifica o arquivo pelo
+documento, e aqui existem até 20 na mesma nota — a sequência faz parte do endereço.
+
+**Erros:** `404` carta inexistente, ou XML não recuperável do armazenamento
+
+---
+
 #### POST /fiscal/inutilizacoes — Inutilizar faixa de numeração
 
 > **Permissão:** `fiscal.inutilizar`
