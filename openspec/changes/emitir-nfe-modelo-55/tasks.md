@@ -79,7 +79,7 @@
 - [x] 7.1 `API.md`: rotas, permissões e o que difere da NFC-e
 - [x] 7.2 `FISCAL.md`: fluxo do modelo 55
 - [x] 7.3 `BANCO_DE_DADOS.md`: campos novos
-- [ ] 7.4 Avisar a change irmã do frontend
+- [x] 7.4 Change irmã do frontend aplicada e com as mesmas decisões registradas
 
 ## 8. Achados desta implementação
 
@@ -94,5 +94,5 @@
 - [x] 9.2 **Defeito de boot:** `EmitNfeDto` referenciava classes aninhadas declaradas depois dela. Compila sem erro e derruba o processo com `Cannot access 'NfeTransporteDto' before initialization` — `emitDecoratorMetadata` resolve `design:type` na definição da classe. Ordem invertida no arquivo, com o porquê comentado
 - [x] 9.3 **DANFE servido com o tipo errado:** o download declarava `application/pdf` e devolvia HTML. `getDanfe` passou a derivar tipo e extensão da chave do storage
 - [x] 9.4 **Rejeição 234 com IE inventada:** a SEFAZ confere a inscrição estadual contra o CNPJ **mesmo em homologação**. Destinatário contribuinte exige um par CNPJ/IE que exista de verdade; a validação foi feita com destinatário não contribuinte, que é caso legítimo (colégio não recolhe ICMS)
-- [ ] 9.5 **Rejeição 391 com PIX:** a NFC-e automática de uma venda paga em PIX foi recusada com "Não informados os dados do cartão de crédito/débito nas Formas de Pagamento". O motor mapeia PIX para `tPag` 17, que exige o grupo `card` com `tpIntegra`. **Vale para NFC-e e NF-e** e não é da etapa 3 — merece correção própria
-- [ ] 9.6 **Numeração queimada em falha de criação:** a reserva incrementa antes do `create`, então um erro ali consome o número. Aconteceu na tentativa que bateu no 409. É o comportamento seguro (nunca reusar), mas merece um evento de auditoria dizendo que o número foi perdido
+- [x] 9.5 **Corrigido em 14/08/2026, em change própria no motor** (`grupo-card-em-pagamento-eletronico`): o layout exige o grupo `card` em todo pagamento eletrônico, não só em cartão. NFC-e em PIX autorizada, protocolo `131260000764989`
+- [ ] 9.6 **Numeração queimada em falha de criação:** a reserva incrementa antes do `create`, então um erro ali consome o número. Aconteceu na tentativa que bateu no 409. É o comportamento seguro (nunca reusar), mas merece um evento de auditoria dizendo que o número foi perdido — **é o que a inutilização da etapa 4 resolve:** número queimado que nunca será usado exige inutilização formal da faixa, senão o buraco na numeração vira apontamento
