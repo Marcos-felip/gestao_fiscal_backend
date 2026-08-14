@@ -43,11 +43,12 @@ export function conflitosNaFaixa(
 export function mensagemDeConflito(conflitos: NumeroUsado[]): string {
   const lista = conflitos
     .slice(0, 5)
-    .map((c) => (c.chaveAcesso ? `${c.numero} (${c.chaveAcesso})` : `${c.numero}`))
+    .map((c) =>
+      c.chaveAcesso ? `${c.numero} (${c.chaveAcesso})` : `${c.numero}`,
+    )
     .join(', ');
 
-  const resto =
-    conflitos.length > 5 ? ` e mais ${conflitos.length - 5}` : '';
+  const resto = conflitos.length > 5 ? ` e mais ${conflitos.length - 5}` : '';
 
   return (
     `A faixa inclui ${conflitos.length === 1 ? 'o número' : 'os números'} ${lista}${resto}, ` +

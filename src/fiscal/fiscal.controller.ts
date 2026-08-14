@@ -43,6 +43,9 @@ import { EmitNfeDto } from './dto/emit-nfe.dto';
 import { ExportXmlsDto } from './dto/export-xmls.dto';
 import { UploadCertificateDto } from './dto/upload-certificate.dto';
 import { CancelFiscalDocumentDto } from './dto/cancel-fiscal-document.dto';
+import { CreateCorrectionLetterDto } from './dto/create-correction-letter.dto';
+import { InutilizeNumberingDto } from './dto/inutilize-numbering.dto';
+import { FiscalEventsService } from './events/fiscal-events.service';
 import { FiscalOperationsService } from './fiscal-operations.service';
 import {
   FiscalCertificateService,
@@ -61,6 +64,7 @@ export class FiscalController {
     private readonly fiscalService: FiscalService,
     private readonly certificateService: FiscalCertificateService,
     private readonly operationsService: FiscalOperationsService,
+    private readonly eventsService: FiscalEventsService,
     @InjectQueue(FISCAL_EMISSION_QUEUE)
     private readonly fiscalQueue: Queue,
   ) {}
@@ -554,6 +558,98 @@ export class FiscalController {
     );
 
     return fiscalDocument;
+  }
+
+  // ──────────────────────────────────────────────
+  // Eventos: carta de correção e inutilização
+  // ──────────────────────────────────────────────
+
+  @Post('documents/:id/carta-correcao')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.cce')
+  @ApiOperation({
+    summary: 'Emitir carta de correção para um documento autorizado',
+    description:
+      'A sequência é atribuída pelo sistema, a partir das correções anteriores. ' +
+      'O limite legal é de 20 por nota. A resposta traz a condição de uso, que ' +
+      'deve ser exibida antes da confirmação — a CC-e não corrige valores, ' +
+      'datas nem as partes.',
+  })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 201, description: 'Carta de correção registrada' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Documento não autorizado, limite de 20 atingido, ou recusa da SEFAZ',
+  })
+  createCorrectionLetter(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Body() dto: CreateCorrectionLetterDto,
+  ) {
+    return this.eventsService.createCorrectionLetter(
+      companyId,
+      id,
+      dto,
+      user.id,
+    );
+  }
+
+  @Get('documents/:id/cartas-correcao')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.read')
+  @ApiOperation({ summary: 'Cartas de correção de um documento' })
+  @ApiParam({ name: 'id', description: 'ID do documento fiscal' })
+  @ApiResponse({ status: 200 })
+  listCorrectionLetters(
+    @Param('id') id: string,
+    @CurrentCompany() companyId: string,
+  ) {
+    return this.eventsService.listCorrectionLetters(companyId, id);
+  }
+
+  @Post('inutilizacoes')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.inutilizar')
+  @ApiOperation({
+    summary: 'Inutilizar faixa de numeração',
+    description:
+      'Regulariza numeração reservada que nunca virou nota. A faixa que ' +
+      'incluir número de documento autorizado ou cancelado é recusada, ' +
+      'nomeando o número e a chave — inutilizar numeração válida não se desfaz.',
+  })
+  @ApiResponse({ status: 201, description: 'Faixa inutilizada' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Faixa inválida, conflito com documento emitido ou recusa da SEFAZ',
+  })
+  inutilize(
+    @CurrentCompany() companyId: string,
+    @CurrentUser() user: { id: string; email: string },
+    @Body() dto: InutilizeNumberingDto,
+  ) {
+    return this.eventsService.inutilize(companyId, dto, user.id);
+  }
+
+  @Get('inutilizacoes/pendentes/:establishmentId')
+  @UseGuards(RequirePermissionGuard)
+  @RequirePermission('fiscal.inutilizar')
+  @ApiOperation({
+    summary: 'Faixas de numeração reservadas que nunca viraram documento',
+    description:
+      'Calculadas do que já existe: de 1 até o próximo número, tudo que não ' +
+      'tem documento foi reservado e perdido. Sugerir evita digitar a faixa ' +
+      'errada.',
+  })
+  @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
+  @ApiResponse({ status: 200 })
+  pendingRanges(
+    @Param('establishmentId') establishmentId: string,
+    @CurrentCompany() companyId: string,
+  ) {
+    return this.eventsService.pendingRanges(companyId, establishmentId);
   }
 
   @Get('documents/:id/history')

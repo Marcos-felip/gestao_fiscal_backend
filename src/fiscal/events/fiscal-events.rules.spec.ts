@@ -39,7 +39,9 @@ describe('conflitosNaFaixa', () => {
 
 describe('mensagemDeConflito', () => {
   it('nomeia o número e a chave, que é o que permite corrigir a faixa', () => {
-    const mensagem = mensagemDeConflito([usado(4, '31260851720322000146650010000000041679548502')]);
+    const mensagem = mensagemDeConflito([
+      usado(4, '31260851720322000146650010000000041679548502'),
+    ]);
 
     expect(mensagem).toContain('o número 4');
     expect(mensagem).toContain('31260851720322000146650010000000041679548502');
