@@ -69,6 +69,8 @@ stateless e não guarda certificado nem estado entre chamadas.
 | POST | `/api/nfce/emit` | Emitir: recebe dados estruturados, monta, assina e transmite |
 | POST | `/api/nfce/consulta` | Consultar a situação pela chave de acesso |
 | POST | `/api/nfce/cancel` | Cancelar por chave + protocolo + justificativa |
+| POST | `/api/eventos/carta-correcao` | CC-e (evento 110110) por chave + sequência + texto |
+| POST | `/api/eventos/inutilizar` | Inutilizar faixa de numeração (não é evento de documento) |
 | POST | `/api/sefaz/status-servico` | Testar comunicação com a SEFAZ da UF |
 | GET | `/health` | Sonda de saúde (isenta de autenticação) |
 
@@ -120,6 +122,8 @@ HTTP 200 quando `sucesso`; **400 em rejeição, erro de validação ou certifica
 |------|-----------|----------|
 | `consulta` | `chaveAcesso`, cert, `ambiente` | `{ sucesso, status?, protocolo?, xmlConsultaBase64?, mensagemErro? }` |
 | `cancel` | `chaveAcesso`, `protocoloAutorizacao` (15 dígitos), `justificativa` (15–255), cert, `ambiente` | `{ sucesso, protocolo?, xmlCancelamentoBase64?, motivoRejeicao? }` — UF e CNPJ são derivados da chave |
+| `carta-correcao` | `chaveAcesso`, `correcao` (15–1000), `sequenciaEvento` (1–20), `cpfCnpj`, cert, `ambiente` | `{ sucesso, protocolo?, xmlEventoBase64?, condicaoDeUso, motivoRejeicao? }` — a condição de uso volta **nos dois casos** |
+| `inutilizar` | `cnpj`, `ano`, `modelo` (55/65), `serie`, `numeroInicial`, `numeroFinal`, `justificativa` (15–255), `uf`, cert, `ambiente` | `{ sucesso, protocolo?, xmlInutilizacaoBase64?, motivoRejeicao? }` — **a UF vai no corpo**: não há chave de acesso de onde deduzi-la |
 | `status-servico` | `ambiente`, `uf`, cert | `{ disponivel, mensagem?, tempoMedioResposta? }` (sempre 200) |
 
 ### Enums aceitos (strings no JSON)
@@ -385,7 +389,6 @@ adicional. O contrato HTTP para o frontend não muda quando o motor muda.
 | POST | `/settings/:establishmentId/producao/liberar` | `fiscal.settings.edit` |
 | POST | `/settings/:establishmentId/producao/revogar` | `fiscal.settings.edit` |
 | GET | `/settings/:establishmentId/history` | `fiscal.settings.read` |
-| GET | `/rejections` | `fiscal.read` |
 | GET | `/engine/health` | `fiscal.settings.read` |
 | GET | `/documents` | `fiscal.read` |
 | GET | `/documents/:id` | `fiscal.read` |
@@ -395,10 +398,15 @@ adicional. O contrato HTTP para o frontend não muda quando o motor muda.
 | GET | `/documents/:id/danfe` | `fiscal.read` |
 | GET | `/documents/:id/xml/:tipo` | `fiscal.read` |
 | GET | `/documents/xml/export` | `fiscal.read` |
+| GET | `/documents/:id/cartas-correcao` | `fiscal.read` |
+| GET | `/inutilizacoes/pendentes/:establishmentId` | `fiscal.inutilizar` |
 | POST | `/documents/nfce` | `fiscal.emit` |
+| POST | `/documents/nfe` | `fiscal.nfe.emit` |
 | POST | `/documents/:id/retry` | `fiscal.emit` |
 | POST | `/documents/:id/consulta` | `fiscal.read` |
 | POST | `/documents/:id/cancel` | `fiscal.cancel` |
+| POST | `/documents/:id/carta-correcao` | `fiscal.cce` |
+| POST | `/inutilizacoes` | `fiscal.inutilizar` |
 
 `GET /fiscal/engine/health` sonda o `/health` do motor: não usa certificado, não fala com
 a SEFAZ e **não lança** quando o motor está fora — devolve
@@ -497,6 +505,43 @@ jurídica e não é contribuinte de ICMS. O parceiro guarda o indicador em
 `danfeContentType` que o motor declara — gravar HTML com extensão `.pdf`
 entregaria ao lojista um arquivo que nenhum leitor abre.
 
+### Os três eventos depois da emissão
+
+| | Cancelamento | Carta de correção | Inutilização |
+|---|---|---|---|
+| Evento | 110111 | 110110 | **não é evento** — é serviço próprio |
+| Age sobre | a nota inteira | um detalhe da nota | numeração que **nunca virou nota** |
+| Exige | nota `AUTORIZADO` | nota `AUTORIZADO` | faixa sem documento emitido |
+| Sequência | 1 | 1 a 20, **atribuída pelo servidor** | não tem |
+| Texto | justificativa 15–255 | correção 15–1000 | justificativa 15–255 |
+| Guarda em | `fiscal_documents.xml_cancelamento` | `fiscal_correction_letters` | `fiscal_inutilizations` |
+| Permissão | `fiscal.cancel` | `fiscal.cce` | `fiscal.inutilizar` |
+
+**Por que a inutilização não tem chave de acesso:** ela fala de números que nunca
+existiram como documento. Por isso guarda série, modelo, ano e faixa — e por isso
+a **UF vai no corpo** da chamada ao motor, que nas outras rotas é derivada da chave.
+
+**Quem impõe o quê.** O motor é stateless: confere tamanho de texto e faixa de
+sequência, e nada mais. As regras que dependem de histórico moram no backend — a
+sequência da CC-e (o `UNIQUE (documento, sequência)` fecha a corrida entre duas
+correções simultâneas), o limite de 20, e a conferência da faixa contra os
+números já usados. O quadro completo está em
+`fiscal_service/docs/CONTRATO_EVENTOS.md`.
+
+### Ciclo de status do documento
+
+```
+PENDENTE ──► AUTORIZADO ──► CANCELADO
+    │                └─► (CC-e: não muda o status; a nota segue AUTORIZADO)
+    ├──► REJEITADO ──┐
+    └──► ERRO ───────┴──► INUTILIZADO   (quando a numeração dele é inutilizada)
+```
+
+`INUTILIZADO` existia no enum sem nada que o produzisse: é a inutilização da faixa
+que o gera, e só para documento em erro definitivo. A carta de correção **não**
+muda o status — ela acrescenta uma linha em `fiscal_correction_letters` e um
+evento no documento, e a nota continua autorizada.
+
 ### Depois de mudar o contrato: reconstruir a **imagem**
 
 O motor roda em contêiner, e a imagem carrega o `dotnet publish` feito na hora do build.
@@ -522,7 +567,9 @@ rejeitando por `Itens[0].Csosn`, campo removido do motor no commit do contrato n
 | `fiscal_settings` | Uma linha por (estabelecimento, ambiente): série, próximo número, CSC/idCSC, refs cifradas do certificado, validade, subject e liberação de produção |
 | `fiscal_documents` | Documento fiscal: modelo, série, número, chave, status, ambiente, protocolo, rejeição, datas, valores, XMLs, DANFE, QR Code, `idempotencyKey`, `attempts`, engine e **snapshot** |
 | `fiscal_status_history` | Toda transição de status, com motivo, usuário e data |
-| `fiscal_document_events` | Eventos do documento (no MVP, o cancelamento) |
+| `fiscal_document_events` | Eventos do documento: cancelamento e carta de correção, inclusive as recusadas |
+| `fiscal_correction_letters` | Uma linha por CC-e: sequência (única por documento), texto, condição de uso vigente, protocolo e XML |
+| `fiscal_inutilizations` | Faixa de numeração inutilizada: estabelecimento, modelo, série, ano, faixa, justificativa, protocolo e XML. **Não tem documento** |
 | `fiscal_certificate_events` | Auditoria de envio e substituição de certificado |
 | `fiscal_settings_events` | Auditoria de série, CSC, troca de ambiente e liberação de produção |
 

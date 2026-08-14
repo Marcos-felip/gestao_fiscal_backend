@@ -776,6 +776,49 @@ operador da venda, na emissão automática; quem acionou, na manual ou no retry)
 - Cancelamento recusado pela SEFAZ é registrado como evento e não muda o status
 - Ao cancelar, o XML e o protocolo de cancelamento são guardados e a venda reflete `CANCELADO`
 
+### Carta de correção
+
+Corrige um **detalhe** da nota autorizada sem desfazê-la. Serve para erro que não muda a
+essência da operação: nome de bairro errado, código de transportadora, dado do destinatário
+que não seja o CNPJ.
+
+**O que a CC-e não corrige** — e a lista é curta de propósito, porque é o que separa
+"corrigir" de "emitir outra nota":
+
+| Não pode | Por quê |
+|---|---|
+| Valores (produto, ICMS, base de cálculo, total) | mudam o imposto devido |
+| Dados cadastrais que alterem o remetente ou o destinatário | é outra operação |
+| Data de emissão ou de saída | define o período de apuração |
+
+Errou nisso, o caminho é **cancelar e emitir de novo** — dentro do prazo de cancelamento.
+
+- Só nota `AUTORIZADO` aceita correção; rejeitada ou cancelada, não
+- Texto de **15 a 1000 caracteres**
+- **Até 20 cartas por nota** (limite legal). A 21ª é recusada citando o limite
+- A **sequência é do sistema**, não do usuário: é a próxima da nota, e um `UNIQUE` no banco
+  fecha a corrida entre duas correções simultâneas
+- A **condição de uso vigente** é guardada junto da carta — o texto legal muda com o tempo e
+  o que vale é o que estava valendo quando a correção foi feita
+- Recusa da SEFAZ vira evento no documento e devolve `400`; a nota não muda de status
+- Cada carta gera XML próprio, que entra na exportação do período junto do XML autorizado
+
+### Inutilização de numeração
+
+Fala de números que **nunca viraram nota** — o buraco que sobra quando a emissão consome o
+número e falha depois. Não é evento de documento: não há chave de acesso, e por isso a
+inutilização guarda série, modelo e faixa.
+
+- Justificativa de **15 a 255 caracteres**, faixa com início ≤ fim
+- **Faixa que inclua número de documento `AUTORIZADO` ou `CANCELADO` é recusada**, nomeando o
+  número e a chave. A SEFAZ também recusaria, mas depois e sem dizer qual número — e
+  inutilizar numeração válida não se desfaz
+- As faixas pendentes são **calculadas**, não rastreadas: de 1 até o próximo número, o que
+  não tem documento nem inutilização anterior é candidato. O sistema sugere em vez de deixar
+  digitar
+- Documento em `ERRO` ou `REJEITADO` dentro da faixa passa a `INUTILIZADO`
+- Sem sequência: a numeração inutilizada não volta a ser usada
+
 ### Documento fiscal é append-only
 
 `FiscalDocument` **não tem exclusão física**. Todas as transições de status ficam no histórico,

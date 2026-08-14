@@ -2389,20 +2389,23 @@ xmls-<empresa>-2026-08-01-a-2026-08-31.zip
 ├── _relacao.csv
 ├── <chave>-nfe.xml
 ├── <chave>-cancelamento.xml     ← só para documentos CANCELADO
+├── <chave>-cce-01.xml           ← uma por carta de correção, numerada
 └── …
 ```
 
 Documento cancelado leva **os dois** arquivos: sem o XML do evento, o contador escritura a
-nota como se ela ainda valesse.
+nota como se ela ainda valesse. Pela mesma razão as **cartas de correção** vão junto — a
+correção muda o que a nota diz sem gerar nota nova, e o XML autorizado sozinho não mostra
+isso. A sequência entra no nome porque uma nota aceita até 20 cartas, todas na mesma chave.
 
 **Manifesto `_relacao.csv`** — CSV separado por `;`, com BOM e vírgula decimal (abre direto
 no Excel em português). Colunas: chave de acesso, número, série, modelo, data de
-autorização, status, valor total e **arquivos ausentes**. É por ele que se confere se veio
-tudo.
+autorização, status, valor total, **cartas de correção** (quantidade) e **arquivos
+ausentes**. É por ele que se confere se veio tudo.
 
 XML que não volta do storage **não derruba a exportação**: o documento entra no manifesto
-com a coluna de ausentes preenchida (`nfe`, `cancelamento`) e o restante do lote segue
-normalmente, com `200`.
+com a coluna de ausentes preenchida (`nfe`, `cancelamento`, `cce-02`) e o restante do lote
+segue normalmente, com `200`.
 
 **Ambiente** — sem `ambiente`, exporta produção. Homologação exige pedido explícito e o
 nome do arquivo sai marcado com `HOMOLOGACAO-SEM-VALOR-FISCAL`: o ZIP circula por e-mail
@@ -2443,6 +2446,110 @@ Reconcilia o status local. Resolve o caso de timeout com a nota autorizada do ou
 
 Reenfileira mantendo série, número e documento — não duplica a nota. Aceita `ERRO`,
 `REJEITADO` e `PENDENTE`.
+
+---
+
+### Carta de correção e inutilização
+
+Os outros dois eventos que a nota aceita depois de emitida. Os três respondem perguntas
+diferentes: o **cancelamento** desfaz a nota, a **carta de correção** conserta um detalhe
+dela sem desfazê-la, e a **inutilização** fala de numeração que **nunca virou nota**.
+
+#### POST /fiscal/documents/:id/carta-correcao — Emitir CC-e (evento 110110)
+
+> **Permissão:** `fiscal.cce`
+
+**Body:** `{ "correcao": "string de 15 a 1000 caracteres" }`
+
+**A sequência não é enviada pelo cliente** — o servidor a atribui a partir das correções
+que a nota já tem. Ela precisa ser a próxima da nota, e só o servidor conhece as
+anteriores; um `sequencia` vindo do frontend seria adivinhação.
+
+**Resposta 201** — a carta gravada:
+
+```json
+{
+  "id": "uuid",
+  "fiscalDocumentId": "uuid",
+  "sequencia": 1,
+  "correcao": "Corrigir o nome do bairro do destinatário",
+  "condicaoDeUso": "A Carta de Correção é disciplinada pelo § 1º-A do art. 7º…",
+  "protocolo": "131260000000001",
+  "xmlEvento": "fiscal/<empresa>/2026/08/<chave>-cce-1.xml",
+  "createdAt": "2026-08-14T12:00:00.000Z"
+}
+```
+
+`condicaoDeUso` é guardado **com a carta**, não numa constante: o texto legal muda com o
+tempo e o que vale é o que estava vigente quando a correção foi feita.
+
+**Erros `400`**
+- documento não está `AUTORIZADO` — rejeitado ou cancelado não se corrige, emite-se outro
+- nota já tem 20 cartas (limite legal)
+- texto fora de 15–1000 caracteres
+- recusa da SEFAZ, com o motivo dela na mensagem
+
+A recusa da SEFAZ fica registrada em `fiscal_document_events` antes do `400` — a tentativa
+existiu e some do rastro se não for gravada.
+
+---
+
+#### GET /fiscal/documents/:id/cartas-correcao — Cartas de um documento
+
+> **Permissão:** `fiscal.read`
+
+Array ordenado por `sequencia`, no formato acima. Vazio quando não há correção.
+
+---
+
+#### POST /fiscal/inutilizacoes — Inutilizar faixa de numeração
+
+> **Permissão:** `fiscal.inutilizar`
+
+Regulariza numeração reservada que nunca virou nota — o buraco que sobra quando a emissão
+falha depois de consumir o número.
+
+**Body**
+
+| Campo | Obrigatório | Observação |
+|---|---|---|
+| `establishmentId` | ✅ | UUID |
+| `modelo` | ✅ | `NFE` ou `NFCE` |
+| `serie` | ✅ | inteiro ≥ 0 |
+| `numeroInicial` | ✅ | inteiro ≥ 1 |
+| `numeroFinal` | ✅ | igual ao inicial para um número só, que é o caso comum |
+| `justificativa` | ✅ | 15 a 255 caracteres |
+| `ano` | | padrão: ano corrente. Só para exercício anterior |
+
+**Erros `400`**
+- `numeroFinal < numeroInicial` — conferido antes de qualquer consulta
+- **a faixa inclui número de documento `AUTORIZADO` ou `CANCELADO`**, e a mensagem nomeia o
+  número e a chave (até 5, depois "e mais N")
+- estabelecimento sem configuração fiscal ativa, ou sem UF
+- recusa da SEFAZ
+
+A guarda da faixa é a que importa: a SEFAZ também recusaria, mas depois e sem dizer qual
+número. **Inutilizar numeração válida não se desfaz.**
+
+Documento em `ERRO` ou `REJEITADO` dentro da faixa passa a `INUTILIZADO` — é o que produz
+esse status, que existia no enum sem nada que o gerasse.
+
+---
+
+#### GET /fiscal/inutilizacoes/pendentes/:establishmentId — Faixas sugeridas
+
+> **Permissão:** `fiscal.inutilizar`
+
+Os números reservados que nunca viraram documento, agrupados em faixas contíguas. São
+calculados do que já existe (de 1 até `proximoNumero - 1`, o que não tem documento), menos
+o que já foi inutilizado — não há rastreamento à parte.
+
+```json
+[{ "modelo": "NFE", "serie": 1, "faixas": [{ "inicio": 1, "fim": 1 }] }]
+```
+
+Array vazio quando não há pendência ou o estabelecimento não tem configuração ativa.
+Sugerir é melhor do que deixar digitar: a faixa errada aqui é irreversível.
 
 ---
 
@@ -2608,6 +2715,8 @@ compunham o antigo conjunto padrão do MEMBER, útil como ponto de partida ao mo
 | `fiscal.cancel` | Cancelar documento autorizado | ✅ | ✅ | | `POST /fiscal/documents/:id/cancel` |
 | `fiscal.nfe.emit` | Emitir NF-e modelo 55 | ✅ | ✅ | | `POST /fiscal/documents/nfe` |
 | `fiscal.nfe.cancel` | Cancelar NF-e modelo 55 | ✅ | ✅ | | reservada — o cancelamento hoje passa por `fiscal.cancel` |
+| `fiscal.cce` | Emitir carta de correção | ✅ | ✅ | | `POST /fiscal/documents/:id/carta-correcao` |
+| `fiscal.inutilizar` | Inutilizar faixa de numeração | ✅ | ✅ | | `POST /fiscal/inutilizacoes`, `GET /fiscal/inutilizacoes/pendentes/:establishmentId` |
 | `fiscal.settings.read` | Ler configuração fiscal, certificado e checklist | ✅ | ✅ | 🔹 | `GET /fiscal/settings*`, `GET /fiscal/engine/health` |
 | `fiscal.settings.edit` | Editar configuração, certificado e ambientes | ✅ | ✅ | | `POST/PATCH /fiscal/settings*` |
 
