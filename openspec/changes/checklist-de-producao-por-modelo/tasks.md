@@ -3,37 +3,40 @@
 
 ## 1. Migration
 
-- [ ] 1.1 Campo em `fiscal_settings` com os modelos que o estabelecimento emite, aceitando os dois
-- [ ] 1.2 Backfill: quem já tem CSC configurado emite NFC-e; quem já emitiu NF-e emite NF-e. Na dúvida, **os dois** — é o comportamento de hoje e não trava ninguém
+- [x] 1.1 Campo `modelos_emitidos` em `fiscal_settings`, aceitando os dois
+- [x] 1.2 Backfill: CSC configurado → NFC-e; NF-e já emitida → NF-e; nada revelado → os dois
 
 ## 2. Checklist
 
-- [ ] 2.1 Cada item declara a que modelos se aplica
-- [ ] 2.2 Apuração filtra pelos modelos do estabelecimento
-- [ ] 2.3 Série e próximo número viram um item por modelo, nomeando qual
-- [ ] 2.4 CSC, ID do CSC e consulta pública passam a ser itens da NFC-e
-- [ ] 2.5 Certificado continua valendo para todos — a assinatura é a mesma
-- [ ] 2.6 Item não bloqueante com a contagem de produtos com pendência fiscal, reaproveitando a consulta de `GET /products/fiscal-pending`
+- [x] 2.1 Cada item declara a que modelos se aplica
+- [x] 2.2 Apuração filtra pelos modelos do estabelecimento
+- [x] 2.3 Série e próximo número viram um item por modelo, nomeando qual
+- [x] 2.4 CSC, ID do CSC e consulta pública passam a ser itens da NFC-e
+- [x] 2.5 Certificado continua valendo para todos — a assinatura é a mesma
+- [x] 2.6 Item não bloqueante com a contagem de produtos com pendência fiscal
 
 ## 3. Liberação
 
-- [ ] 3.1 A liberação continua recusando enquanto houver bloqueante pendente, agora sobre o conjunto filtrado
-- [ ] 3.2 Auditoria da liberação registra quais modelos foram liberados
+- [x] 3.1 A liberação continua recusando enquanto houver bloqueante pendente, agora sobre o conjunto filtrado
+- [ ] 3.2 Auditoria da liberação registrar **quais modelos** foram liberados — **não feito.**
+  O evento `producao_liberada` grava só `true`. A informação existe na configuração
+  daquele instante, mas não no evento; fica para quando alguém precisar reconstituir
+  uma liberação antiga
 
 ## 4. Testes
 
-- [ ] 4.1 Estabelecimento só de NFC-e: itens do modelo 55 ausentes
-- [ ] 4.2 Estabelecimento só de NF-e: CSC e consulta pública não bloqueiam
-- [ ] 4.3 Série de NF-e inválida bloqueia quando o modelo é emitido
-- [ ] 4.4 Contagem de produtos pendentes não bloqueia
-- [ ] 4.5 Configuração sem nenhum modelo é recusada
-- [ ] 4.6 `npm test` verde
+- [x] 4.1 Estabelecimento só de NFC-e: itens do modelo 55 ausentes
+- [x] 4.2 Estabelecimento só de NF-e: CSC e consulta pública não bloqueiam
+- [x] 4.3 Série de NF-e inválida bloqueia quando o modelo é emitido
+- [x] 4.4 Contagem de produtos pendentes não bloqueia
+- [x] 4.5 Configuração sem nenhum modelo é recusada (validação do DTO)
+- [x] 4.6 `npm test` verde — 742 testes
 
 ## 5. Documentação
 
-- [ ] 5.1 `API.md`: o campo novo e o formato do checklist
-- [ ] 5.2 `FISCAL.md`: o que cada modelo exige para produção
-- [ ] 5.3 Avisar a change irmã do frontend
+- [x] 5.1 `API.md`: o campo novo e o formato do checklist
+- [x] 5.2 `FISCAL.md`: o que cada modelo exige para produção
+- [x] 5.3 Avisar a change irmã do frontend
 
 ## 6. Fora do escopo
 
