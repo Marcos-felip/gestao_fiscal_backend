@@ -282,6 +282,11 @@ registradas em `fiscal_settings_events` e saem em
 `GET /fiscal/settings/:establishmentId/history`. O valor do CSC nunca é gravado na
 auditoria — só o idCSC, que o identifica.
 
+A liberação registra **quais modelos** foram liberados (`valorNovo: "NFC-e, NF-e"`), e a
+revogação, quais deixaram de valer (`valorAnterior`). Gravar `true`/`false` não bastava: os
+modelos emitidos mudam depois do evento, e a trilha não permitia reconstituir o que estava
+liberado naquele instante.
+
 ---
 
 ## 6. Storage de XML e DANFE

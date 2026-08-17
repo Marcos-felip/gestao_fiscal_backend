@@ -741,6 +741,9 @@ Colunas de parcelamento, espelhando `sales`:
 
 - **Índices:** `company_id`, `fiscal_settings_id` · **FKs:** `ON DELETE CASCADE`
 - O **valor do CSC não é gravado** — o evento registra apenas o idCSC, que o identifica
+- Em `producao_liberada`, `valor_novo` traz **quais modelos** foram liberados (`NFC-e, NF-e`);
+  em `producao_revogada`, os modelos vão em `valor_anterior`. Gravar `true`/`false` não bastava:
+  a configuração muda depois do evento, e a trilha não permitia reconstituir o que estava liberado
 
 ### `fiscal_documents` — Documento fiscal
 

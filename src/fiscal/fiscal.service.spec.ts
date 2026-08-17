@@ -291,6 +291,38 @@ describe('FiscalService', () => {
       });
     });
 
+    it('registra na auditoria quais modelos foram liberados', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          modelosEmitidos: ['NFCE', 'NFE'],
+          consultaPublicaValidadaEm: new Date('2026-08-14T12:00:00Z'),
+        }),
+      );
+
+      await service.releaseProduction('company-1', 'estab-1', 'user-1');
+
+      const [{ data }] = mockPrisma.fiscalSettingsEvent.create.mock
+        .calls[0] as [{ data: { valorNovo: string } }];
+      expect(data.valorNovo).toBe('NFC-e, NF-e');
+    });
+
+    it('sem modelos declarados, a auditoria registra os dois', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          modelosEmitidos: [],
+          consultaPublicaValidadaEm: new Date('2026-08-14T12:00:00Z'),
+        }),
+      );
+
+      await service.releaseProduction('company-1', 'estab-1', 'user-1');
+
+      const [{ data }] = mockPrisma.fiscalSettingsEvent.create.mock
+        .calls[0] as [{ data: { valorNovo: string } }];
+      expect(data.valorNovo).toBe('NFC-e, NF-e');
+    });
+
     it('exige a configuração de produção antes', async () => {
       mockPrisma.fiscalSettings.findFirst.mockResolvedValue(null);
 
@@ -329,6 +361,23 @@ describe('FiscalService', () => {
       expect(mockPrisma.fiscalSettingsEvent.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ tipo: 'producao_revogada' }),
       });
+    });
+
+    it('registra na auditoria quais modelos deixaram de ser emitidos', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({
+          ambiente: FiscalEnvironment.PRODUCAO,
+          producaoLiberada: true,
+          modelosEmitidos: ['NFE'],
+        }),
+      );
+
+      await service.revokeProduction('company-1', 'estab-1', 'user-1');
+
+      const [{ data }] = mockPrisma.fiscalSettingsEvent.create.mock.calls[0] as [
+        { data: { valorAnterior: string } },
+      ];
+      expect(data.valorAnterior).toBe('NF-e');
     });
   });
 

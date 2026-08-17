@@ -40,6 +40,7 @@ import { isFiscalStorageKey } from './emission/fiscal-storage';
 import {
   assertEmissionSettings,
   buildProductionChecklist,
+  descreverModelos,
   ProductionChecklistItem,
 } from './emission/fiscal-preconditions';
 import { mapAmbiente } from './emission/fiscal-rules';
@@ -465,7 +466,7 @@ export class FiscalService {
           companyId,
           fiscalSettingsId: settings.id,
           tipo: 'producao_liberada',
-          valorNovo: 'true',
+          valorNovo: descreverModelos(settings),
           usuarioId: userId,
         },
       }),
@@ -513,7 +514,8 @@ export class FiscalService {
           companyId,
           fiscalSettingsId: settings.id,
           tipo: 'producao_revogada',
-          valorNovo: 'false',
+          valorAnterior: descreverModelos(settings),
+          valorNovo: 'revogada',
           usuarioId: userId,
         },
       }),
