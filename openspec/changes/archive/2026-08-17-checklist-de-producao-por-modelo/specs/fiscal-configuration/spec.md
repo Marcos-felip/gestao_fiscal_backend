@@ -62,3 +62,35 @@ aparecer na primeira venda do balcão.
 #### Scenario: Cadastro completo
 - **WHEN** todos os produtos ativos estão completos
 - **THEN** o item aparece resolvido
+
+### Requirement: Item do checklist identificado por código
+Cada item do checklist SHALL trazer um código estável, independente do texto
+exibido.
+
+A interface precisa agir sobre itens específicos — levar à lista de produtos
+pendentes, por exemplo. Reconhecê-los pelo texto amarraria a tela a uma frase em
+português que existe para ser reescrita.
+
+#### Scenario: Item de produtos pendentes
+- **WHEN** o checklist inclui o item de produtos com quadro tributário incompleto
+- **THEN** ele vem com o código `produtos_fiscais`, e o texto pode mudar sem quebrar a tela
+
+#### Scenario: Código repetido entre modelos
+- **WHEN** o estabelecimento emite os dois modelos
+- **THEN** série e próximo número aparecem com o mesmo código em cada modelo, distinguidos pelo campo `modelo`
+
+### Requirement: Auditoria da liberação registra os modelos
+O evento de liberação de produção SHALL registrar **quais modelos** foram
+liberados, e o de revogação, quais deixaram de valer.
+
+Gravar `true`/`false` dizia que alguém liberou, não o que foi liberado. Como os
+modelos emitidos mudam depois do evento, a trilha não permitia reconstituir o
+estado daquele instante.
+
+#### Scenario: Liberação
+- **WHEN** a produção é liberada
+- **THEN** o evento registra os modelos em português, apurados como no checklist
+
+#### Scenario: Configuração sem modelos declarados
+- **WHEN** a configuração não declara nenhum modelo
+- **THEN** o evento registra os dois, pela mesma regra do checklist

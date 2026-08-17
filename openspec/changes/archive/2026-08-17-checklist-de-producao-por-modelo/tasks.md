@@ -18,10 +18,10 @@
 ## 3. Liberação
 
 - [x] 3.1 A liberação continua recusando enquanto houver bloqueante pendente, agora sobre o conjunto filtrado
-- [ ] 3.2 Auditoria da liberação registrar **quais modelos** foram liberados — **não feito.**
-  O evento `producao_liberada` grava só `true`. A informação existe na configuração
-  daquele instante, mas não no evento; fica para quando alguém precisar reconstituir
-  uma liberação antiga
+- [x] 3.2 Auditoria da liberação registrar **quais modelos** foram liberados. `valorNovo`
+  passa a trazer os modelos em português (`NFC-e, NF-e`) em vez de `true`; a revogação
+  registra em `valorAnterior` os que deixaram de valer. Lista vazia continua valendo como
+  "os dois", pela mesma apuração do checklist
 
 ## 4. Testes
 

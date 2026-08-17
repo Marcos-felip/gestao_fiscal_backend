@@ -147,12 +147,15 @@ Enquanto nenhuma acontecer, a etapa 2 completa é custo sem uso.
 As duas foram arquivadas em 14/08/2026, depois de emitidas em homologação. O que
 **não** foi feito, e por quê:
 
-- **Checklist de produção do modelo 55.** O checklist confere certificado, CSC e
-  consulta pública — todos da NFC-e. A NF-e acrescenta série própria e nada mais.
-  Entra na virada para produção, abaixo.
-- **Detalhe do documento não mostra os grupos do modelo 55.** O snapshot da NF-e
-  traz destinatário completo, transporte e cobrança; a tela ainda mostra só o que
-  a NFC-e tem. É a pendência mais visível ao usuário.
+- ~~**Checklist de produção do modelo 55.**~~ **Feito em 17/08/2026**
+  (`checklist-de-producao-por-modelo`): cada item declara a que modelo pertence e
+  a apuração considera só os modelos que o estabelecimento emite. Junto vieram o
+  código estável por item, a auditoria da liberação registrando **quais** modelos
+  e a lista de produtos com pendência fiscal.
+- ~~**Detalhe do documento não mostra os grupos do modelo 55.**~~ **Feito em
+  17/08/2026** (`ler-o-snapshot-do-documento`) — e no caminho apareceu que o
+  snapshot inteiro nunca havia sido lido: o frontend procurava chaves em inglês
+  que o backend deixou de gravar na etapa 1.
 - **Transporte, volumes e cobrança no formulário.** Existem no contrato dos três
   repositórios e têm teste, mas a tela não os coleta: venda de balcão não tem
   frete, e o grupo ausente já significa "sem frete".
