@@ -26,7 +26,11 @@ const item = (over: Partial<Record<string, string>> = {}) => `
       <vUnCom>${over.vUnCom ?? '25.5000'}</vUnCom>
       <vProd>${over.vProd ?? '255.00'}</vProd>
     </prod>
-    <imposto><ICMS><ICMS00><orig>0</orig><CST>00</CST></ICMS00></ICMS></imposto>
+    <imposto>
+      <ICMS><ICMS00><orig>0</orig><CST>00</CST></ICMS00></ICMS>
+      <PIS><PISAliq><CST>07</CST></PISAliq></PIS>
+      <COFINS><COFINSAliq><CST>07</CST></COFINSAliq></COFINS>
+    </imposto>
   </det>`;
 
 const nota = (
@@ -105,6 +109,39 @@ describe('parseIncomingNfe', () => {
     expect(primeiro.gtin).toBe('7891234567895');
     expect(primeiro.ncm).toBe('22021000');
     expect(primeiro.cfop).toBe('1102');
+  });
+
+  it('lê o quadro tributário do item, que o cadastro do produto reaproveita', () => {
+    const [primeiro] = parseIncomingNfe(nota()).items;
+
+    expect(primeiro.tax.origem).toBe(0);
+    expect(primeiro.tax.situacaoIcms).toBe('00');
+    expect(primeiro.tax.cstPis).toBe('07');
+    expect(primeiro.tax.cstCofins).toBe('07');
+  });
+
+  it('acha a situação em qualquer filho do grupo, não só nos conhecidos', () => {
+    // O grupo do ICMS tem um filho por situação (ICMS00, ICMS60, ICMSSN102…) e
+    // a NT seguinte acrescenta outros. Procurar por nome quebraria calado.
+    const simples = nota().replace(
+      '<ICMS><ICMS00><orig>0</orig><CST>00</CST></ICMS00></ICMS>',
+      '<ICMS><ICMSSN102><orig>3</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS>',
+    );
+
+    const [primeiro] = parseIncomingNfe(simples).items;
+
+    expect(primeiro.tax.origem).toBe(3);
+    expect(primeiro.tax.situacaoIcms).toBe('102');
+  });
+
+  it('item sem grupo de imposto não derruba a leitura', () => {
+    const semImposto = nota().replace(/<imposto>[\s\S]*?<\/imposto>/, '');
+
+    const [primeiro] = parseIncomingNfe(semImposto).items;
+
+    expect(primeiro.tax.origem).toBeNull();
+    expect(primeiro.tax.situacaoIcms).toBeNull();
+    expect(primeiro.description).toBe('REFRIG LATA 350');
   });
 
   it('trata "SEM GTIN" como ausência, não como código', () => {

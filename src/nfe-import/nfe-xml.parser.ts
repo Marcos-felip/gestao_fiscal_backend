@@ -36,6 +36,26 @@ export interface NfeIssuer extends NfeAddress {
   inscricaoEstadual?: string;
 }
 
+/**
+ * Quadro tributário do item, como o **fornecedor** o declarou.
+ *
+ * Transfere-se com segurança para o nosso cadastro a `origem`: ela é
+ * propriedade da mercadoria (nacional, importada…), não da operação.
+ *
+ * Já `situacaoIcms`, `cstPis` e `cstCofins` são a tributação **da venda dele**,
+ * sob o regime dele — um fornecedor no Regime Normal manda CST 00 onde a nossa
+ * empresa do Simples usaria CSOSN 102. Servem de ponto de partida, e a
+ * interface precisa dizer isso: quem decide a nossa situação é o contador.
+ */
+export interface IncomingNfeItemTax {
+  /** `orig` — 0 a 8. */
+  origem: number | null;
+  /** `CST` (Regime Normal) ou `CSOSN` (Simples), como veio. */
+  situacaoIcms: string | null;
+  cstPis: string | null;
+  cstCofins: string | null;
+}
+
 export interface IncomingNfeItem {
   itemNumber: number;
   /** `cProd` — código do produto no cadastro **do fornecedor**. */
@@ -44,11 +64,14 @@ export interface IncomingNfeItem {
   gtin: string | null;
   description: string;
   ncm: string | null;
+  cest: string | null;
   cfop: string | null;
   unit: string;
   quantity: number;
   unitPrice: number;
   totalAmount: number;
+  /** O que o `imposto` do item trouxe. Nunca é usado sem conferência. */
+  tax: IncomingNfeItemTax;
 }
 
 /**
@@ -202,6 +225,41 @@ function readIssuer(inf: Node): NfeIssuer {
   };
 }
 
+/**
+ * O grupo do imposto tem um filho por situação tributária (`ICMS00`, `ICMS60`,
+ * `ICMSSN102`, `PISAliq`, `PISNT`…). Não dá para procurar por nome: são dezenas,
+ * e a NT seguinte acrescenta outros. Procura-se pelo **conteúdo** — o primeiro
+ * filho que tenha `CST` ou `CSOSN`.
+ */
+function readTaxGroup(group: Node | null): Node | null {
+  if (!group) return null;
+
+  for (const value of Object.values(group)) {
+    const child = asNode(value);
+    if (child && (child.CST !== undefined || child.CSOSN !== undefined)) {
+      return child;
+    }
+  }
+
+  return null;
+}
+
+function readTax(det: Node): IncomingNfeItemTax {
+  const imposto = asNode(det.imposto);
+  const icms = readTaxGroup(asNode(imposto?.ICMS));
+  const pis = readTaxGroup(asNode(imposto?.PIS));
+  const cofins = readTaxGroup(asNode(imposto?.COFINS));
+
+  const origem = text(icms?.orig);
+
+  return {
+    origem: origem !== undefined ? Number(origem) : null,
+    situacaoIcms: text(icms?.CSOSN) ?? text(icms?.CST) ?? null,
+    cstPis: text(pis?.CST) ?? null,
+    cstCofins: text(cofins?.CST) ?? null,
+  };
+}
+
 function readItem(det: Node): IncomingNfeItem {
   const prod = asNode(det.prod);
   if (!prod) refuse('O XML traz um item sem o grupo de produto');
@@ -218,11 +276,13 @@ function readItem(det: Node): IncomingNfeItem {
     gtin: GTIN_LENGTHS.has(rawGtin.length) ? rawGtin : null,
     description: text(prod.xProd) ?? 'Item sem descrição na nota',
     ncm: text(prod.NCM) ?? null,
+    cest: text(prod.CEST) ?? null,
     cfop: text(prod.CFOP) ?? null,
     unit: text(prod.uCom) ?? 'UN',
     quantity: decimal(prod.qCom, 'qCom'),
     unitPrice: decimal(prod.vUnCom, 'vUnCom'),
     totalAmount: decimal(prod.vProd, 'vProd'),
+    tax: readTax(det),
   };
 }
 

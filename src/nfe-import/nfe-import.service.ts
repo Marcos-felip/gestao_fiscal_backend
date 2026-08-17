@@ -403,11 +403,18 @@ export class NfeImportService {
         gtin: item.gtin,
         description: item.description,
         ncm: item.ncm,
+        cest: item.cest,
         cfop: item.cfop,
         unit: item.unit,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalAmount: item.totalAmount,
+        // O que o fornecedor declarou. Vai para a tela preencher o cadastro do
+        // produto, sempre marcado como sugestão.
+        origem: item.tax.origem,
+        situacaoIcms: item.tax.situacaoIcms,
+        cstPis: item.tax.cstPis,
+        cstCofins: item.tax.cstCofins,
         productId: result.productId,
         match: result.match,
       };

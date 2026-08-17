@@ -1307,8 +1307,15 @@ cria o fornecedor pelo CNPJ do emitente, e casa cada item com o catálogo.
       "quantity": "10.0000",
       "unitPrice": "25.5000",
       "totalAmount": "255.00",
+      "cest": null,
       "productId": "uuid",       // null enquanto não casar
-      "match": "GTIN"            // UNMATCHED | GTIN | SUPPLIER_CODE | MANUAL
+      "match": "GTIN",           // UNMATCHED | GTIN | SUPPLIER_CODE | MANUAL
+
+      // Quadro tributário do grupo `imposto` do item, como o FORNECEDOR declarou
+      "origem": 0,               // propriedade da mercadoria: transfere direto
+      "situacaoIcms": "00",      // CST (Regime Normal) ou CSOSN (Simples)
+      "cstPis": "07",
+      "cstCofins": "07"
     }
   ]
 }
