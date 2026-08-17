@@ -138,6 +138,14 @@ function modelosDe(settings: ProductionChecklistSettings): ModeloFiscal[] {
   return modelos.length > 0 ? modelos : TODOS_OS_MODELOS;
 }
 
+export function descreverModelos(
+  settings: ProductionChecklistSettings,
+): string {
+  return modelosDe(settings)
+    .map((modelo) => NOME_DO_MODELO[modelo])
+    .join(', ');
+}
+
 /**
  * Detalhe do item de CSC no checklist: separa "falta preencher" de "está
  * preenchido e errado", sem nunca ecoar o valor — o CSC é segredo.
@@ -152,8 +160,25 @@ function cscDetalhe(settings: EmissionSettings): string {
   return problemas.join('; ');
 }
 
+/**
+ * Código estável do item do checklist.
+ *
+ * A interface precisa agir sobre itens específicos — levar à lista de produtos
+ * pendentes, por exemplo. Reconhecê-los pelo texto amarraria a tela a uma frase
+ * em português que existe para ser reescrita.
+ */
+export type ChecklistItemCodigo =
+  | 'certificado_enviado'
+  | 'certificado_vigente'
+  | 'csc'
+  | 'serie'
+  | 'proximo_numero'
+  | 'consulta_publica'
+  | 'produtos_fiscais';
+
 /** Item do checklist de ativação da produção. */
 export interface ProductionChecklistItem {
+  codigo: ChecklistItemCodigo;
   item: string;
   ok: boolean;
   detalhe?: string;
@@ -198,6 +223,7 @@ export function buildProductionChecklist(
 
   const itens: ProductionChecklistItem[] = [
     {
+      codigo: 'certificado_enviado',
       item: 'Certificado digital A1 enviado',
       ok: temCertificado,
       detalhe: temCertificado
@@ -206,6 +232,7 @@ export function buildProductionChecklist(
       bloqueante: true,
     },
     {
+      codigo: 'certificado_vigente',
       item: 'Certificado dentro da validade',
       ok: certificadoVigente,
       detalhe: certificadoVigente ? undefined : 'certificado vencido',
@@ -218,6 +245,7 @@ export function buildProductionChecklist(
   if (modelos.includes('NFCE')) {
     itens.push(
       {
+        codigo: 'csc',
         item: 'CSC e ID do CSC de produção configurados',
         ok: isCscValido(settings.codigoCsc) && isIdCscValido(settings.idCsc),
         detalhe: cscDetalhe(settings),
@@ -230,6 +258,7 @@ export function buildProductionChecklist(
         settings.proximoNumeroNfce,
       ),
       {
+        codigo: 'consulta_publica',
         item: 'Consulta pública validada em produção',
         ok: !!settings.consultaPublicaValidadaEm,
         detalhe: settings.consultaPublicaValidadaEm
@@ -254,6 +283,7 @@ export function buildProductionChecklist(
     const pendentes = contexto.produtosComPendencia;
 
     itens.push({
+      codigo: 'produtos_fiscais',
       item: 'Produtos com quadro tributário completo',
       ok: pendentes === 0,
       detalhe:
@@ -277,6 +307,7 @@ function itensDeNumeracao(
 
   return [
     {
+      codigo: 'serie',
       item: `Série da ${nome} entre ${SERIE_MINIMA} e ${SERIE_MAXIMA}`,
       ok: serie >= SERIE_MINIMA && serie <= SERIE_MAXIMA,
       detalhe: `série atual: ${serie}`,
@@ -284,6 +315,7 @@ function itensDeNumeracao(
       modelo,
     },
     {
+      codigo: 'proximo_numero',
       item: `Próximo número da ${nome} entre ${NUMERO_MINIMO} e ${NUMERO_MAXIMO}`,
       ok: proximoNumero >= NUMERO_MINIMO && proximoNumero <= NUMERO_MAXIMO,
       detalhe: `próximo número: ${proximoNumero}`,

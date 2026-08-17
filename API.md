@@ -2211,16 +2211,17 @@ Sonda o microserviço, sem certificado e sem SEFAZ. Nunca falha: motor fora do a
   "liberada": false,
   "liberadaEm": null,
   "itens": [
-    { "item": "Certificado digital A1 enviado", "ok": true, "detalhe": "04/08/2027" },
-    { "item": "Certificado dentro da validade", "ok": true },
+    // `codigo` é o identificador estável do item — a interface age por ele, nunca pelo texto
+    { "codigo": "certificado_enviado", "item": "Certificado digital A1 enviado", "ok": true, "detalhe": "04/08/2027" },
+    { "codigo": "certificado_vigente", "item": "Certificado dentro da validade", "ok": true },
     // `modelo` presente = o item pertence só àquele modelo
-    { "item": "CSC e ID do CSC de produção configurados", "ok": false, "detalhe": "...", "modelo": "NFCE" },
-    { "item": "Série da NFC-e entre 1 e 999", "ok": true, "detalhe": "série atual: 1", "modelo": "NFCE" },
-    { "item": "Próximo número da NFC-e entre 1 e 999999999", "ok": true, "detalhe": "próximo número: 1", "modelo": "NFCE" },
-    { "item": "Consulta pública validada em produção", "ok": false, "bloqueante": false, "modelo": "NFCE" },
-    { "item": "Série da NF-e entre 1 e 999", "ok": true, "detalhe": "série atual: 1", "modelo": "NFE" },
-    { "item": "Próximo número da NF-e entre 1 e 999999999", "ok": true, "detalhe": "próximo número: 5", "modelo": "NFE" },
-    { "item": "Produtos com quadro tributário completo", "ok": false, "bloqueante": false, "detalhe": "4 produtos não emitem…" }
+    { "codigo": "csc", "item": "CSC e ID do CSC de produção configurados", "ok": false, "detalhe": "...", "modelo": "NFCE" },
+    { "codigo": "serie", "item": "Série da NFC-e entre 1 e 999", "ok": true, "detalhe": "série atual: 1", "modelo": "NFCE" },
+    { "codigo": "proximo_numero", "item": "Próximo número da NFC-e entre 1 e 999999999", "ok": true, "detalhe": "próximo número: 1", "modelo": "NFCE" },
+    { "codigo": "consulta_publica", "item": "Consulta pública validada em produção", "ok": false, "bloqueante": false, "modelo": "NFCE" },
+    { "codigo": "serie", "item": "Série da NF-e entre 1 e 999", "ok": true, "detalhe": "série atual: 1", "modelo": "NFE" },
+    { "codigo": "proximo_numero", "item": "Próximo número da NF-e entre 1 e 999999999", "ok": true, "detalhe": "próximo número: 5", "modelo": "NFE" },
+    { "codigo": "produtos_fiscais", "item": "Produtos com quadro tributário completo", "ok": false, "bloqueante": false, "detalhe": "4 produtos não emitem…" }
   ]
 }
 ```
@@ -2240,7 +2241,13 @@ impede a liberação — a ausência do campo significa bloqueante.
 
 **Produtos com pendência fiscal** é aviso, não trava: o CSOSN é decisão do
 contador e o sistema não preenche por ninguém. Mas dizer quantos faltam antes da
-liberação é melhor do que a rejeição aparecer na primeira venda do balcão.
+liberação é melhor do que a rejeição aparecer na primeira venda do balcão. O item
+`produtos_fiscais` é o que a interface liga a
+[`GET /products/fiscal-pending`](#get-productsfiscal-pending--produtos-com-pendência-fiscal),
+que diz **quais** produtos são e o que falta em cada um.
+
+`codigo` repete entre modelos (`serie` da NFC-e e `serie` da NF-e), então a chave
+de lista é o par `codigo` + `modelo`, não o `codigo` sozinho.
 
 ---
 
