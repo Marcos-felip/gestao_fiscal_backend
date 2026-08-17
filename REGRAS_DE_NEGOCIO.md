@@ -366,6 +366,60 @@ revertido pela metade.
 - Total calculado automaticamente: `Σ (quantidade × preço_unitário)`
 - Itens: mínimo 1 item por compra
 
+### Importação da nota de entrada
+
+A compra também pode nascer do **XML da NF-e do fornecedor**, em vez de ser
+digitada. O caminho é:
+
+```
+XML → NfeImport → (conferência) → Compra em RASCUNHO → confirmação → estoque
+```
+
+**A importação não movimenta estoque nem gera títulos.** Ela só monta o
+rascunho; o estoque continua entrando pela confirmação da compra, que é ato de
+quem conferiu. Um XML com item duplicado, unidade diferente da nossa ou
+devolução embutida corromperia o saldo sem ninguém ver.
+
+A importação é **entidade própria**, e não um campo na compra, porque pode não
+virar compra: item sem casar, arquivo recusado, decisão adiada. Se o registro só
+nascesse no final, a importação interrompida sumiria e o usuário reimportaria o
+arquivo só para descobrir o que faltava.
+
+**Casamento de item — nesta ordem, e nunca por descrição:**
+
+1. **GTIN** (`cEAN` contra o código de barras do produto)
+2. **Código do fornecedor** (`cProd` contra o de-para memorizado daquele fornecedor)
+3. **Nada** — o item fica pendente e alguém escolhe
+
+Casar por semelhança de texto foi descartado: "REFRIG LATA 350" e "Refrigerante
+Lata 350ml" são o mesmo produto, mas "Parafuso 3x20" e "Parafuso 3x25" não são e
+diferem em um caractere. Acerta o fácil e erra o caro — e o erro entra no
+estoque como se tivesse sido conferido.
+
+O de-para é chaveado por **`(fornecedor, código)`**, nunca só pelo código: o
+mesmo `cProd` em fornecedores diferentes é produto diferente.
+
+**Outras regras:**
+
+- **A chave de acesso é única por empresa.** Importar o mesmo XML duas vezes
+  dobraria estoque e contas a pagar da mesma mercadoria, e o erro só apareceria
+  no inventário, meses depois
+- **O estabelecimento vem do destinatário do XML.** Não casou nenhum CNPJ da
+  empresa, a importação é recusada nomeando o CNPJ — jogar na matriz faria a
+  mercadoria aparecer no lugar errado
+- **O fornecedor é criado** a partir do emitente quando o CNPJ é novo
+- **Produto não é criado automaticamente:** o catálogo acumularia duplicatas com
+  o nome que o fornecedor escreve
+- **Unidade divergente é apontada, nunca convertida.** Caixa com 12 unidades é o
+  erro mais provável de uma nota real, e converter por palpite multiplica o
+  estoque por um número que ninguém conferiu
+- **As duplicatas definem a condição:** com `cobr/dup`, `A_PRAZO` com uma
+  parcela por duplicata; sem elas, `A_VISTA`
+- **O custo do produto não é atualizado pela importação** — quem atualiza é a
+  confirmação da compra, que é onde a mercadoria entra de fato
+- **O XML fica guardado**, e storage indisponível não derruba a importação: a
+  nota já foi lida, e recusar aí perderia a conferência por falha de infra
+
 ---
 
 ## 9.1. Vendas (PDV)

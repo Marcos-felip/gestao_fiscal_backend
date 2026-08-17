@@ -1260,6 +1260,110 @@ de caixa. A checagem acontece **antes** da devolução do estoque, então nada �
 
 ---
 
+## Importação de nota de entrada
+
+> **Permissão:** `purchases.import` (por padrão OWNER e ADMIN)
+
+O XML da NF-e do fornecedor vira uma **compra em RASCUNHO**. A importação
+**nunca movimenta estoque** — quem movimenta continua sendo
+`POST /purchases/:id/confirm`, por uma pessoa que conferiu.
+
+O fluxo tem três passos: importar o XML, resolver os itens que não casaram,
+confirmar.
+
+### POST /purchases/import/nfe — Importar o XML
+
+`multipart/form-data`, campo **`xml`**, máximo 2 MB.
+
+Lê o arquivo, localiza o estabelecimento pelo CNPJ do destinatário, localiza ou
+cria o fornecedor pelo CNPJ do emitente, e casa cada item com o catálogo.
+
+**Resposta 201:**
+```jsonc
+{
+  "id": "uuid",
+  "status": "PENDING",           // PENDING | READY | IMPORTED | DISCARDED
+  "chaveAcesso": "3126...",
+  "number": 4321,
+  "series": 1,
+  "issuedAt": "2026-08-15T12:30:00.000Z",
+  "issuerCnpj": "51720322000146",
+  "issuerName": "Distribuidora Teste LTDA",
+  "totalAmount": "255.00",
+  "duplicatas": [{ "numero": "001", "vencimento": "2026-09-15T00:00:00.000Z", "valor": 127.5 }],
+  "supplier": { "id": "uuid", "name": "Distribuidora Teste LTDA", "cpfCnpj": "51720322000146" },
+  "establishment": { "id": "uuid", "name": "Matriz" },
+  "purchase": null,
+  "items": [
+    {
+      "id": "uuid",
+      "itemNumber": 1,
+      "supplierCode": "007",     // `cProd` no cadastro DO FORNECEDOR
+      "gtin": "7891234567895",   // null quando o XML diz "SEM GTIN"
+      "description": "REFRIG LATA 350",
+      "ncm": "22021000",
+      "cfop": "1102",
+      "unit": "CX",
+      "quantity": "10.0000",
+      "unitPrice": "25.5000",
+      "totalAmount": "255.00",
+      "productId": "uuid",       // null enquanto não casar
+      "match": "GTIN"            // UNMATCHED | GTIN | SUPPLIER_CODE | MANUAL
+    }
+  ]
+}
+```
+
+**`match` é a confiança do casamento, e a interface precisa mostrá-la:**
+
+| Valor | Significa |
+|---|---|
+| `GTIN` | Código de barras bateu. É a evidência mais forte da nota |
+| `SUPPLIER_CODE` | Veio da **memória**: alguém casou esse código antes, e pode ter errado |
+| `MANUAL` | Escolhido nesta importação |
+| `UNMATCHED` | Ninguém sabe ainda — bloqueia a confirmação |
+
+**Erros:**
+
+| Situação | Resposta |
+|---|---|
+| Arquivo não é NF-e modelo 55 | `400` dizendo **o que o arquivo é** |
+| Destinatário não é estabelecimento da empresa | `400` nomeando o CNPJ da nota |
+| Emitente pessoa física | `400` — produtor rural ainda não é importável |
+| Chave já importada | `409` com o número da compra que já existe |
+
+### GET /purchases/import — Listar importações
+
+Paginada (`page`, `limit`), envelope `{ data, total, page, limit }`.
+
+### GET /purchases/import/:id — Detalhe
+
+### PATCH /purchases/import/:id/items/:itemId — Apontar o produto de um item
+
+**Body:** `{ "productId": "uuid" }`
+
+A escolha é **memorizada por `(fornecedor, supplierCode)`**: na próxima nota do
+mesmo fornecedor o item já vem com `match: "SUPPLIER_CODE"`. Resolver o último
+item pendente muda o status da importação para `READY`.
+
+### POST /purchases/import/:id/confirm — Gerar a compra em rascunho
+
+Recusa com `400` enquanto houver item sem produto, **nomeando os itens**.
+Recusa com `409` se a importação já virou compra.
+
+A condição de pagamento vem das duplicatas: com `cobr/dup`, a compra nasce
+`A_PRAZO` com uma parcela por duplicata; sem elas, `A_VISTA`.
+
+> **Limitação conhecida:** `Purchase` guarda `installments` + `intervalDays`, não
+> uma lista de vencimentos. Nota com vencimentos irregulares (15/30/45/90) vira
+> aproximação — a compra nasce em rascunho justamente para isso ser ajustado.
+
+### GET /purchases/import/:id/xml — Baixar o XML como foi recebido
+
+`application/xml`. É o documento que o contador escritura.
+
+---
+
 ## Vendas (PDV)
 
 Uma venda tem **três eixos de status independentes**. Só o primeiro é movido por este módulo:

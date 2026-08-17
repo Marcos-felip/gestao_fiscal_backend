@@ -849,6 +849,12 @@ Colunas de parcelamento, espelhando `sales`:
 | `purchases` | UNIQUE | `(company_id, purchase_number)` |
 | `purchases` | INDEX | `company_id` |
 | `purchase_items` | INDEX | `purchase_id` |
+| `nfe_imports` | UNIQUE | `(company_id, chave_acesso)` — o mesmo XML não entra duas vezes |
+| `nfe_imports` | UNIQUE | `purchase_id` |
+| `nfe_imports` | INDEX | `(company_id, status)` |
+| `nfe_import_items` | INDEX | `nfe_import_id` |
+| `partner_product_codes` | UNIQUE | `(partner_id, code)` — o mesmo código em fornecedores diferentes é produto diferente |
+| `partner_product_codes` | INDEX | `company_id` |
 | `sales` | UNIQUE | `(company_id, sale_number)` |
 | `sales` | INDEX | `company_id` |
 | `sales` | INDEX | `(company_id, status)` |
@@ -946,6 +952,7 @@ As migrations ficam em `prisma/migrations/`.
 | `20260804120000_fiscal_module_mvp` | Cria `fiscal_settings`, `fiscal_documents`, `fiscal_status_history` e `fiscal_document_events` e os enums `FiscalDocumentModel`, `FiscalEnvironment`, `FiscalDocumentStatus`, `TaxRegimeCode` e `FiscalPaymentCode`; estende `companies` e `products` com os campos fiscais; acrescenta os 5 códigos `fiscal.*` ao catálogo, concede a OWNER e ADMIN no padrão e faz o backfill das empresas existentes (MEMBER fica de fora) |
 | `20260804154411_fiscal_certificate_events` | Cria `fiscal_certificate_events` para auditar o envio e a substituição do certificado A1 |
 | `20260804180000_fiscal_settings_por_ambiente` | Troca o UNIQUE de `fiscal_settings` de `establishment_id` para `(establishment_id, ambiente)` — homologação e produção passam a ter série, numeração, CSC e certificado próprios; adiciona `producao_liberada`, `producao_liberada_em` e `producao_liberada_por`; cria `fiscal_settings_events` para auditar série, CSC, troca de ambiente e liberação de produção |
+| `20260817140000_importar_nota_de_entrada_por_xml` | Cria `nfe_imports`, `nfe_import_items` e `partner_product_codes` e os enums `NfeImportStatus` e `NfeImportMatch`; adiciona `purchases.nfe_import_id`; semeia `purchases.import` com os três passos. A importação é entidade própria porque **pode não virar compra** — item sem casar, arquivo recusado, decisão adiada |
 | `20260813120000_nfe_modelo_55` | Adiciona `serie_nfe` e `proximo_numero_nfe` a `fiscal_settings` (sequência própria da NF-e), `ind_ie_dest` e `ibge_code` a `partners`, e semeia `fiscal.nfe.emit` e `fiscal.nfe.cancel` com os três passos |
 
 > As permissões são semeadas **por migration SQL**, não por script de seed do Prisma. Ao criar um módulo novo, a migration precisa fazer **três coisas**:
