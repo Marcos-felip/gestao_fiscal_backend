@@ -41,6 +41,7 @@
     "class-validator": "^0.14.4",
     "compression": "^1.8.1",
     "cpf-cnpj-validator": "^1.0.3",
+    "fast-xml-parser": "^5.11.0",
     "helmet": "^8.1.0",
     "ioredis": "^6.0.0",
     "node-forge": "^1.4.0",
