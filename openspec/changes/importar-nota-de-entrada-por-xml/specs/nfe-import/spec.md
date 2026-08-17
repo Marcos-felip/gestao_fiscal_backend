@@ -98,15 +98,21 @@ embutida corromperia o saldo sem ninguém ver.
 - **THEN** a compra nasce A_PRAZO com as parcelas e vencimentos da nota; sem duplicatas, nasce A_VISTA
 
 ### Requirement: O XML importado fica guardado
-O sistema SHALL guardar o XML de cada importação e SHALL permitir baixá-lo
-depois, associado à compra que o originou.
+O sistema SHALL guardar o XML de cada importação, associado à compra que o
+originou, e SHALL NOT expor rota de download dele.
 
-É o documento que o contador escritura; deixá-lo só na caixa de e-mail de quem
-importou é perdê-lo.
+Quem importa por upload já tem o arquivo — devolvê-lo seria funcionalidade sem
+uso. O guardado serve a duas coisas que ainda não existem na tela: a busca na
+SEFAZ, onde o XML só existe dentro do sistema, e o reprocessamento de uma nota
+quando o parser melhorar.
 
-#### Scenario: Download do XML
-- **WHEN** o usuário pede o XML de uma importação
-- **THEN** o arquivo é devolvido como foi recebido, sem reescrita
+#### Scenario: XML guardado
+- **WHEN** uma importação é registrada e o storage está disponível
+- **THEN** o arquivo é guardado como foi recebido, sem reescrita
+
+#### Scenario: Storage indisponível
+- **WHEN** o storage falha ao guardar
+- **THEN** a importação segue mesmo assim — a nota já foi lida, e perder a conferência por falha de infraestrutura seria pior
 
 ### Requirement: Importação recusada deixa rastro
 O sistema SHALL registrar a importação mesmo quando ela não vira compra, com o

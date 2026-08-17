@@ -1358,9 +1358,10 @@ A condição de pagamento vem das duplicatas: com `cobr/dup`, a compra nasce
 > uma lista de vencimentos. Nota com vencimentos irregulares (15/30/45/90) vira
 > aproximação — a compra nasce em rascunho justamente para isso ser ajustado.
 
-### GET /purchases/import/:id/xml — Baixar o XML como foi recebido
-
-`application/xml`. É o documento que o contador escritura.
+> **Não há rota de download do XML.** Quem importa por upload já tem o arquivo.
+> Ele continua guardado no servidor: a change da busca na SEFAZ vai precisar
+> dele — lá o XML só existe dentro do sistema — e é o que permite reprocessar
+> uma nota quando o parser melhorar.
 
 ---
 

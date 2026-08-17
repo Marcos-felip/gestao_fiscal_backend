@@ -417,8 +417,11 @@ mesmo `cProd` em fornecedores diferentes é produto diferente.
   parcela por duplicata; sem elas, `A_VISTA`
 - **O custo do produto não é atualizado pela importação** — quem atualiza é a
   confirmação da compra, que é onde a mercadoria entra de fato
-- **O XML fica guardado**, e storage indisponível não derruba a importação: a
-  nota já foi lida, e recusar aí perderia a conferência por falha de infra
+- **O XML fica guardado**, mas **não há download**: quem importa por upload já
+  tem o arquivo. O guardado serve à busca na SEFAZ, onde o XML só existe dentro
+  do sistema, e a reprocessar uma nota quando o parser melhorar. Storage
+  indisponível não derruba a importação: a nota já foi lida, e recusar aí
+  perderia a conferência por falha de infraestrutura
 
 ---
 

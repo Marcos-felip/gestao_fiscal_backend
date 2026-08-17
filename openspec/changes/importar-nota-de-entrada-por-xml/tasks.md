@@ -42,7 +42,9 @@
 - [x] 5.2 `GET /purchases/import` e `GET /purchases/import/:id`
 - [x] 5.3 `PATCH /purchases/import/:id/items/:itemId` — apontar o produto de um item
 - [x] 5.4 `POST /purchases/import/:id/confirm` — gera a compra
-- [x] 5.5 `GET /purchases/import/:id/xml` — o arquivo como veio
+- [x] 5.5 ~~Rota de download do XML~~ — **removida a pedido em 17/08/2026:** quem
+  importa por upload já tem o arquivo. O XML continua guardado, para a busca na
+  SEFAZ e para reprocessar
 - [x] 5.6 Todos com `@RequirePermission('purchases.import')`, filtrando `{ companyId, deletedAt: null }`
 
 ## 6. Testes

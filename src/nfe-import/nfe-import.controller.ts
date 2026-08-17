@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Controller,
   Get,
-  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -138,16 +137,5 @@ export class NfeImportController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.service.confirm(companyId, id);
-  }
-
-  @Get(':id/xml')
-  @RequirePermission('purchases.import')
-  @Header('Content-Type', 'application/xml')
-  @ApiOperation({ summary: 'Baixar o XML como foi recebido' })
-  getXml(
-    @CurrentCompany() companyId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.service.getXml(companyId, id);
   }
 }

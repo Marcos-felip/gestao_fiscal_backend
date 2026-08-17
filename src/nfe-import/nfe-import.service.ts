@@ -274,19 +274,6 @@ export class NfeImportService {
     return this.findOne(companyId, importId);
   }
 
-  /** O XML como foi recebido — é o documento que o contador escritura. */
-  async getXml(companyId: string, importId: string): Promise<string> {
-    const nfeImport = await this.findOne(companyId, importId);
-
-    if (!nfeImport.xmlKey) {
-      throw new NotFoundException(
-        'O XML desta importação não foi guardado — o storage não estava configurado',
-      );
-    }
-
-    return this.storage.download(nfeImport.xmlKey);
-  }
-
   // ──────────────────────────────────────────────
   // Internos
   // ──────────────────────────────────────────────
