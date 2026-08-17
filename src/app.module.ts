@@ -13,6 +13,7 @@ import { PartnersModule } from './partners/partners.module';
 import { StockModule } from './stock/stock.module';
 
 import { PurchasesModule } from './purchases/purchases.module';
+import { NfeImportModule } from './nfe-import/nfe-import.module';
 import { SalesModule } from './sales/sales.module';
 import { ReceivablesModule } from './receivables/receivables.module';
 import { PayablesModule } from './payables/payables.module';
@@ -39,6 +40,7 @@ import { FiscalModule } from './fiscal/fiscal.module';
     PartnersModule,
     StockModule,
     PurchasesModule,
+    NfeImportModule,
     SalesModule,
     ReceivablesModule,
     PayablesModule,
