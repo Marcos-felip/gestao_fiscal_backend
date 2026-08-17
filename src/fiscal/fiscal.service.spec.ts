@@ -374,9 +374,8 @@ describe('FiscalService', () => {
 
       await service.revokeProduction('company-1', 'estab-1', 'user-1');
 
-      const [{ data }] = mockPrisma.fiscalSettingsEvent.create.mock.calls[0] as [
-        { data: { valorAnterior: string } },
-      ];
+      const [{ data }] = mockPrisma.fiscalSettingsEvent.create.mock
+        .calls[0] as [{ data: { valorAnterior: string } }];
       expect(data.valorAnterior).toBe('NF-e');
     });
   });

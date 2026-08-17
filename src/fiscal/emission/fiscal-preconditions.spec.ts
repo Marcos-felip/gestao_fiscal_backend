@@ -4,6 +4,8 @@ import {
   assertEmissionSettings,
   buildProductionChecklist,
   checkEmissionSettings,
+  EmissionSettings,
+  ProductionChecklistSettings,
 } from './fiscal-preconditions';
 
 const amanha = new Date(Date.now() + 86_400_000);
@@ -12,7 +14,9 @@ const ontem = new Date(Date.now() - 86_400_000);
 /** CSC no formato que MG emite: 32 caracteres hexadecimais. Valor fictício. */
 const CSC_VALIDO = 'A1B2C3D4E5F60718293A4B5C6D7E8F90';
 
-const settings = (overrides: Record<string, unknown> = {}) => ({
+const settings = (
+  overrides: Partial<EmissionSettings> = {},
+): EmissionSettings => ({
   codigoCsc: CSC_VALIDO,
   idCsc: '000001',
   certificadoRef: 'enc(pfx)',
@@ -130,7 +134,9 @@ describe('produção liberada', () => {
 });
 
 describe('buildProductionChecklist', () => {
-  const producao = (overrides: Record<string, unknown> = {}) => ({
+  const producao = (
+    overrides: Partial<ProductionChecklistSettings> = {},
+  ): ProductionChecklistSettings => ({
     ...settings(),
     modelosEmitidos: ['NFCE'],
     serieNfce: 1,
@@ -141,7 +147,7 @@ describe('buildProductionChecklist', () => {
     ...overrides,
   });
 
-  const pendentes = (config: Record<string, unknown> = {}) =>
+  const pendentes = (config: Partial<ProductionChecklistSettings> = {}) =>
     buildProductionChecklist(producao(config))
       .filter((item) => !item.ok)
       .map((item) => item.item);

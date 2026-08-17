@@ -48,8 +48,14 @@ const emissionRequest = (): EmitirNfceRequest => ({
       unidadeComercial: 'UN',
       quantidade: 2,
       valorUnitario: 5,
-      origem: 0,
-      csosn: '102',
+      // Origem e situação tributária moram dentro de `imposto.icms` desde que o
+      // quadro tributário virou obrigatório — `origem`/`csosn` soltos no item
+      // saíram do contrato do motor.
+      imposto: {
+        icms: { situacao: '102', origem: 0 },
+        pis: { situacao: '07' },
+        cofins: { situacao: '07' },
+      },
     },
   ],
   pagamentos: [{ tipo: 'dinheiro', valor: 10 }],

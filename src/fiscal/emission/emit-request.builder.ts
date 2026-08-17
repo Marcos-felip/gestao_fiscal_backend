@@ -36,13 +36,22 @@ export interface EmissionContext {
 }
 
 /**
+ * Snapshot como ele chega aqui.
+ *
+ * Em produção vem da coluna JSONB, sem tipo; nos testes, já tipado. Aceitar os
+ * dois é honesto — `lerSnapshot` valida o formato de qualquer jeito, e forçar
+ * `as unknown as Prisma.JsonValue` em cada chamada só escondia isso.
+ */
+export type SnapshotGravado = Prisma.JsonValue | FiscalSnapshot | null;
+
+/**
  * Converte o snapshot gravado no documento no payload do motor.
  *
  * O snapshot já nasce validado; aqui os somatórios são conferidos de novo
  * porque é a última parada antes de queimar a numeração na SEFAZ.
  */
 export function buildEmitirNfceRequest(
-  snapshot: Prisma.JsonValue | null,
+  snapshot: SnapshotGravado,
   context: EmissionContext,
 ): EmissionPayload {
   const dados = lerSnapshot(snapshot);
@@ -120,7 +129,7 @@ export interface NfeEmissionContext {
  * parada antes de queimar a numeração na SEFAZ.
  */
 export function buildEmitirNfeRequest(
-  snapshot: Prisma.JsonValue | null,
+  snapshot: SnapshotGravado,
   context: NfeEmissionContext,
 ): NfeEmissionPayload {
   const dados = lerSnapshot(snapshot);
@@ -163,7 +172,7 @@ export function buildEmitirNfeRequest(
 }
 
 /** O snapshot é gravado como JSONB; aqui ele volta a ser tipado. */
-function lerSnapshot(snapshot: Prisma.JsonValue | null): FiscalSnapshot {
+function lerSnapshot(snapshot: SnapshotGravado): FiscalSnapshot {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
     throw new BadRequestException(
       'Documento fiscal sem snapshot da venda — não é possível emitir',
