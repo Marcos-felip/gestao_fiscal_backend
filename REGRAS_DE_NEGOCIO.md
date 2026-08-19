@@ -10,7 +10,7 @@ O sistema é um SaaS (Software as a Service) de gestão fiscal e operacional par
 - Registrar e controlar compras
 - Registrar vendas e orçamentos (PDV)
 - Manter cadastro de clientes e fornecedores
-- Preparar a base para emissão fiscal (NF-e)
+- Emitir NFC-e (modelo 65) em homologação e produção, com cancelamento e central de rejeições
 
 - Controlar contas a receber, com títulos gerados pelas vendas a prazo
 
@@ -366,6 +366,63 @@ revertido pela metade.
 - Total calculado automaticamente: `Σ (quantidade × preço_unitário)`
 - Itens: mínimo 1 item por compra
 
+### Importação da nota de entrada
+
+A compra também pode nascer do **XML da NF-e do fornecedor**, em vez de ser
+digitada. O caminho é:
+
+```
+XML → NfeImport → (conferência) → Compra em RASCUNHO → confirmação → estoque
+```
+
+**A importação não movimenta estoque nem gera títulos.** Ela só monta o
+rascunho; o estoque continua entrando pela confirmação da compra, que é ato de
+quem conferiu. Um XML com item duplicado, unidade diferente da nossa ou
+devolução embutida corromperia o saldo sem ninguém ver.
+
+A importação é **entidade própria**, e não um campo na compra, porque pode não
+virar compra: item sem casar, arquivo recusado, decisão adiada. Se o registro só
+nascesse no final, a importação interrompida sumiria e o usuário reimportaria o
+arquivo só para descobrir o que faltava.
+
+**Casamento de item — nesta ordem, e nunca por descrição:**
+
+1. **GTIN** (`cEAN` contra o código de barras do produto)
+2. **Código do fornecedor** (`cProd` contra o de-para memorizado daquele fornecedor)
+3. **Nada** — o item fica pendente e alguém escolhe
+
+Casar por semelhança de texto foi descartado: "REFRIG LATA 350" e "Refrigerante
+Lata 350ml" são o mesmo produto, mas "Parafuso 3x20" e "Parafuso 3x25" não são e
+diferem em um caractere. Acerta o fácil e erra o caro — e o erro entra no
+estoque como se tivesse sido conferido.
+
+O de-para é chaveado por **`(fornecedor, código)`**, nunca só pelo código: o
+mesmo `cProd` em fornecedores diferentes é produto diferente.
+
+**Outras regras:**
+
+- **A chave de acesso é única por empresa.** Importar o mesmo XML duas vezes
+  dobraria estoque e contas a pagar da mesma mercadoria, e o erro só apareceria
+  no inventário, meses depois
+- **O estabelecimento vem do destinatário do XML.** Não casou nenhum CNPJ da
+  empresa, a importação é recusada nomeando o CNPJ — jogar na matriz faria a
+  mercadoria aparecer no lugar errado
+- **O fornecedor é criado** a partir do emitente quando o CNPJ é novo
+- **Produto não é criado automaticamente:** o catálogo acumularia duplicatas com
+  o nome que o fornecedor escreve
+- **Unidade divergente é apontada, nunca convertida.** Caixa com 12 unidades é o
+  erro mais provável de uma nota real, e converter por palpite multiplica o
+  estoque por um número que ninguém conferiu
+- **As duplicatas definem a condição:** com `cobr/dup`, `A_PRAZO` com uma
+  parcela por duplicata; sem elas, `A_VISTA`
+- **O custo do produto não é atualizado pela importação** — quem atualiza é a
+  confirmação da compra, que é onde a mercadoria entra de fato
+- **O XML fica guardado**, mas **não há download**: quem importa por upload já
+  tem o arquivo. O guardado serve à busca na SEFAZ, onde o XML só existe dentro
+  do sistema, e a reprocessar uma nota quando o parser melhorar. Storage
+  indisponível não derruba a importação: a nota já foi lida, e recusar aí
+  perderia a conferência por falha de infraestrutura
+
 ---
 
 ## 9.1. Vendas (PDV)
@@ -378,7 +435,7 @@ Uma venda não tem um estado só. São três colunas independentes, e o módulo 
 |------|--------|---------|-----------|
 | Comercial | `status` | `ORCAMENTO`, `EM_ABERTO`, `CONCLUIDA`, `CANCELADA` | módulo de vendas |
 | Financeiro | `payment_status` | `PENDENTE`, `APROVADO`, `RECUSADO`, `ESTORNADO` | módulo financeiro |
-| Fiscal | `fiscal_status` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` | módulo fiscal |
+| Fiscal | `fiscal_status` | `NAO_EMITIDO`, `PROCESSANDO`, `AUTORIZADO`, `REJEITADO`, `CANCELADO` | módulo fiscal (ver [9.5](#95-fiscal-nfc-e)) |
 
 **Única exceção:** cancelar uma venda cujo `payment_status` era `APROVADO` o leva a `ESTORNADO` —
 o dinheiro não pode continuar aprovado numa venda desfeita.
@@ -678,6 +735,158 @@ não depois dela.
 
 ---
 
+## 9.5. Fiscal (NFC-e)
+
+O sistema emite **NFC-e (modelo 65)** a partir de uma venda concluída. Quem monta, assina e
+transmite o XML é um microserviço .NET (`fiscal_service`); o backend cuida das regras, da
+numeração, da persistência e da fila. Detalhes técnicos em [FISCAL.md](./FISCAL.md).
+
+### A emissão é assíncrona e não segura a venda
+
+Finalizar a venda dispara o evento interno `sale.confirmed`. A partir dele o sistema valida as
+pré-condições, reserva a numeração, cria o `FiscalDocument` em `PENDENTE` e enfileira o
+processamento. **A venda é concluída independentemente do resultado fiscal** — o cliente não
+fica esperando a SEFAZ no balcão.
+
+A emissão automática é **opt-in por estabelecimento**: sem configuração fiscal ativa, a venda é
+concluída e nenhum documento é criado.
+
+### O que bloqueia a emissão
+
+Tudo é conferido **antes** de reservar a numeração — nota que não vai sair não pode queimar um
+número de série. Todas as pendências são devolvidas de uma vez:
+
+| Origem | Exige |
+|--------|-------|
+| Empresa | CNPJ válido, razão social, IE, CRT e código IBGE do município (`fiscalConfigComplete`) |
+| Estabelecimento | Endereço completo, CEP, UF válida e código IBGE |
+| Configuração fiscal | CSC e idCSC do ambiente |
+| Certificado | Certificado A1 enviado e **dentro da validade** |
+| Produção | Liberação explícita pelo checklist de ativação |
+| Produtos | Todo item com NCM, CFOP, origem e situação tributária válidos (`fiscalComplete`) |
+| Cliente | Se a venda tem cliente, o CPF/CNPJ dele precisa ser válido |
+| Pagamentos | Σ pagamentos = Σ itens, com tolerância de R$ 0,01 |
+
+As regras de NCM, CFOP, origem, CSOSN e CST são **as mesmas do motor fiscal**, repetidas no
+backend só para falhar cedo, em português, em vez de virar rejeição da SEFAZ.
+
+### Numeração
+
+- Série e próximo número são **por estabelecimento e por ambiente**
+- A numeração é reservada de forma atômica na criação do documento
+- O reprocessamento (`retry`) reaproveita a **mesma série e número** — nunca gera novo
+- A `idempotencyKey` por venda impede documento duplicado em concorrência ou retry
+
+### Snapshot imutável
+
+Na criação do documento, emitente, destinatário, endereço, itens, impostos, pagamentos e totais
+são congelados em JSON. Alterar o cadastro do produto ou do cliente depois **não muda** a nota já
+emitida — é o retrato do que foi transmitido.
+
+O valor recebido e o troco também entram no snapshot, para auditoria e reimpressão. Eles **não**
+são enviados à SEFAZ: o contrato do motor não tem grupo de troco.
+
+### Homologação e produção
+
+Cada estabelecimento tem duas configurações independentes — série, numeração, CSC e certificado
+não são compartilhados entre os ambientes. A configuração `ativo` é a em uso.
+
+Emitir em produção exige **liberação explícita**: o checklist confere certificado enviado e
+vigente, CSC e idCSC preenchidos, série entre 1 e 999 e próximo número dentro da faixa. Enquanto
+a produção não for liberada, a emissão nesse ambiente é recusada. A liberação pode ser revogada,
+o que devolve o estabelecimento à homologação.
+
+Trocas de série, de CSC, de ambiente, de certificado e a liberação/revogação da produção ficam
+registradas em auditoria. O **valor do CSC nunca é gravado** no histórico — só o idCSC.
+
+### Certificado digital A1
+
+- Entra por upload (`.pfx` + senha), com validade e titular extraídos na hora
+- Fica **cifrado** (AES-256-GCM) e só é decifrado na borda da chamada ao motor
+- Nunca aparece em log nem em resposta de API
+- **Certificado vencido bloqueia a emissão**; a partir de 30 dias do vencimento o sistema
+  informa `diasParaVencer` para o alerta na tela
+- A substituição fica registrada com o certificado anterior e quem trocou
+
+### Resultado da emissão
+
+| Resultado | Documento | Venda |
+|-----------|-----------|-------|
+| Autorizada | `AUTORIZADO` com chave, protocolo, XML, DANFE e QR Code | `AUTORIZADO` |
+| Recusada pela SEFAZ | `REJEITADO` com código e mensagem | `REJEITADO` |
+| Falha de configuração ou do sistema | `ERRO` com o motivo | `REJEITADO` |
+
+Rejeição **não é reprocessada sozinha** — o dado precisa ser corrigido antes. Já falha de rede,
+timeout ou motor fora do ar é transitória: a fila tenta de novo, até 3 vezes, com espera
+crescente.
+
+Cada tentativa é contada em `attempts` e registrada no histórico com **quem a originou** (o
+operador da venda, na emissão automática; quem acionou, na manual ou no retry) e quando.
+
+### Consulta e cancelamento
+
+- A **consulta** reconcilia o status local com a SEFAZ. Resolve o caso clássico: o motor deu
+  timeout, mas a nota foi autorizada do outro lado
+- O **cancelamento** exige justificativa de **15 a 255 caracteres** e só vale para nota
+  `AUTORIZADO`
+- Documento já cancelado é recusado antes de chegar à SEFAZ
+- Cancelamento recusado pela SEFAZ é registrado como evento e não muda o status
+- Ao cancelar, o XML e o protocolo de cancelamento são guardados e a venda reflete `CANCELADO`
+
+### Carta de correção
+
+Corrige um **detalhe** da nota autorizada sem desfazê-la. Serve para erro que não muda a
+essência da operação: nome de bairro errado, código de transportadora, dado do destinatário
+que não seja o CNPJ.
+
+**O que a CC-e não corrige** — e a lista é curta de propósito, porque é o que separa
+"corrigir" de "emitir outra nota":
+
+| Não pode | Por quê |
+|---|---|
+| Valores (produto, ICMS, base de cálculo, total) | mudam o imposto devido |
+| Dados cadastrais que alterem o remetente ou o destinatário | é outra operação |
+| Data de emissão ou de saída | define o período de apuração |
+
+Errou nisso, o caminho é **cancelar e emitir de novo** — dentro do prazo de cancelamento.
+
+- Só nota `AUTORIZADO` aceita correção; rejeitada ou cancelada, não
+- Texto de **15 a 1000 caracteres**
+- **Até 20 cartas por nota** (limite legal). A 21ª é recusada citando o limite
+- A **sequência é do sistema**, não do usuário: é a próxima da nota, e um `UNIQUE` no banco
+  fecha a corrida entre duas correções simultâneas
+- A **condição de uso vigente** é guardada junto da carta — o texto legal muda com o tempo e
+  o que vale é o que estava valendo quando a correção foi feita
+- Recusa da SEFAZ vira evento no documento e devolve `400`; a nota não muda de status
+- Cada carta gera XML próprio, que entra na exportação do período junto do XML autorizado
+
+### Inutilização de numeração
+
+Fala de números que **nunca viraram nota** — o buraco que sobra quando a emissão consome o
+número e falha depois. Não é evento de documento: não há chave de acesso, e por isso a
+inutilização guarda série, modelo e faixa.
+
+- Justificativa de **15 a 255 caracteres**, faixa com início ≤ fim
+- **Faixa que inclua número de documento `AUTORIZADO` ou `CANCELADO` é recusada**, nomeando o
+  número e a chave. A SEFAZ também recusaria, mas depois e sem dizer qual número — e
+  inutilizar numeração válida não se desfaz
+- As faixas pendentes são **calculadas**, não rastreadas: de 1 até o próximo número, o que
+  não tem documento nem inutilização anterior é candidato. O sistema sugere em vez de deixar
+  digitar
+- Documento em `ERRO` ou `REJEITADO` dentro da faixa passa a `INUTILIZADO`
+- Sem sequência: a numeração inutilizada não volta a ser usada
+- **Faixa que a SEFAZ diz já estar inutilizada é gravada com o protocolo dela**, em vez de virar
+  erro. É o que sobra quando o pedido é homologado e a resposta não volta a tempo: o ato existe
+  lá e não existe aqui. Sem essa reconciliação a faixa fica no limbo — o sistema sugere
+  inutilizá-la para sempre e a SEFAZ recusa para sempre
+
+### Documento fiscal é append-only
+
+`FiscalDocument` **não tem exclusão física**. Todas as transições de status ficam no histórico,
+e os eventos (emissão, consulta, cancelamento, retry) ficam registrados com usuário e data.
+
+---
+
 ## 10. Soft Delete
 
 - Registros "excluídos" **não são apagados do banco** — recebem `deleted_at = data/hora`
@@ -697,3 +906,4 @@ não depois dela.
 | Título PAGO | Não pode ser cancelado |
 | Caixa com sessão aberta | Não pode ser desativado nem excluído |
 | Sessão de caixa | Não tem soft delete — é registro de auditoria do turno |
+| Documento fiscal | Não tem exclusão física — é append-only, com histórico e eventos |

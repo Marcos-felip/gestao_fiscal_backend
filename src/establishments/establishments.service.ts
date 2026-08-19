@@ -40,6 +40,7 @@ export class EstablishmentsService {
         neighborhood: dto.neighborhood,
         city: dto.city,
         state: dto.state,
+        ibgeCode: dto.ibgeCode,
       },
     });
   }

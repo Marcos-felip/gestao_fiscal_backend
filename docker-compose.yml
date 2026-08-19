@@ -12,6 +12,38 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: gestao_fiscal_redis
+    restart: unless-stopped
+    # noeviction é obrigatório: este Redis é fila (BullMQ), não cache. Com uma política
+    # de despejo o Redis descartaria jobs ao bater o maxmemory — uma NFC-e enfileirada
+    # sumiria sem erro, sem ir para failed e sem retry. Com noeviction a escrita falha
+    # de forma visível quando o limite estoura.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+
+  # Motor fiscal .NET (DFe.NET) — monta, assina e transmite a NFC-e.
+  # Opcional: sobe só com `docker compose --profile fiscal up -d`, porque exige
+  # o repositório do fiscal_service clonado ao lado deste (FISCAL_SERVICE_PATH).
+  fiscal_service:
+    profiles: ["fiscal"]
+    build:
+      context: ${FISCAL_SERVICE_PATH:-../fiscal_service}
+    image: gestao_fiscal/fiscal_service:latest
+    container_name: gestao_fiscal_engine
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${FISCAL_SERVICE_ENV:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      # O motor não sobe sem a chave; é a mesma de FISCAL_ENGINE_API_KEY no Nest
+      FISCAL_API_KEY: ${FISCAL_ENGINE_API_KEY}
+    ports:
+      - "${FISCAL_ENGINE_HOST_PORT:-8080}:8080"
+
   pgadmin:
     image: dpage/pgadmin4
     container_name: gestao_fiscal_pgadmin
@@ -36,3 +68,4 @@ services:
 volumes:
   postgres_data:
   pgadmin_data:
+  redis_data:

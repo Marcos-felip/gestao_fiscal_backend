@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { CompanyType, TaxRegime } from '@prisma/client';
+import { CompanyType, TaxRegime, TaxRegimeCode } from '@prisma/client';
 import {
   IsBoolean,
+  IsEmail,
   IsEnum,
   IsOptional,
   IsString,
@@ -36,7 +37,12 @@ export class UpdateCompanyDto {
 
   @ApiPropertyOptional({
     example: '123456789012',
-    description: 'Inscrição Estadual (IE)',
+    description:
+      'Inscrição Estadual do estabelecimento MATRIZ. É esta que a NFC-e usa ' +
+      'como emitente — tem precedência sobre `inscricaoEstadual`, que fica ' +
+      'como fallback da empresa. Também é devolvida nas leituras da empresa. ' +
+      'Enviar valor diferente de `inscricaoEstadual` na mesma requisição é ' +
+      'recusado com 400.',
   })
   @IsOptional()
   @IsString()
@@ -69,6 +75,76 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsBoolean()
   cashBlindClose?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'Minha Empresa Comércio de Bebidas LTDA',
+    description: 'Razão social usada como emitente na NFC-e',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(2, { message: 'Razão social deve ter no mínimo 2 caracteres' })
+  razaoSocial?: string;
+
+  @ApiPropertyOptional({ example: 'Minha Empresa' })
+  @IsOptional()
+  @IsString()
+  nomeFantasia?: string;
+
+  @ApiPropertyOptional({
+    example: '123456789012',
+    description: 'Inscrição Estadual da empresa (emitente)',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2,14}$/, {
+    message: 'Inscrição Estadual inválida. Esperado: 2 a 14 dígitos',
+  })
+  inscricaoEstadual?: string;
+
+  @ApiPropertyOptional({ example: '1234567' })
+  @IsOptional()
+  @IsString()
+  inscricaoMunicipal?: string;
+
+  @ApiPropertyOptional({
+    enum: TaxRegimeCode,
+    description: 'Código de Regime Tributário (CRT) usado na emissão fiscal',
+  })
+  @IsOptional()
+  @IsEnum(TaxRegimeCode, {
+    message:
+      'CRT inválido. Valores válidos: SIMPLES_NACIONAL, SIMPLES_EXCESSO, REGIME_NORMAL, SIMPLES_MEI',
+  })
+  crt?: TaxRegimeCode;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Empresa é contribuinte do ICMS',
+  })
+  @IsOptional()
+  @IsBoolean()
+  contribuinteIcms?: boolean;
+
+  @ApiPropertyOptional({
+    example: '3550308',
+    description: 'Código IBGE do município (7 dígitos)',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{7}$/, {
+    message: 'Código IBGE do município deve ter 7 dígitos',
+  })
+  codigoIbgeMunicipio?: string;
+
+  @ApiPropertyOptional({ example: '(11) 3333-4444' })
+  @IsOptional()
+  @IsString()
+  telefoneFiscal?: string;
+
+  @ApiPropertyOptional({ example: 'fiscal@minhaempresa.com.br' })
+  @IsOptional()
+  @IsEmail({}, { message: 'E-mail fiscal inválido' })
+  emailFiscal?: string;
 
   @ApiPropertyOptional({
     description: 'Dados do estabelecimento MATRIZ para atualizar (opcional)',

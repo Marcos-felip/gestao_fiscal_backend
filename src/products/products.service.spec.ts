@@ -11,6 +11,9 @@ const mockPrismaService = {
     update: jest.fn(),
     count: jest.fn(),
   },
+  company: {
+    findFirst: jest.fn(),
+  },
 };
 
 describe('ProductsService', () => {
@@ -26,6 +29,9 @@ describe('ProductsService', () => {
 
     service = module.get<ProductsService>(ProductsService);
     jest.clearAllMocks();
+    mockPrismaService.company.findFirst.mockResolvedValue({
+      crt: 'SIMPLES_NACIONAL',
+    });
   });
 
   describe('findAll', () => {
@@ -129,6 +135,44 @@ describe('ProductsService', () => {
       );
       expect(result).toEqual(created);
     });
+
+    it('deriva fiscalComplete a partir dos dados fiscais do produto', async () => {
+      mockPrismaService.product.create.mockResolvedValue({});
+
+      await service.create('company-1', {
+        name: 'Refrigerante',
+        ncm: '22021000',
+        cfop: '5102',
+        origin: 0,
+        csosn: '102',
+        cstPis: '07',
+        cstCofins: '07',
+      });
+
+      expect(mockPrismaService.product.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ fiscalComplete: true }) as unknown,
+        }),
+      );
+    });
+
+    it('marca fiscalComplete como falso quando o CSOSN não é suportado', async () => {
+      mockPrismaService.product.create.mockResolvedValue({});
+
+      await service.create('company-1', {
+        name: 'Refrigerante',
+        ncm: '22021000',
+        cfop: '5102',
+        origin: 0,
+        csosn: '101',
+      });
+
+      expect(mockPrismaService.product.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ fiscalComplete: false }) as unknown,
+        }),
+      );
+    });
   });
 
   describe('update', () => {
@@ -151,6 +195,28 @@ describe('ProductsService', () => {
         expect.objectContaining({ where: { id: 'prod-1' } }),
       );
       expect(result).toEqual(updated);
+    });
+
+    it('recalcula fiscalComplete combinando o cadastro atual com o dto', async () => {
+      mockPrismaService.product.findFirst.mockResolvedValue({
+        id: 'prod-1',
+        companyId: 'company-1',
+        ncm: '22021000',
+        cfop: '5102',
+        origin: 0,
+        csosn: null,
+        cstPis: '07',
+        cstCofins: '07',
+      });
+      mockPrismaService.product.update.mockResolvedValue({});
+
+      await service.update('prod-1', 'company-1', { csosn: '102' });
+
+      expect(mockPrismaService.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ fiscalComplete: true }) as unknown,
+        }),
+      );
     });
 
     it('should throw NotFoundException if product does not exist', async () => {
@@ -190,6 +256,60 @@ describe('ProductsService', () => {
 
       await expect(service.remove('prod-999', 'company-1')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('findFiscalPending', () => {
+    it('filtra por fiscalComplete false e detalha o que falta em cada produto', async () => {
+      mockPrismaService.product.findMany.mockResolvedValue([
+        {
+          id: 'prod-1',
+          name: 'Refrigerante',
+          sku: 'REF-1',
+          ncm: '2202',
+          cfop: '5102',
+          origin: 0,
+          csosn: '102',
+          cstIcms: null,
+          cstPis: '07',
+          cstCofins: '07',
+        },
+      ]);
+      mockPrismaService.product.count.mockResolvedValue(1);
+
+      const resultado = await service.findFiscalPending('company-1', {
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: 'company-1',
+            deletedAt: null,
+            fiscalComplete: false,
+          }),
+        }),
+      );
+      expect(resultado.total).toBe(1);
+      expect(resultado.data[0].pendencias).toEqual([
+        'NCM ausente ou fora do formato de 8 dígitos',
+      ]);
+    });
+
+    it('aplica o filtro de busca por nome', async () => {
+      mockPrismaService.product.findMany.mockResolvedValue([]);
+      mockPrismaService.product.count.mockResolvedValue(0);
+
+      await service.findFiscalPending('company-1', { search: 'Refri' });
+
+      expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            name: { contains: 'Refri', mode: 'insensitive' },
+          }),
+        }),
       );
     });
   });

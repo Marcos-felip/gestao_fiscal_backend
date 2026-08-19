@@ -136,6 +136,57 @@ enum UnitOfMeasure {
   DZ
 }
 
+enum FiscalDocumentModel {
+  NFE
+  NFCE
+}
+
+enum FiscalEnvironment {
+  HOMOLOGACAO
+  PRODUCAO
+}
+
+enum FiscalDocumentStatus {
+  NAO_EMITIDO
+  PENDENTE
+  PROCESSANDO
+  AUTORIZADO
+  REJEITADO
+  ERRO
+  CONTINGENCIA
+  CANCELAMENTO_PENDENTE
+  CANCELADO
+  INUTILIZADO
+}
+
+/// Código de Regime Tributário (CRT) do emitente, conforme o leiaute da NF-e/NFC-e.
+enum TaxRegimeCode {
+  /// CRT 1
+  SIMPLES_NACIONAL
+  /// CRT 2 — excesso de sublimite de receita bruta
+  SIMPLES_EXCESSO
+  /// CRT 3
+  REGIME_NORMAL
+  /// CRT 4 — Microempreendedor Individual. Tributa por CSOSN, como os demais do Simples.
+  SIMPLES_MEI
+}
+
+enum FiscalPaymentCode {
+  DINHEIRO
+  CHEQUE
+  CARTAO_CREDITO
+  CARTAO_DEBITO
+  CREDITO_LOJA
+  VALE_ALIMENTACAO
+  VALE_REFEICAO
+  VALE_PRESENTE
+  VALE_COMBUSTIVEL
+  BOLETO
+  PIX
+  SEM_PAGAMENTO
+  OUTRO
+}
+
 model User {
   id                  String    @id @default(uuid())
   name                String
@@ -168,6 +219,26 @@ model Company {
   isOnboarded     Boolean          @default(false) @map("is_onboarded")
   /// Fechamento às cegas: o operador não vê o valor esperado antes de contar
   cashBlindClose  Boolean          @default(false) @map("cash_blind_close")
+  /// Razão social da empresa
+  razaoSocial     String?          @map("razao_social")
+  /// Nome fantasia
+  nomeFantasia    String?          @map("nome_fantasia")
+  /// Inscrição estadual
+  inscricaoEstadual String?        @map("inscricao_estadual")
+  /// Inscrição municipal
+  inscricaoMunicipal String?       @map("inscricao_municipal")
+  /// Código de Regime Tributário (CRT) — usado na emissão fiscal
+  crt             TaxRegimeCode?
+  /// Empresa é contribuinte do ICMS
+  contribuinteIcms Boolean         @default(false) @map("contribuinte_icms")
+  /// Configuração fiscal completa para emissão
+  fiscalConfigComplete Boolean     @default(false) @map("fiscal_config_complete")
+  /// Código IBGE do município da empresa
+  codigoIbgeMunicipio String?      @map("codigo_ibge_municipio")
+  /// Telefone de contato fiscal
+  telefoneFiscal  String?          @map("telefone_fiscal")
+  /// E-mail de contato fiscal
+  emailFiscal     String?          @map("email_fiscal")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   deletedAt       DateTime?        @map("deleted_at")
@@ -187,6 +258,14 @@ model Company {
   cashRegisters    CashRegister[]
   cashSessions     CashSession[]
   cashMovements    CashMovement[]
+  fiscalSettings   FiscalSettings[]
+  fiscalDocuments  FiscalDocument[]
+  fiscalCertificateEvents FiscalCertificateEvent[]
+  fiscalSettingsEvents    FiscalSettingsEvent[]
+  correctionLetters       FiscalCorrectionLetter[]
+  inutilizations          FiscalInutilization[]
+  nfeImports              NfeImport[]
+  partnerProductCodes     PartnerProductCode[]
 
   @@map("companies")
 }
@@ -235,6 +314,10 @@ model Establishment {
   financialEntries FinancialEntry[]
   cashRegisters    CashRegister[]
   cashSessions     CashSession[]
+  fiscalSettings   FiscalSettings[]
+  fiscalDocuments  FiscalDocument[]
+  inutilizations   FiscalInutilization[]
+  nfeImports       NfeImport[]
 
   @@index([companyId])
   @@map("establishments")
@@ -258,6 +341,22 @@ model Product {
   cfop                String?
   origin              Int?          @db.SmallInt
   technicalAttributes Json?         @map("technical_attributes")
+  /// CSOSN — Código de Situação da Operação para o Simples Nacional
+  csosn               String?
+  /// CST do ICMS — Código de Situação Tributária (regime normal)
+  cstIcms             String?       @map("cst_icms")
+  /// CST do PIS
+  cstPis              String?       @map("cst_pis")
+  /// CST do COFINS
+  cstCofins           String?       @map("cst_cofins")
+  /// Alíquota de ICMS
+  aliquotaIcms        Decimal?      @map("aliquota_icms") @db.Decimal(12, 4)
+  /// Alíquota de PIS
+  aliquotaPis         Decimal?      @map("aliquota_pis") @db.Decimal(12, 4)
+  /// Alíquota de COFINS
+  aliquotaCofins      Decimal?      @map("aliquota_cofins") @db.Decimal(12, 4)
+  /// Produto com dados fiscais completos para emissão
+  fiscalComplete      Boolean       @default(false) @map("fiscal_complete")
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
   deletedAt           DateTime?     @map("deleted_at")
@@ -266,6 +365,8 @@ model Product {
   stockMovements StockMovement[]
   purchaseItems  PurchaseItem[]
   saleItems      SaleItem[]
+  nfeImportItems NfeImportItem[]
+  partnerCodes   PartnerProductCode[]
 
   @@unique([companyId, sku])
   @@unique([companyId, barcode])
@@ -282,6 +383,7 @@ model Partner {
   tradeName    String?     @map("trade_name")
   cpfCnpj      String?     @map("cpf_cnpj")
   rgIe         String?     @map("rg_ie")
+  indIeDest    Int?        @map("ind_ie_dest")
   email        String?
   phone        String?
   cep          String?
@@ -291,6 +393,7 @@ model Partner {
   neighborhood String?
   city         String?
   state        String?     @db.Char(2)
+  ibgeCode     String?     @map("ibge_code")
   isActive     Boolean     @default(true) @map("is_active")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
@@ -298,6 +401,8 @@ model Partner {
 
   company             Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   purchasesAsSupplier Purchase[]
+  nfeImports          NfeImport[]
+  productCodes        PartnerProductCode[]
   salesAsCustomer     Sale[]           @relation("SaleCustomer")
   financialEntries    FinancialEntry[]
 
@@ -349,6 +454,7 @@ model Purchase {
   supplier         Partner?         @relation(fields: [supplierId], references: [id])
   items            PurchaseItem[]
   financialEntries FinancialEntry[]
+  nfeImport        NfeImport?
 
   @@unique([companyId, purchaseNumber])
   @@index([companyId])
@@ -402,6 +508,7 @@ model Sale {
   items            SaleItem[]
   payments         SalePayment[]
   financialEntries FinancialEntry[]
+  fiscalDocument   FiscalDocument?
 
   @@unique([companyId, saleNumber])
   @@index([companyId])
@@ -642,4 +749,369 @@ model MembershipProfile {
   @@id([membershipId, profileId])
   @@index([profileId])
   @@map("membership_profiles")
+}
+
+/// Configuração fiscal por estabelecimento: série, numeração, certificado e CSC.
+model FiscalSettings {
+  id               String            @id @default(uuid())
+  establishmentId  String            @map("establishment_id")
+  establishment    Establishment     @relation(fields: [establishmentId], references: [id])
+  companyId        String            @map("company_id")
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ambiente         FiscalEnvironment @default(HOMOLOGACAO)
+  /// Modelos que o estabelecimento emite. Define o que o checklist de producao
+  /// cobra: CSC e consulta publica so valem para quem emite NFC-e.
+  modelosEmitidos  FiscalDocumentModel[] @map("modelos_emitidos")
+  serieNfce        Int               @default(1) @map("serie_nfce")
+  proximoNumeroNfce Int              @default(1) @map("proximo_numero_nfce")
+  serieNfe         Int               @default(1) @map("serie_nfe")
+  proximoNumeroNfe Int               @default(1) @map("proximo_numero_nfe")
+  codigoCsc        String?           @map("codigo_csc")
+  idCsc            String?           @map("id_csc")
+  /// Referência criptografada ao certificado A1 no cofre (KMS/Vault)
+  certificadoRef   String?           @map("certificado_ref")
+  /// Referência criptografada à senha do certificado
+  certificadoSenhaRef String?        @map("certificado_senha_ref")
+  /// Validade do certificado digital
+  certificadoValidade DateTime?      @map("certificado_validade")
+  /// Subject DN do certificado digital
+  certificadoSubject String?         @map("certificado_subject")
+  /// Configuração em uso pelo estabelecimento. No máximo uma por estabelecimento
+  ativo            Boolean           @default(true)
+  /// Liberação explícita para emitir em produção (checklist de ativação)
+  producaoLiberada Boolean           @default(false) @map("producao_liberada")
+  producaoLiberadaEm DateTime?       @map("producao_liberada_em")
+  producaoLiberadaPor String?        @map("producao_liberada_por")
+  /// Validação da consulta pública da nota autorizada em produção
+  consultaPublicaValidadaEm DateTime? @map("consulta_publica_validada_em")
+  consultaPublicaValidadaPor String?  @map("consulta_publica_validada_por")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  deletedAt        DateTime?         @map("deleted_at")
+
+  certificateEvents FiscalCertificateEvent[]
+  settingsEvents    FiscalSettingsEvent[]
+
+  @@unique([establishmentId, ambiente])
+  @@index([companyId])
+  @@map("fiscal_settings")
+}
+
+/// Auditoria de mudanças na configuração fiscal: série, CSC, ambiente em uso
+/// e liberação de produção. O certificado tem auditoria própria.
+model FiscalSettingsEvent {
+  id               String         @id @default(uuid())
+  companyId        String         @map("company_id")
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fiscalSettingsId String         @map("fiscal_settings_id")
+  fiscalSettings   FiscalSettings @relation(fields: [fiscalSettingsId], references: [id], onDelete: Cascade)
+  /// "serie", "csc", "ambiente", "producao_liberada" ou "producao_revogada"
+  tipo             String
+  valorAnterior    String?        @map("valor_anterior")
+  valorNovo        String?        @map("valor_novo")
+  usuarioId        String?        @map("usuario_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([fiscalSettingsId])
+  @@map("fiscal_settings_events")
+}
+
+/// Auditoria de envio e substituição do certificado A1 de um estabelecimento.
+model FiscalCertificateEvent {
+  id               String         @id @default(uuid())
+  companyId        String         @map("company_id")
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fiscalSettingsId String         @map("fiscal_settings_id")
+  fiscalSettings   FiscalSettings @relation(fields: [fiscalSettingsId], references: [id], onDelete: Cascade)
+  /// Tipo do evento: "upload" ou "substituicao"
+  tipo             String
+  /// Subject DN do certificado enviado
+  subject          String?
+  /// Common Name do titular
+  titular          String?
+  /// Validade final do certificado enviado
+  validoAte        DateTime?      @map("valido_ate")
+  /// Subject DN do certificado que estava configurado antes da substituição
+  subjectAnterior  String?        @map("subject_anterior")
+  usuarioId        String?        @map("usuario_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([fiscalSettingsId])
+  @@map("fiscal_certificate_events")
+}
+
+/// Documento fiscal emitido (NF-e ou NFC-e): um por venda, com status, XML e histórico.
+model FiscalDocument {
+  id               String               @id @default(uuid())
+  companyId        String               @map("company_id")
+  company          Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  establishmentId  String               @map("establishment_id")
+  establishment    Establishment        @relation(fields: [establishmentId], references: [id])
+  saleId           String?              @unique @map("sale_id")
+  sale             Sale?                @relation(fields: [saleId], references: [id])
+  modelo           FiscalDocumentModel
+  serie            Int
+  numero           Int
+  chaveAcesso      String?              @unique @map("chave_acesso")
+  ambiente         FiscalEnvironment
+  status           FiscalDocumentStatus @default(PENDENTE)
+  protocolo        String?
+  rejeicaoCodigo   String?              @map("rejeicao_codigo")
+  rejeicaoMensagem String?              @map("rejeicao_mensagem")
+  dataEmissao      DateTime?            @map("data_emissao")
+  dataAutorizacao  DateTime?            @map("data_autorizacao")
+  dataCancelamento DateTime?            @map("data_cancelamento")
+  valorTotal       Decimal?             @map("valor_total") @db.Decimal(15, 2)
+  /// XML enviado (base64 ou referência S3)
+  xmlEnviado       String?              @map("xml_enviado")
+  /// XML autorizado pela SEFAZ (base64 ou referência S3)
+  xmlAutorizado    String?              @map("xml_autorizado")
+  /// XML de cancelamento (base64 ou referência S3)
+  xmlCancelamento  String?              @map("xml_cancelamento")
+  /// URL do DANFE no storage (S3)
+  danfeUrl         String?              @map("danfe_url")
+  /// QR Code da NFC-e
+  qrCode           String?              @map("qr_code")
+  /// Chave de idempotência para evitar emissão duplicada
+  idempotencyKey   String?              @unique @map("idempotency_key")
+  /// Tentativas de emissão
+  attempts         Int                  @default(0)
+  /// Motor de emissão: "dfe-net" ou futuro
+  engine           String?
+  /// Snapshot imutável dos dados no momento da emissão (JSONB)
+  snapshot         Json?
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  deletedAt        DateTime?            @map("deleted_at")
+
+  statusHistory     FiscalStatusHistory[]
+  events            FiscalDocumentEvent[]
+  correctionLetters FiscalCorrectionLetter[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([saleId])
+  @@map("fiscal_documents")
+}
+
+/// Histórico de transições de status de um documento fiscal.
+/// Carta de Correcao Eletronica (evento 110110) de um documento autorizado.
+///
+/// Tabela propria, e nao uma linha em fiscal_document_events: a sequencia
+/// precisa de UNIQUE no banco. Conferir no codigo deixaria a porta aberta para
+/// duas correcoes concorrentes gravarem a mesma — e a SEFAZ recusaria a segunda
+/// depois, sem que ninguem entendesse por que.
+model FiscalCorrectionLetter {
+  id               String         @id @default(uuid())
+  companyId        String         @map("company_id")
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fiscalDocumentId String         @map("fiscal_document_id")
+  fiscalDocument   FiscalDocument @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+  /// Sequencia do evento para esta nota: 1 a 20
+  sequencia        Int
+  /// Texto da correcao, de 15 a 1000 caracteres
+  correcao         String
+  /// Texto legal de condicao de uso vigente quando a correcao foi feita
+  condicaoDeUso    String?        @map("condicao_de_uso")
+  protocolo        String?
+  /// XML do evento (chave do storage)
+  xmlEvento        String?        @map("xml_evento")
+  usuarioId        String?        @map("usuario_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@unique([fiscalDocumentId, sequencia])
+  @@index([companyId])
+  @@map("fiscal_correction_letters")
+}
+
+/// Inutilizacao de faixa de numeracao.
+///
+/// Nao tem FiscalDocument: age sobre numeros que nunca viraram documento. Por
+/// isso guarda serie, modelo e faixa, e nao uma chave de acesso.
+model FiscalInutilization {
+  id              String              @id @default(uuid())
+  companyId       String              @map("company_id")
+  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  establishmentId String              @map("establishment_id")
+  establishment   Establishment       @relation(fields: [establishmentId], references: [id])
+  modelo          FiscalDocumentModel
+  ambiente        FiscalEnvironment
+  serie           Int
+  numeroInicial   Int                 @map("numero_inicial")
+  numeroFinal     Int                 @map("numero_final")
+  ano             Int
+  justificativa   String
+  protocolo       String?
+  /// XML da inutilizacao (chave do storage)
+  xmlInutilizacao String?             @map("xml_inutilizacao")
+  usuarioId       String?             @map("usuario_id")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([establishmentId, modelo, serie])
+  @@map("fiscal_inutilizations")
+}
+
+model FiscalStatusHistory {
+  id               String               @id @default(uuid())
+  fiscalDocumentId String               @map("fiscal_document_id")
+  fiscalDocument   FiscalDocument       @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+  statusFrom       FiscalDocumentStatus @map("status_from")
+  statusTo         FiscalDocumentStatus @map("status_to")
+  motivo           String?
+  usuarioId        String?              @map("usuario_id")
+  createdAt        DateTime             @default(now()) @map("created_at")
+
+  @@index([fiscalDocumentId])
+  @@map("fiscal_status_history")
+}
+
+/// Eventos auditáveis de um documento fiscal (emissão, cancelamento, download, etc.).
+model FiscalDocumentEvent {
+  id               String         @id @default(uuid())
+  fiscalDocumentId String         @map("fiscal_document_id")
+  fiscalDocument   FiscalDocument @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+  /// Tipo do evento: "emissao", "cancelamento", "consulta", "retry", "download_xml", "download_danfe", "reimpressao"
+  tipo             String
+  detalhes         Json?
+  usuarioId        String?        @map("usuario_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@index([fiscalDocumentId])
+  @@map("fiscal_document_events")
+}
+
+// ──────────────────────────────────────────────
+// Importação de NF-e de entrada
+//
+// Nomes em inglês, como o resto do domínio de negócio. Ficam em português só
+// os termos do leiaute fiscal brasileiro, que não têm equivalente fiel:
+// `chaveAcesso`, `cfop`, `ncm` e `duplicatas`.
+// ──────────────────────────────────────────────
+
+/// Situação da importação de uma NF-e de entrada.
+enum NfeImportStatus {
+  /// Lida, com itens ainda por casar.
+  PENDING
+  /// Todos os itens casados; pronta para virar compra.
+  READY
+  /// Já gerou a compra em rascunho.
+  IMPORTED
+  /// Descartada pelo usuário.
+  DISCARDED
+}
+
+/// Como o item do XML foi casado com o produto do catálogo.
+enum NfeImportMatch {
+  /// Nenhum produto encontrado — depende de escolha do usuário.
+  UNMATCHED
+  /// Pelo GTIN do item contra o código de barras do produto.
+  GTIN
+  /// Pelo código que aquele fornecedor usou numa importação anterior.
+  SUPPLIER_CODE
+  /// Escolhido pelo usuário nesta importação.
+  MANUAL
+}
+
+/// Uma NF-e de entrada lida a partir do XML.
+///
+/// Existe separada de `Purchase` porque **pode não virar compra**: item sem
+/// casar, arquivo recusado, decisão adiada. Se o registro só nascesse no final,
+/// a importação interrompida sumiria e o usuário reimportaria o arquivo só para
+/// descobrir o que faltava.
+model NfeImport {
+  id              String          @id @default(uuid())
+  companyId       String          @map("company_id")
+  establishmentId String          @map("establishment_id")
+  supplierId      String?         @map("supplier_id")
+  status          NfeImportStatus @default(PENDING)
+  /// 44 dígitos. Única por empresa: o mesmo XML não entra duas vezes.
+  chaveAcesso     String          @map("chave_acesso")
+  number          Int
+  series          Int
+  issuedAt        DateTime        @map("issued_at")
+  /// Denormalizados do XML: a nota vale mesmo se o parceiro for editado depois.
+  issuerCnpj      String          @map("issuer_cnpj")
+  issuerName      String          @map("issuer_name")
+  totalAmount     Decimal         @map("total_amount") @db.Decimal(12, 2)
+  /// Chave no storage do XML como foi recebido.
+  xmlKey          String?         @map("xml_key")
+  /// Cobrança do leiaute da NF-e: `[{ numero, vencimento, valor }]`.
+  duplicatas      Json?
+  /// Motivo, quando a importação não seguiu.
+  reason          String?
+  purchaseId      String?         @unique @map("purchase_id")
+  userId          String?         @map("user_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  establishment Establishment   @relation(fields: [establishmentId], references: [id])
+  supplier      Partner?        @relation(fields: [supplierId], references: [id])
+  purchase      Purchase?       @relation(fields: [purchaseId], references: [id])
+  items         NfeImportItem[]
+
+  @@unique([companyId, chaveAcesso])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@map("nfe_imports")
+}
+
+/// Um item do XML, com o que foi lido e o resultado do casamento.
+model NfeImportItem {
+  id           String         @id @default(uuid())
+  nfeImportId  String         @map("nfe_import_id")
+  itemNumber   Int            @map("item_number")
+  /// Código do produto no cadastro **do fornecedor** (`cProd` do leiaute).
+  supplierCode String         @map("supplier_code")
+  /// `cEAN`. Nulo quando o XML traz "SEM GTIN".
+  gtin         String?
+  description  String
+  ncm          String?
+  cest         String?
+  cfop         String?
+  unit         String
+  quantity     Decimal        @db.Decimal(12, 4)
+  unitPrice    Decimal        @map("unit_price") @db.Decimal(12, 4)
+  totalAmount  Decimal        @map("total_amount") @db.Decimal(12, 2)
+  /// Quadro tributário **do fornecedor**, do grupo `imposto` do item. Serve de
+  /// ponto de partida ao cadastrar o produto — a situação da nossa empresa é
+  /// decisão do contador, não do emitente da nota.
+  origem       Int?           @db.SmallInt
+  situacaoIcms String?        @map("situacao_icms")
+  cstPis       String?        @map("cst_pis")
+  cstCofins    String?        @map("cst_cofins")
+  productId    String?        @map("product_id")
+  match        NfeImportMatch @default(UNMATCHED)
+
+  nfeImport NfeImport @relation(fields: [nfeImportId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id])
+
+  @@index([nfeImportId])
+  @@map("nfe_import_items")
+}
+
+/// De-para memorizado entre o código do fornecedor e o produto do catálogo.
+///
+/// A chave é `(fornecedor, código)`, nunca só o código: o mesmo código em
+/// fornecedores diferentes é produto diferente.
+model PartnerProductCode {
+  id        String   @id @default(uuid())
+  companyId String   @map("company_id")
+  partnerId String   @map("partner_id")
+  code      String
+  productId String   @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, code])
+  @@index([companyId])
+  @@map("partner_product_codes")
 }

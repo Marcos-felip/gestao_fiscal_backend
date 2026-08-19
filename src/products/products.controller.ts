@@ -54,6 +54,22 @@ export class ProductsController {
     return this.productsService.create(companyId, dto);
   }
 
+  @Get('fiscal-pending')
+  @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
+  @RequirePermission('products.list')
+  @ApiOperation({
+    summary: 'Listar produtos com pendência fiscal',
+    description:
+      'Produtos que bloqueariam a emissão de NFC-e, com o motivo de cada pendência.',
+  })
+  @ApiResponse({ status: 200 })
+  findFiscalPending(
+    @CurrentCompany() companyId: string,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.productsService.findFiscalPending(companyId, pagination);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard, CompanyTenantGuard, RequirePermissionGuard)
   @RequirePermission('products.read')

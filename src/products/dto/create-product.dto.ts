@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Max,
   Min,
   MinLength,
 } from 'class-validator';
@@ -74,12 +75,66 @@ export class CreateProductDto {
   @IsString()
   cfop?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 8,
+    description: 'Origem da mercadoria (0 a 8)',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  @Max(8, { message: 'Origem da mercadoria deve estar entre 0 e 8' })
   origin?: number;
+
+  @ApiPropertyOptional({
+    example: '102',
+    description:
+      'CSOSN do Simples Nacional. Suportados pelo motor: 102, 103, 300, 400, 500',
+  })
+  @IsOptional()
+  @IsString()
+  csosn?: string;
+
+  @ApiPropertyOptional({
+    example: '40',
+    description:
+      'CST de ICMS do regime normal. Suportados pelo motor: 40, 41, 50',
+  })
+  @IsOptional()
+  @IsString()
+  cstIcms?: string;
+
+  @ApiPropertyOptional({ example: '07', description: 'CST do PIS' })
+  @IsOptional()
+  @IsString()
+  cstPis?: string;
+
+  @ApiPropertyOptional({ example: '07', description: 'CST do COFINS' })
+  @IsOptional()
+  @IsString()
+  cstCofins?: string;
+
+  @ApiPropertyOptional({ minimum: 0, description: 'Alíquota de ICMS (%)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  aliquotaIcms?: number;
+
+  @ApiPropertyOptional({ minimum: 0, description: 'Alíquota de PIS (%)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  aliquotaPis?: number;
+
+  @ApiPropertyOptional({ minimum: 0, description: 'Alíquota de COFINS (%)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  aliquotaCofins?: number;
 
   @ApiPropertyOptional({
     type: 'object',

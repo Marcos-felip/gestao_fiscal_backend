@@ -25,6 +25,10 @@ const mockPrismaService = {
     findMany: jest.fn(),
     update: jest.fn(),
   },
+  // `update` lê a matriz para devolver a IE do emitente em `stateRegistration`.
+  establishment: {
+    findFirst: jest.fn(),
+  },
 };
 
 describe('CompaniesService', () => {
@@ -176,13 +180,52 @@ describe('CompaniesService', () => {
   });
 
   describe('findOne', () => {
+    const matriz = {
+      id: 'est-1',
+      type: EstablishmentType.MATRIZ,
+      name: 'Matriz',
+      inscricaoEstadual: '123456789012',
+    };
+    const filial = {
+      id: 'est-2',
+      type: EstablishmentType.FILIAL,
+      name: 'Filial',
+      inscricaoEstadual: '999999999999',
+    };
+
     it('should return company when id matches companyId', async () => {
-      const company = { id: 'company-1', name: 'Test Co' };
+      const company = { id: 'company-1', name: 'Test Co', establishments: [] };
       mockPrismaService.company.findFirst.mockResolvedValue(company);
 
       const result = await service.findOne('company-1', 'company-1');
 
-      expect(result).toEqual(company);
+      expect(result).toEqual({ ...company, stateRegistration: null });
+    });
+
+    it('devolve a IE da matriz em stateRegistration', async () => {
+      const company = {
+        id: 'company-1',
+        name: 'Test Co',
+        establishments: [filial, matriz],
+      };
+      mockPrismaService.company.findFirst.mockResolvedValue(company);
+
+      const result = await service.findOne('company-1', 'company-1');
+
+      // A IE do emitente é a da matriz, nunca a de uma filial.
+      expect(result.stateRegistration).toBe('123456789012');
+    });
+
+    it('não derruba a leitura quando a matriz não tem IE', async () => {
+      mockPrismaService.company.findFirst.mockResolvedValue({
+        id: 'company-1',
+        name: 'Test Co',
+        establishments: [{ ...matriz, inscricaoEstadual: null }],
+      });
+
+      const result = await service.findOne('company-1', 'company-1');
+
+      expect(result.stateRegistration).toBeNull();
     });
 
     it('should throw ForbiddenException if id does not match companyId', async () => {
@@ -243,6 +286,8 @@ describe('CompaniesService', () => {
           }),
         }),
       );
+      // `onboard` devolve a empresa crua — `stateRegistration` é derivado só
+      // nas rotas de leitura e de atualização da empresa.
       expect(result).toEqual(updatedCompany);
     });
 
@@ -286,9 +331,9 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { name: 'Updated Name' },
+        data: expect.objectContaining({ name: 'Updated Name' }) as unknown,
       });
-      expect(result).toEqual(updatedCompany);
+      expect(result).toEqual({ ...updatedCompany, stateRegistration: null });
     });
 
     it('should update company type successfully', async () => {
@@ -300,9 +345,9 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { type: 'LTDA' },
+        data: expect.objectContaining({ type: 'LTDA' }) as unknown,
       });
-      expect(result).toEqual(updatedCompany);
+      expect(result).toEqual({ ...updatedCompany, stateRegistration: null });
     });
 
     it('should update company CNPJ successfully', async () => {
@@ -318,9 +363,11 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { cnpj: '12.345.678/0001-95' },
+        data: expect.objectContaining({
+          cnpj: '12.345.678/0001-95',
+        }) as unknown,
       });
-      expect(result).toEqual(updatedCompany);
+      expect(result).toEqual({ ...updatedCompany, stateRegistration: null });
     });
 
     it('should update company phone successfully', async () => {
@@ -334,9 +381,11 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { phone: '(11) 9999-9999' },
+        data: expect.objectContaining({
+          phone: '(11) 9999-9999',
+        }) as unknown,
       });
-      expect(result).toEqual(updatedCompany);
+      expect(result).toEqual({ ...updatedCompany, stateRegistration: null });
     });
 
     it('should update company taxRegime successfully', async () => {
@@ -353,9 +402,11 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: { taxRegime: TaxRegime.LUCRO_REAL },
+        data: expect.objectContaining({
+          taxRegime: TaxRegime.LUCRO_REAL,
+        }) as unknown,
       });
-      expect(result).toEqual(updatedCompany);
+      expect(result).toEqual({ ...updatedCompany, stateRegistration: null });
     });
 
     it('should update company stateRegistration in MATRIZ establishment', async () => {
@@ -387,7 +438,69 @@ describe('CompaniesService', () => {
       });
 
       expect(mockPrismaService.$transaction).toHaveBeenCalled();
-      expect(result).toEqual(updatedCompany);
+      // A IE gravada na matriz volta na resposta: o que o PATCH aceita, ele
+      // devolve — sem isso o cliente não consegue confirmar a escrita.
+      expect(result).toEqual({
+        ...updatedCompany,
+        stateRegistration: '123456789012',
+      });
+    });
+
+    it('devolve stateRegistration nulo quando a empresa não tem matriz', async () => {
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+      mockPrismaService.$transaction.mockImplementation(
+        async (cb: (tx: typeof mockTx) => Promise<unknown>) => {
+          mockTx.company.update.mockResolvedValue(baseCompany);
+          mockTx.establishment.findFirst.mockResolvedValue(null);
+          return cb(mockTx);
+        },
+      );
+
+      const result = await service.update('company-1', {
+        stateRegistration: '123456789012',
+      });
+
+      expect(mockTx.establishment.update).not.toHaveBeenCalled();
+      expect(result).toEqual({ ...baseCompany, stateRegistration: null });
+    });
+
+    it('recusa IE da empresa divergente da IE da matriz', async () => {
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+
+      await expect(
+        service.update('company-1', {
+          inscricaoEstadual: '111111111111',
+          stateRegistration: '222222222222',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockPrismaService.company.update).not.toHaveBeenCalled();
+    });
+
+    it('aceita as duas IEs quando são iguais', async () => {
+      mockPrismaService.company.findFirst.mockResolvedValue(baseCompany);
+      mockPrismaService.$transaction.mockImplementation(
+        async (cb: (tx: typeof mockTx) => Promise<unknown>) => {
+          mockTx.company.update.mockResolvedValue(baseCompany);
+          mockTx.establishment.findFirst.mockResolvedValue({
+            id: 'est-1',
+            type: EstablishmentType.MATRIZ,
+          });
+          mockTx.establishment.update.mockResolvedValue({});
+          return cb(mockTx);
+        },
+      );
+
+      const result = await service.update('company-1', {
+        inscricaoEstadual: '111111111111',
+        stateRegistration: '111111111111',
+      });
+
+      expect(result).toEqual({
+        ...baseCompany,
+        stateRegistration: '111111111111',
+      });
     });
 
     it('should update multiple fields in a single request', async () => {
@@ -405,14 +518,14 @@ describe('CompaniesService', () => {
 
       expect(mockPrismaService.company.update).toHaveBeenCalledWith({
         where: { id: 'company-1' },
-        data: {
+        data: expect.objectContaining({
           name: 'New Name',
           type: 'LTDA',
           phone: '(11) 9999-9999',
           taxRegime: TaxRegime.SIMPLES_NACIONAL,
-        },
+        }) as unknown,
       });
-      expect(result).toEqual(updatedCompany);
+      expect(result).toEqual({ ...updatedCompany, stateRegistration: null });
     });
 
     it('should throw NotFoundException if company does not exist', async () => {
@@ -448,7 +561,7 @@ describe('CompaniesService', () => {
 
       // Should not throw and should update successfully
       expect(mockPrismaService.company.update).toHaveBeenCalled();
-      expect(result).toEqual(updatedCompany);
+      expect(result).toEqual({ ...updatedCompany, stateRegistration: null });
     });
 
     describe('with establishment nested update', () => {

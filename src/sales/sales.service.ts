@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   CashSessionStatus,
   FinancialStatus,
@@ -25,6 +26,7 @@ import { CreateSaleItemDto } from './dto/create-sale-item.dto';
 import { FilterSaleDto } from './dto/filter-sale.dto';
 import { SalePaymentDto } from './dto/sale-payment.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
+import { SALE_CONFIRMED_EVENT } from '../fiscal/events/sale-confirmed.event';
 
 interface SaleItemData {
   productId: string;
@@ -85,14 +87,17 @@ const SALE_INCLUDE = { items: true, payments: true };
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   async create(
     companyId: string,
     dto: CreateSaleDto,
     operatorId: string,
   ): Promise<Sale> {
-    return this.prisma.$transaction(async (tx) => {
+    const sale = await this.prisma.$transaction(async (tx) => {
       // Sem filtrar deletedAt de propósito: o índice único (company_id,
       // sale_number) também cobre as vendas excluídas, então ignorá-las aqui
       // faria a numeração reutilizar o número de uma venda soft-deletada e
@@ -151,6 +156,19 @@ export class SalesService {
 
       return this.finalize(tx, companyId, sale, operatorId, dto.payments);
     });
+
+    // Emite o evento de venda confirmada para o módulo fiscal
+    // (depois da transação commitar para evitar eventos de vendas que podem ser revertidas)
+    if (sale.status === SaleStatus.CONCLUIDA) {
+      this.eventEmitter.emit(SALE_CONFIRMED_EVENT, {
+        saleId: sale.id,
+        companyId: sale.companyId,
+        establishmentId: sale.establishmentId,
+        usuarioId: operatorId,
+      });
+    }
+
+    return sale;
   }
 
   async findAll(
@@ -327,7 +345,7 @@ export class SalesService {
     operatorId: string,
     dto: ConfirmSaleDto = {},
   ): Promise<Sale> {
-    return this.prisma.$transaction(async (tx) => {
+    const sale = await this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.findFirst({
         where: { id, companyId, deletedAt: null },
       });
@@ -346,6 +364,18 @@ export class SalesService {
 
       return this.finalize(tx, companyId, sale, operatorId, dto.payments);
     });
+
+    // Emite o evento de venda confirmada para o módulo fiscal
+    if (sale.status === SaleStatus.CONCLUIDA) {
+      this.eventEmitter.emit(SALE_CONFIRMED_EVENT, {
+        saleId: sale.id,
+        companyId: sale.companyId,
+        establishmentId: sale.establishmentId,
+        usuarioId: operatorId,
+      });
+    }
+
+    return sale;
   }
 
   /**

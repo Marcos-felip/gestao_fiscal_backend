@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
@@ -12,6 +13,7 @@ import { PartnersModule } from './partners/partners.module';
 import { StockModule } from './stock/stock.module';
 
 import { PurchasesModule } from './purchases/purchases.module';
+import { NfeImportModule } from './nfe-import/nfe-import.module';
 import { SalesModule } from './sales/sales.module';
 import { ReceivablesModule } from './receivables/receivables.module';
 import { PayablesModule } from './payables/payables.module';
@@ -19,10 +21,15 @@ import { CashRegistersModule } from './cash-registers/cash-registers.module';
 import { CashSessionsModule } from './cash-sessions/cash-sessions.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PermissionProfilesModule } from './permission-profiles/permission-profiles.module';
+import { QueueModule } from './queue/queue.module';
+import { StorageModule } from './storage/storage.module';
+import { FiscalModule } from './fiscal/fiscal.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot(),
     PrismaModule,
     CommonModule,
     AuthModule,
@@ -33,6 +40,7 @@ import { PermissionProfilesModule } from './permission-profiles/permission-profi
     ProductsModule,
     PartnersModule,
     StockModule,
+    NfeImportModule,
     PurchasesModule,
     SalesModule,
     ReceivablesModule,
@@ -41,6 +49,10 @@ import { PermissionProfilesModule } from './permission-profiles/permission-profi
     CashSessionsModule,
     PermissionsModule,
     PermissionProfilesModule,
+    QueueModule,
+    StorageModule,
+    FiscalModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}
