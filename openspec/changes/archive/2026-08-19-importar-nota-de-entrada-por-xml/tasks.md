@@ -65,7 +65,7 @@
 - [x] 7.1 `API.md`: as rotas e o formato da importação
 - [x] 7.2 `REGRAS_DE_NEGOCIO.md`: importação → rascunho → confirmação → estoque
 - [x] 7.3 `BANCO_DE_DADOS.md`: as três tabelas novas
-- [ ] 7.4 Avisar a change irmã do frontend
+- [x] 7.4 Avisar a change irmã do frontend
 
 ## 8. Fora do escopo
 
