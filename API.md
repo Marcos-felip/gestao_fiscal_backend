@@ -2719,6 +2719,238 @@ Sugerir é melhor do que deixar digitar: a faixa errada aqui é irreversível.
 
 ---
 
+## Dashboard (tela de início)
+
+Indicadores consolidados da primeira tela. **Uma rota por bloco**, para que a
+home componha em paralelo e cada parte falhe sozinha.
+
+**Não existe permissão `dashboard.*`.** Cada rota exige a permissão do domínio
+que resume — a tela de início não é uma porta lateral para números que a tela do
+domínio nega. O frontend já conhece as permissões efetivas (`GET
+/permissions/me`) e deve chamar só o que o usuário pode ver.
+
+| Rota | Permissão |
+|---|---|
+| `GET /dashboard/sales` | `sales.list` |
+| `GET /dashboard/sales-chart` | `sales.list` |
+| `GET /dashboard/receivables` | `receivables.list` |
+| `GET /dashboard/payables` | `payables.list` |
+| `GET /dashboard/fiscal` | `fiscal.read` |
+| `GET /dashboard/stock-alerts` | `products.list` |
+| `GET /dashboard/cash` | `cash.list` |
+
+**Query param comum:** `establishmentId` (UUID, opcional) — sem ele, os números
+somam toda a empresa ativa. Estabelecimento de outra empresa devolve `404
+Estabelecimento não encontrado`. **Exceção:** `stock-alerts` ignora o filtro
+(ver abaixo).
+
+**Recortes de tempo.** "Hoje", "ontem" e "mês" são calculados no fuso da
+operação (`APP_TIMEZONE`, padrão `America/Sao_Paulo`), não em UTC. Uma venda às
+21h de Brasília conta no dia em que foi feita.
+
+**Valores monetários trafegam como string**, como no resto da API.
+
+---
+
+### GET /dashboard/sales — Faturamento de hoje, de ontem e do mês
+
+> **Permissão:** `sales.list`
+
+Só vendas `CONCLUIDA` e não excluídas compõem o faturamento. `ORCAMENTO` é
+proposta e `EM_ABERTO` é venda em digitação: os dois aparecem apartados em
+`openQuotes`, como funil, e nunca somam receita.
+
+**Resposta 200:**
+```json
+{
+  "today": { "count": 12, "total": "1450.00", "averageTicket": "120.83" },
+  "yesterday": { "count": 9, "total": "980.00", "averageTicket": "108.89" },
+  "month": { "count": 210, "total": "24500.00", "averageTicket": "116.67" },
+  "previousMonth": { "count": 190, "total": "22100.00", "averageTicket": "116.32" },
+  "openQuotes": { "count": 4, "total": "820.00" }
+}
+```
+
+Dia sem venda devolve zero em tudo — não é erro nem lista vazia.
+
+---
+
+### GET /dashboard/sales-chart — Série de faturamento
+
+> **Permissão:** `sales.list`
+
+**Query params:** `range` (`30d` padrão, ou `12m`), `establishmentId`
+
+`range` fora desses dois valores devolve `400` com
+`Período inválido. Use "30d" para dias ou "12m" para meses.`
+
+**Todo intervalo do eixo vem preenchido**, inclusive os sem venda. Devolver só
+os dias com movimento faria o gráfico ligar duas datas distantes por uma reta, e
+uma queda seria lida como estabilidade.
+
+**Resposta 200:**
+```json
+{
+  "range": "30d",
+  "points": [
+    { "key": "2026-07-21", "total": "0.00", "count": 0 },
+    { "key": "2026-07-22", "total": "430.00", "count": 5 }
+  ]
+}
+```
+
+`key` é `AAAA-MM-DD` em `30d` (30 pontos) e `AAAA-MM` em `12m` (12 pontos).
+
+---
+
+### GET /dashboard/receivables — Contas a receber
+
+> **Permissão:** `receivables.list`
+
+### GET /dashboard/payables — Contas a pagar
+
+> **Permissão:** `payables.list`
+
+Mesma forma de resposta, permissões separadas: quem só enxerga o que entra não
+recebe o que sai de brinde.
+
+**`total` é o saldo em aberto (`amount - paidAmount`), nunca o valor de face.**
+Um título de R$ 500 com R$ 100 baixados pesa R$ 400.
+
+`overdue` é derivado contra o agora (`status ∈ {ABERTO, PARCIAL}` e vencimento no
+passado), pelo mesmo critério que `GET /receivables` usa na leitura — os dois
+lugares nunca discordam sobre quantos títulos estão vencidos.
+
+**Resposta 200:**
+```json
+{
+  "overdue": { "count": 3, "total": "1200.00" },
+  "dueToday": { "count": 1, "total": "300.00" },
+  "dueNext7Days": { "count": 5, "total": "2100.00" },
+  "open": { "count": 20, "total": "8000.00" },
+  "settledThisMonth": "5400.00"
+}
+```
+
+`settledThisMonth` é o que foi **efetivamente baixado** no mês (soma de
+`FinancialPayment`), não o que venceu.
+
+> Título financeiro tem `establishmentId` anulável. Com o filtro ligado, os
+> títulos sem estabelecimento ficam de fora.
+
+---
+
+### GET /dashboard/fiscal — Documentos do mês e certificado
+
+> **Permissão:** `fiscal.read`
+
+**Resposta 200:**
+```json
+{
+  "month": {
+    "total": 10,
+    "authorized": 6,
+    "rejected": 2,
+    "cancelled": 1,
+    "pending": 0,
+    "contingency": 0,
+    "failed": 0
+  },
+  "authorizedTotal": "308.00",
+  "certificateAlerts": [
+    {
+      "establishmentId": "uuid",
+      "establishmentName": "Matriz",
+      "expiresAt": "2026-09-08T00:00:00.000Z",
+      "daysToExpire": 20,
+      "expired": false
+    }
+  ]
+}
+```
+
+- `cancelled` soma `CANCELADO` e `CANCELAMENTO_PENDENTE`; `pending` soma
+  `PENDENTE` e `PROCESSANDO`; `failed` é `ERRO`.
+- `authorizedTotal` considera **só** os autorizados.
+- `certificateAlerts` traz apenas os certificados que vencem em até **30 dias**,
+  do mais urgente para o menos. `daysToExpire` negativo com `expired: true`
+  significa certificado já vencido.
+- Empresa que ainda não emite responde com tudo zerado e `certificateAlerts: []`
+  — sem erro.
+
+---
+
+### GET /dashboard/stock-alerts — Produtos zerados e no mínimo
+
+> **Permissão:** `products.list`
+
+> **`establishmentId` não se aplica a esta rota.** `Product` não tem
+> estabelecimento: o saldo é da empresa. O filtro é aceito nas outras rotas e
+> ignorado aqui — não rotule este cartão com o nome da loja.
+
+Produto sem `minStock` cadastrado **não** entra no alerta de mínimo (não há
+parâmetro contra o qual comparar), mas entra no de zerado se o saldo for zero.
+Produto inativo ou excluído fica fora dos dois.
+
+**Os dois grupos são disjuntos:** `belowMinimum` conta apenas quem ainda tem
+saldo (`currentStock > 0`). Pode somar `outOfStock + belowMinimum` sem contar
+ninguém duas vezes.
+
+**Resposta 200:**
+```json
+{
+  "outOfStock": 3,
+  "belowMinimum": 7,
+  "items": [
+    {
+      "id": "uuid",
+      "name": "Refrigerante Lata 350ml",
+      "sku": "REF350",
+      "unit": "UN",
+      "currentStock": "0.0000",
+      "minStock": "10.0000"
+    }
+  ]
+}
+```
+
+`items` é uma **amostra** dos 5 mais críticos (menor saldo primeiro), para o
+cartão ter o que mostrar sem virar listagem. A lista completa é
+`GET /products`.
+
+---
+
+### GET /dashboard/cash — Caixas abertos
+
+> **Permissão:** `cash.list`
+
+**Resposta 200:**
+```json
+{
+  "blindClose": false,
+  "closedToday": 2,
+  "openSessions": [
+    {
+      "id": "uuid",
+      "cashRegisterId": "uuid",
+      "cashRegisterName": "Caixa 1",
+      "operatorId": "uuid",
+      "operatorName": "Ana Souza",
+      "openedAt": "2026-08-19T11:00:00.000Z",
+      "openingAmount": "100.00",
+      "salesTotal": "526.00"
+    }
+  ]
+}
+```
+
+**`salesTotal` vem `null` quando `blindClose` é `true`.** A conferência às cegas
+existe para o operador contar a gaveta sem saber o esperado; publicar o total na
+home entregaria justamente esse número. Trate o nulo como "não disponível", não
+como zero.
+
+---
+
 ## Paginação
 
 Todos os endpoints de listagem suportam paginação:
