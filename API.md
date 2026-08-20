@@ -2320,6 +2320,7 @@ Sonda o microserviço, sem certificado e sem SEFAZ. Nunca falha: motor fora do a
 **Resposta 200:**
 ```jsonc
 {
+  "configurada": true,   // existe configuração de produção para este estabelecimento
   "liberada": false,
   "liberadaEm": null,
   "itens": [
@@ -2337,6 +2338,20 @@ Sonda o microserviço, sem certificado e sem SEFAZ. Nunca falha: motor fora do a
   ]
 }
 ```
+
+**Estabelecimento só com homologação responde `200`, não `404`:**
+```jsonc
+{ "configurada": false, "liberada": false, "liberadaEm": null, "itens": [] }
+```
+Não ter configuração de produção é o estado inicial de todo estabelecimento — a
+leitura descreve esse estado em vez de recusar. A lista vem **vazia** de
+propósito: sem configuração, marcar "certificado vencido" ou "CSC ausente"
+seria descrever algo que não existe. A interface usa `configurada` para
+convidar a criar a configuração. `404` aqui significa apenas
+**estabelecimento** inexistente.
+
+As ações (`liberar`, `revogar`, `validar-consulta`) continuam respondendo `404`
+sem configuração de produção — lá não há o que fazer sem ela.
 
 **O checklist é apurado por modelo.** Só entram os itens dos modelos que o
 estabelecimento emite (`modelosEmitidos` da configuração):

@@ -383,21 +383,56 @@ export class FiscalService {
     return ativado;
   }
 
-  /** Checklist de ativação da produção, com o que já está pronto e o que falta. */
+  /**
+   * Checklist de ativação da produção, com o que já está pronto e o que falta.
+   *
+   * Não ter configuração de produção não é erro: é o estado inicial de todo
+   * estabelecimento, e de quem escolheu ficar só em homologação. Por isso a
+   * leitura responde `configurada: false` em vez de 404. Respondendo erro, a
+   * tela de configuração fiscal alertava a cada visita e ainda por cima
+   * escondia a pendência real, que é justamente criar a configuração.
+   *
+   * As ações de produção (liberar, revogar, validar consulta) continuam
+   * recusando sem configuração: lá não há o que fazer sem ela.
+   */
   async getProductionChecklist(
     companyId: string,
     establishmentId: string,
   ): Promise<{
+    configurada: boolean;
     liberada: boolean;
     liberadaEm: Date | null;
     itens: ProductionChecklistItem[];
   }> {
-    const settings = await this.requireProductionSettings(
-      companyId,
-      establishmentId,
-    );
+    const establishment = await this.prisma.establishment.findFirst({
+      where: { id: establishmentId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!establishment) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+
+    const settings = await this.prisma.fiscalSettings.findFirst({
+      where: {
+        establishmentId,
+        companyId,
+        ambiente: FiscalEnvironment.PRODUCAO,
+        deletedAt: null,
+      },
+    });
+
+    if (!settings) {
+      return {
+        configurada: false,
+        liberada: false,
+        liberadaEm: null,
+        itens: [],
+      };
+    }
 
     return {
+      configurada: true,
       liberada: settings.producaoLiberada,
       liberadaEm: settings.producaoLiberadaEm,
       itens: buildProductionChecklist(settings, {

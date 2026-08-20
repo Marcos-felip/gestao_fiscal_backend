@@ -292,6 +292,7 @@ export class FiscalController {
   })
   @ApiParam({ name: 'establishmentId', description: 'ID do estabelecimento' })
   @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404, description: 'Estabelecimento não encontrado' })
   getProductionChecklist(
     @CurrentCompany() companyId: string,
     @Param('establishmentId') establishmentId: string,

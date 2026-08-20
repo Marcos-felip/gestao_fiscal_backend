@@ -64,6 +64,7 @@ const mockPrisma = {
   },
   fiscalSettingsEvent: { create: jest.fn(), findMany: jest.fn() },
   company: { findFirst: jest.fn() },
+  establishment: { findFirst: jest.fn() },
   product: { count: jest.fn() },
   $transaction: jest.fn(),
 };
@@ -100,6 +101,7 @@ describe('FiscalService', () => {
       (operacoes: Promise<unknown>[]) => Promise.all(operacoes),
     );
     mockPrisma.product.count.mockResolvedValue(0);
+    mockPrisma.establishment.findFirst.mockResolvedValue({ id: 'estab-1' });
     mockPrisma.company.findFirst.mockResolvedValue({
       name: 'Empresa Teste',
       nomeFantasia: null,
@@ -457,6 +459,53 @@ describe('FiscalService', () => {
       );
       expect(itemConsulta).toBeDefined();
       expect(itemConsulta?.ok).toBe(false);
+    });
+
+    // Quem usa só homologação abre a tela fiscal o tempo todo: recusar a leitura
+    // virava alerta de erro a cada visita.
+    it('responde configurada: false em vez de erro quando só há homologação', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(null);
+
+      const resultado = await service.getProductionChecklist(
+        'company-1',
+        'estab-1',
+      );
+
+      expect(resultado.configurada).toBe(false);
+      expect(resultado.liberada).toBe(false);
+      expect(resultado.liberadaEm).toBeNull();
+      // Vazia de propósito: sem configuração não se inventa item reprovado.
+      expect(resultado.itens).toEqual([]);
+    });
+
+    it('marca configurada: true quando a configuração de produção existe', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(
+        configuracao({ ambiente: FiscalEnvironment.PRODUCAO }),
+      );
+
+      const resultado = await service.getProductionChecklist(
+        'company-1',
+        'estab-1',
+      );
+
+      expect(resultado.configurada).toBe(true);
+    });
+
+    it('recusa estabelecimento de outra empresa', async () => {
+      mockPrisma.establishment.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getProductionChecklist('company-1', 'estab-alheio'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    // As ações continuam recusando: sem configuração não há o que liberar.
+    it('mantém a recusa ao liberar produção sem configuração', async () => {
+      mockPrisma.fiscalSettings.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.releaseProduction('company-1', 'estab-1', 'user-1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
